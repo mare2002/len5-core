@@ -40,7 +40,7 @@ package len5_config_pkg;
   // Enable floating-point support (F,D extensions)
   // ----------------------------------------------
   localparam bit LEN5_F_EN = 1'b1;  // single-precision instructions
-  localparam bit LEN5_D_EN = 1'b0;  // double-precision instructions
+  localparam bit LEN5_D_EN = 1'b1;  // double-precision instructions
 
   // Enable C extension support
   // --------------------------
