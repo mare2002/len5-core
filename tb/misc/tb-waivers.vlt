@@ -43,4 +43,7 @@ lint_off -rule PINCONNECTEMPTY -file "*/tb_bare.sv" -match "Instance pin connect
 lint_off -rule PINCONNECTEMPTY -file "*/tb_bare.sv" -match "Instance pin connected by name with empty reference: 'irq_i'"
 lint_off -rule PINCONNECTEMPTY -file "*/tb_bare.sv" -match "Instance pin connected by name with empty reference: 'fetch_enable_i'"
 
+// Blocking assignment in sequential process for stats report
+lint_off -rule BLKSEQ -file "*/len5_utils.svh" -match "Blocking assignment '=' in sequential logic process"
+
 lint_off -rule UNOPTFLAT -file "*/tb_bare.sv" -match "Signal unoptimizable: Circular combinational logic: 'tb_bare.dp2mem_flush'"
