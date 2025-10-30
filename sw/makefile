@@ -24,10 +24,10 @@ INC_DIRS 		:= $(sort $(dir $(INCS)))
 RISCV_EXE_PREFIX           	?= riscv64-unknown-elf
 GCC_VERSION					:= $(shell $(RISCV_EXE_PREFIX)-gcc -dumpversion)
 ifeq ($(HARD_FLOAT), 1)
-ISA_STRING					?= rv64imd_zicsr
+ISA_STRING					?= rv64imd
 ABI_STRING					?= lp64d
 else
-ISA_STRING					?= rv64im_zicsr
+ISA_STRING					?= rv64im
 ABI_STRING					?= lp64
 endif
 ifeq ($(shell expr $(GCC_VERSION) \>= 12), 1)
