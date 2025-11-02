@@ -35,22 +35,29 @@ module pc_gen #(
 );
 
   import len5_pkg::*;
+  import len5_config_pkg::*;
   import fetch_pkg::*;
 
   // INTERNAL SIGNALS
   // ----------------
   logic [len5_pkg::XLEN-1:0] next_pc, add_pc_base, adder_out, add_pc_offset, add_pc_early_jump;
+  logic [LEN5_MULTIPLE_ISSUES_BITS:0] pc_increase;
 
   // -------------------
   // PC GENERATION LOGIC
   // -------------------
   // Target address operands mux
+  if (LEN5_MULTIPLE_ISSUES==1) begin: gen_single_pc_increase
+    assign pc_increase = -1'b1;
+  end else begin: gen_multiple_pc_increase
+    assign pc_increase = -{1'b1, pc_o[ILEN_BIT_SUFF+LEN5_MULTIPLE_ISSUES_BITS-1:ILEN_BIT_SUFF]};
+  end
   always_comb begin : tgt_addr_op_mux
     if (early_jump_valid_i && !(bu_res_valid_i && bu_res_i.mispredict)) begin
       add_pc_offset     = early_jump_base_i;
       add_pc_early_jump = early_jump_offs_i;
     end else begin
-      add_pc_offset     = {32'b0, (ILEN >> 3)};
+      add_pc_offset     = {{{(64-LEN5_MULTIPLE_ISSUES_BITS-1){1'b0}}, pc_increase}<<ILEN_BIT_SUFF};
       add_pc_early_jump = pc_o;
     end
   end

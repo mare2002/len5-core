@@ -31,6 +31,8 @@ package len5_pkg;
   localparam int unsigned ALEN = 32'd64;  // address width
   localparam int unsigned XLEN = 32'd64;  // integer data width
   localparam int unsigned FLEN = (LEN5_D_EN) ? 32'd64 : 32'd32;  // floating-point data width
+  localparam int unsigned ILEN_BYTE = (ILEN>>3);
+  localparam int unsigned ILEN_BIT_SUFF = $clog2(ILEN_BYTE);
 
   /* Instruction fileds width */
   localparam int unsigned OPCODE_LEN = 32'd7;

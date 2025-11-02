@@ -32,6 +32,11 @@ package len5_config_pkg;
   // FEATURES SWITCHES
   // -----------------
 
+  // Multi-issue architecture
+  // ------------------------
+  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd2;
+  localparam int unsigned LEN5_MULTIPLE_ISSUES_BITS = $clog2(LEN5_MULTIPLE_ISSUES);
+
   // Enable M extension support
   // --------------------------
   localparam bit LEN5_M_EN = 1'b1;  // integer hardware multiplication and division
