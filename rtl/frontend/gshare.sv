@@ -19,23 +19,24 @@ module gshare #(
   input logic            clk_i,
   input logic            rst_ni,
   input logic            flush_i,
-  input logic [HLEN-1:0] curr_hist_i,
+  input logic [HLEN-LEN5_MULTIPLE_ISSUES_BITS-1:0] curr_hist_i,
   input logic            res_valid_i,
   input logic            res_taken_i,
   input logic [HLEN-1:0] res_hist_i,
 
-  output logic taken_o
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] taken_o
 );
   import len5_pkg::*;
   import fetch_pkg::*;
+  import len5_config_pkg::*;
   // Parameters
   localparam int unsigned PhtRows = 1 << HLEN;
 
   // INTERNAL SIGNALS
   // ----------------
   c2b_t pht_d[PhtRows], pht_q[PhtRows];  // 2-bit predictor counters
-  logic [HLEN-1:0] history, index_r, index_w;  // global branch history
-
+  logic [HLEN-1:0] history, index_w;  // global branch history
+  logic [LEN5_MULTIPLE_ISSUES-1:0][HLEN-1:0] index_r;//global branch history
   // --------------------------
   // Branch History Table (BHT)
   // --------------------------
@@ -95,8 +96,21 @@ module gshare #(
   end
 
   // Assignments
-  assign index_r = history ^ curr_hist_i;  // XOR hashing
+  //assign index_r = history ^ curr_hist_i;  // XOR hashing
   assign index_w = history ^ res_hist_i;
-  assign taken_o = pht_q[index_r][1];
-
+  if (LEN5_MULTIPLE_ISSUES==1) begin : gen_single_issue
+    //single issue
+    assign index_r = history ^ curr_hist_i;
+    assign taken_o = pht_q[index_r][1];
+  end else begin : gen_multiple_issues
+    //multiple issue
+    //change just the lowest bits of the pc counter, they are zero either way, history is always the same so we are using bundle history
+    for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++)begin : gen_read_indx
+      assign index_r[i] = history ^ {curr_hist_i, i[LEN5_MULTIPLE_ISSUES_BITS-1:0]};
+    end
+    //network to determine the outputs, it uses index_r
+    for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++)begin : gen_output
+      assign taken_o[i] = pht_q[index_r[i]][1];
+    end
+  end
 endmodule

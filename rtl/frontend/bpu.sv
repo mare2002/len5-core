@@ -24,15 +24,17 @@ module bpu #(
   input logic                                        bu_res_valid_i,
   input fetch_pkg::resolution_t                      bu_res_i,
 
-  output fetch_pkg::prediction_t pred_o
+  output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] pred_o
 );
 
   import len5_pkg::*;
   import fetch_pkg::*;
+  import len5_config_pkg::*;
   // Signal definitions
-  logic btb_hit, btb_del_entry;
-  logic                   gshare_taken;
-  logic [XLEN-OFFSET-1:0] btb_target;
+  logic btb_del_entry;
+  logic [LEN5_MULTIPLE_ISSUES-1:0] btb_hit;
+  logic [LEN5_MULTIPLE_ISSUES-1:0] gshare_taken;
+  logic [LEN5_MULTIPLE_ISSUES-1:0] [XLEN-OFFSET-1:0] btb_target;
 
   // Gshare branch predictor
   gshare #(
@@ -42,7 +44,7 @@ module bpu #(
     .clk_i      (clk_i),
     .rst_ni     (rst_ni),
     .flush_i    (flush_i),
-    .curr_hist_i(curr_pc_i[HLEN+OFFSET-1:OFFSET]),
+    .curr_hist_i(curr_pc_i[HLEN+OFFSET-1:OFFSET+LEN5_MULTIPLE_ISSUES_BITS]),
     .res_valid_i(bu_res_valid_i),
     .res_taken_i(bu_res_i.taken),
     .res_hist_i (bu_res_i.pc[HLEN+OFFSET-1:OFFSET]),
@@ -68,8 +70,15 @@ module bpu #(
 
   // Output network
   // --------------
-  assign pred_o.pc     = curr_pc_i;
-  assign pred_o.hit    = btb_hit;
-  assign pred_o.taken  = gshare_taken;
-  assign pred_o.target = {btb_target, 2'b00};
+  for(genvar i = 0; i<LEN5_MULTIPLE_ISSUES; i++) begin : gen_outputs_pred
+    if (LEN5_MULTIPLE_ISSUES==1)begin : gen_single 
+      assign pred_o[i].pc     = curr_pc_i;
+    end
+    else begin : gen_multiple
+      assign pred_o[i].pc     = {curr_pc_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS], i[LEN5_MULTIPLE_ISSUES_BITS-1:0]};
+    end
+    assign pred_o[i].hit    = btb_hit[i];
+    assign pred_o[i].taken  = gshare_taken[i];
+    assign pred_o[i].target = {btb_target[i], 2'b00};
+  end
 endmodule

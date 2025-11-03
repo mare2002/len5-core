@@ -7,7 +7,7 @@
 // Date: 12/02/2024
 // Description: Verilator waivers 
 `verilator_config
-lint_off -rule UNUSED -file "*/btb.sv" -match "Bits of signal are not used: 'curr_pc_i'[1:0]"
+lint_off -rule UNUSED -file "*/btb.sv" -match "Bits of signal are not used: 'curr_pc_i'*"
 lint_off -rule UNUSED -file "*/btb.sv" -match "Bits of signal are not used: 'res_pc_i'[1:0]"
 lint_off -rule UNUSED -file "*/btb.sv" -match "Bits of signal are not used: 'res_target_i'[1:0]"
 
