@@ -17,6 +17,7 @@ SUITE   		?= embench
 BENCHMARK 		?= crc32
 LINKER   		?= $(realpath sw/linker/len5-sim.ld)
 COPT   	 		?= -O2
+SOFTWARE_DIR    ?= $(BUILD_DIR)
 
 # RTL simulation
 FIRMWARE		?= $(BUILD_DIR)/main.hex
@@ -35,6 +36,11 @@ EMBENCH_DIR		:= sw/benchmarks/embench/src/
 EMBENCH_TESTS	:= $(shell find $(EMBENCH_DIR) -type d -exec basename {} \;)
 EMBENCH_TESTS	:= $(filter-out src, $(EMBENCH_TESTS))
 BENCHMARK_DIR_NAME=$(basename $BENCHMARK_DIR_PATH)
+#run benchmarks parallel
+PARALLEL_DIR    := sw/benchmarks/${SUITE}/src/
+PARALLEL_TESTS	?= $(shell find $(PARALLEL_DIR) -type d -exec basename {} \;)
+PARALLEL_TESTS	:= $(filter-out src, $(PARALLEL_TESTS))
+PARALLEL_JOBS   := $(addprefix job_, ${PARALLEL_TESTS})
 # ---------
 # RTL simulation files
 SIM_CORE_FILES 	:= $(shell find . -type f -name "*.core")
@@ -45,6 +51,23 @@ SIM_CPP_FILES	:= $(shell find tb/verilator -type f -name "*.cpp" -o -name "*.hh"
 #######################
 # ----- TARGETS ----- #
 #######################
+
+.PHONY: run-benchmarks
+run-benchmarks: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/run/logs/compiler/ $(BUILD_DIR)/run/logs/sim/ $(PARALLEL_JOBS)
+	@echo "$@ done."
+
+$(PARALLEL_JOBS): job_%:
+	@$(MAKE) run SOFTWARE_DIR=$(BUILD_DIR)/run/$*/ MAX_CYCLES=$(MAX_CYCLES)  BENCHMARK=$*
+
+run: $(BUILD_DIR)/run/$(BENCHMARK)/main.hex
+	@echo "## Starting the simulation of $(SUITE) benchmark $(BENCHMARK)"
+	@$(MAKE) verilator-opt FIRMWARE=$< MAX_CYCLES=$(MAX_CYCLES) > $(BUILD_DIR)/run/logs/sim/$(BENCHMARK).log 2>&1
+	@echo "## End of the simulation of $(SUITE) benchmark $(BENCHMARK)"
+
+$(BUILD_DIR)/run/$(BENCHMARK)/main.hex:
+	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
+	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(SOFTWARE_DIR) BENCHMARK=$(BENCHMARK) > $(BUILD_DIR)/run/logs/compiler/$(BENCHMARK).log 2>&1
+
 # HDL source
 # ----------
 # Format code
@@ -81,7 +104,7 @@ verilator-sim: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/main.hex | .check-fuses
 		$(FUSESOC_ARGS)
 
 .PHONY: verilator-opt
-verilator-opt: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/main.hex | .check-fusesoc
+verilator-opt: $(BUILD_DIR)/.verilator.lock $(SOFTWARE_DIR)/main.hex | .check-fusesoc
 	fusesoc run --no-export --target sim --tool verilator --run $(FUSESOC_FLAGS) polito:len5:len5 \
 		--log_level=$(LOG_LEVEL) \
 		--firmware=$(FIRMWARE) \
@@ -134,12 +157,6 @@ benchmark:
 benchmark-spike: | $(BUILD_DIR)/spike/
 	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
 	$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(BUILD_DIR)/spike BENCHMARK=$(BENCHMARK) CDEFS=-DSPIKE_CHECK
-
-.PHONY: run-benchmarks
-run-benchmarks: 
-	@echo "## Running suite $(SUITE)"
-	python3 scripts/benchmarks.py -s $(SUITE) -O=2 -P=1000
-	rm -rf build_*
 
 # Simple test application
 .PHONY: app-helloworld
@@ -244,7 +261,11 @@ charts: w/benchmarks/embench/output/benchmarks.csv scripts/xheep_resultsO2.csv
 
 # Clean-up
 .PHONY: clean
-clean: clean-app clean-sim
+clean: clean-app clean-sim clean-run
+
+.PHONY: clean-run
+clean-run:
+	@rm -rf $(BUILD_DIR)/run
 
 .PHONY: clean-sim
 clean-sim:
