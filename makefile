@@ -51,20 +51,22 @@ SIM_CPP_FILES	:= $(shell find tb/verilator -type f -name "*.cpp" -o -name "*.hh"
 #######################
 # ----- TARGETS ----- #
 #######################
-#test
-run-parallel-benchmarks: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/run/logs/compiler/ $(BUILD_DIR)/run/logs/sim/ ${PARALLEL_JOBS}
+
+.PHONY: run-benchmarks
+run-benchmarks: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/run/logs/compiler/ $(BUILD_DIR)/run/logs/sim/ $(PARALLEL_JOBS)
 	@echo "$@ done."
 
-${PARALLEL_JOBS}: job_%:
-	$(MAKE) run SOFTWARE_DIR=$(BUILD_DIR)/run/$*/ MAX_CYCLES=$(MAX_CYCLES)  BENCHMARK=$*
+$(PARALLEL_JOBS): job_%:
+	@$(MAKE) run SOFTWARE_DIR=$(BUILD_DIR)/run/$*/ MAX_CYCLES=$(MAX_CYCLES)  BENCHMARK=$*
 
-run: benchmark_build
+run: $(BUILD_DIR)/run/$(BENCHMARK)/main.hex
 	@echo "## Starting the simulation of $(SUITE) benchmark $(BENCHMARK)"
-	$(MAKE) verilator-opt FIRMWARE=$(BUILD_DIR)/run/$(BENCHMARK)/main.hex MAX_CYCLES=$(MAX_CYCLES) > $(BUILD_DIR)/run/logs/sim/$(BENCHMARK).sim 2>&1
+	@$(MAKE) verilator-opt FIRMWARE=$< MAX_CYCLES=$(MAX_CYCLES) > $(BUILD_DIR)/run/logs/sim/$(BENCHMARK).log 2>&1
+	@echo "## End of the simulation of $(SUITE) benchmark $(BENCHMARK)"
 
-benchmark_build:
+$(BUILD_DIR)/run/$(BENCHMARK)/main.hex:
 	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
-	$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(SOFTWARE_DIR) BENCHMARK=$(BENCHMARK) > $(BUILD_DIR)/run/logs/compiler/$(BENCHMARK).log 2>&1
+	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(SOFTWARE_DIR) BENCHMARK=$(BENCHMARK) > $(BUILD_DIR)/run/logs/compiler/$(BENCHMARK).log 2>&1
 
 # HDL source
 # ----------
@@ -155,12 +157,6 @@ benchmark:
 benchmark-spike: | $(BUILD_DIR)/spike/
 	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
 	$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(BUILD_DIR)/spike BENCHMARK=$(BENCHMARK) CDEFS=-DSPIKE_CHECK
-
-.PHONY: run-benchmarks
-run-benchmarks: 
-	@echo "## Running suite $(SUITE)"
-	python3 scripts/benchmarks.py -s $(SUITE) -O=2 -P=1000
-	rm -rf build_*
 
 # Simple test application
 .PHONY: app-helloworld

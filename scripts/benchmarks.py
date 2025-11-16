@@ -57,7 +57,7 @@ def get_benchmarks(suite) -> List[str]:
         sys.exit(2)
     else:
         benchmarks =  os.listdir(benchmarks_dir) 
-        
+        benchmarks = ['crc32', 'edn', 'huffbench', 'matmult-int', 'nettle-aes', 'nsichneu', 'picojpeg', 'qrduino', 'slre', 'statemate']
         return benchmarks
 
 def parse_retired_instructions(stdout) -> int:
