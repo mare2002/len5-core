@@ -29,6 +29,7 @@ lint_off -rule UNUSED -file "*/memory_bare_emu.sv" -match "Signal is not used: '
 
 // Baremetal testbench
 lint_off -rule UNUSED -file "*/tb_bare.sv" -match "Signal is not used: 'cpu_data'"
+lint_off -rule SYNCASYNCNET -file "*/tb_bare.sv" -match "Signal flopped as both synchronous and async: 'rst_ni'"
 
 // Not used since always load doubleword from mem  
 lint_off -rule UNUSED -file "*/memory_bare_emu.sv" -match "Signal is not used: 'data_load_be_i'"
