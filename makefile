@@ -52,22 +52,6 @@ SIM_CPP_FILES	:= $(shell find tb/verilator -type f -name "*.cpp" -o -name "*.hh"
 # ----- TARGETS ----- #
 #######################
 
-.PHONY: run-benchmarks
-run-benchmarks: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/run/logs/compiler/ $(BUILD_DIR)/run/logs/sim/ $(PARALLEL_JOBS)
-	@echo "$@ done."
-
-$(PARALLEL_JOBS): job_%:
-	@$(MAKE) run SOFTWARE_DIR=$(BUILD_DIR)/run/$*/ MAX_CYCLES=$(MAX_CYCLES)  BENCHMARK=$*
-
-run: $(BUILD_DIR)/run/$(BENCHMARK)/main.hex
-	@echo "## Starting the simulation of $(SUITE) benchmark $(BENCHMARK)"
-	@$(MAKE) verilator-opt FIRMWARE=$< MAX_CYCLES=$(MAX_CYCLES) > $(BUILD_DIR)/run/logs/sim/$(BENCHMARK).log 2>&1
-	@echo "## End of the simulation of $(SUITE) benchmark $(BENCHMARK)"
-
-$(BUILD_DIR)/run/$(BENCHMARK)/main.hex:
-	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
-	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(SOFTWARE_DIR) BENCHMARK=$(BENCHMARK) > $(BUILD_DIR)/run/logs/compiler/$(BENCHMARK).log 2>&1
-
 # HDL source
 # ----------
 # Format code
@@ -132,6 +116,25 @@ verilator-waves: $(BUILD_DIR)/sim-common/waves.fst | .check-gtkwave
 questasim-sim: | app .check-fusesoc $(BUILD_DIR)/
 	@echo "## Running simulation with QuestaSim..."
 	fusesoc run --no-export --target sim --tool modelsim $(FUSESOC_FLAGS) --build polito:len5:len5 2>&1 | tee build/build.log
+
+# Benchmarking targets
+# --------------------
+.PHONY: run-benchmarks
+run-benchmarks: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/run/logs/compiler/ $(BUILD_DIR)/run/logs/sim/ $(PARALLEL_JOBS)
+	@echo "$@ done."
+
+$(PARALLEL_JOBS): job_%:
+	@$(MAKE) run SOFTWARE_DIR=$(BUILD_DIR)/run/$*/ MAX_CYCLES=$(MAX_CYCLES)  BENCHMARK=$*
+
+.PHONY: run
+run: $(BUILD_DIR)/run/$(BENCHMARK)/main.hex
+	@echo "## Starting the simulation of $(SUITE) benchmark $(BENCHMARK)"
+	@$(MAKE) verilator-opt FIRMWARE=$< MAX_CYCLES=$(MAX_CYCLES) > $(BUILD_DIR)/run/logs/sim/$(BENCHMARK).log 2>&1
+	@echo "## End of the simulation of $(SUITE) benchmark $(BENCHMARK)"
+
+$(BUILD_DIR)/run/$(BENCHMARK)/main.hex:
+	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
+	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(SOFTWARE_DIR) BENCHMARK=$(BENCHMARK) > $(BUILD_DIR)/run/logs/compiler/$(BENCHMARK).log 2>&1
 	
 # Software
 # --------
