@@ -118,7 +118,7 @@ module fpu_wrapper #(
     .data_o (in_reg_data_out)
   );
 
-  assign fpu_rm          = in_reg_data_out.rm;
+  assign fpu_rm          = roundmode_e'(in_reg_data_out.rm);
   assign fpu_operands[0] = in_reg_data_out.rs1_value;
   assign fpu_operands[1] = in_reg_data_out.rs2_value;
   assign fpu_operands[2] = in_reg_data_out.rs3_value;

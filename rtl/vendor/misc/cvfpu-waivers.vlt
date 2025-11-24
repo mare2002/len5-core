@@ -16,6 +16,8 @@ lint_off -rule UNUSED -file "*/lzc.sv" -match "Bits of signal are not driven, no
 lint_off -rule UNUSED -file "*/lzc.sv" -match "Bits of signal are not driven, nor used: 'index_nodes'[383:378]"
 lint_off -rule UNOPTFLAT -file "*/lzc.sv" -match "Signal unoptimizable: Feedback to clock or circular logic: *index_nodes'"
 lint_off -rule UNOPTFLAT -file "*/lzc.sv" -match "Signal unoptimizable: Feedback to clock or circular logic: *sel_nodes'"
+lint_off -rule UNOPTFLAT -file "*/control_mvp.sv" -match "Signal unoptimizable: Circular combinational logic: '*u_fpu_wrapper.u_fpu.gen_operation_groups[1].i_opgroup_block.gen_merged_slice.i_multifmt_slice.gen_num_lanes[0].active_lane.lane_instance.genblk1.i_fpnew_divsqrt_multi.i_divsqrt_lei.nrbd_nrsc_U0.control_U0.Sqrt_quotinent_S'"
+lint_off -rule UNOPTFLAT -file "*/control_mvp.sv" -match "Signal unoptimizable: Circular combinational logic: '*u_fpu_unit.u_fpu_wrapper.u_fpu.gen_operation_groups[1].i_opgroup_block.gen_merged_slice.i_multifmt_slice.gen_num_lanes[0].active_lane.lane_instance.genblk1.i_fpnew_divsqrt_multi.i_divsqrt_lei.nrbd_nrsc_U0.control_U0.Qcnt_three_1'"
 lint_off -rule GENUNNAMED -file "*/fpu-div-sqrt-mvp/hdl/div_sqrt_mvp_wrapper.sv" -match "Unnamed generate block '*'"
 lint_off -rule GENUNNAMED -file "*/fpu-div-sqrt-mvp/hdl/control_mvp.sv" -match "Unnamed generate block '*'"
 lint_off -rule GENUNNAMED -file "*/cvfpu/src/*.sv" -match "Unnamed generate block '*'"
