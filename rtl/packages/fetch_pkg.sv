@@ -64,7 +64,7 @@ package fetch_pkg;
 
   // Memory interface answer spill cell data type
   typedef struct packed {
-    logic [ILEN-1:0] instr;
+    logic [LEN5_MULTIPLE_ISSUES-1:0][ILEN-1:0] instr;
     prediction_t     pred_data;
     logic            except_raised;
     except_code_t    except_code;
