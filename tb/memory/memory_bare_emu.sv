@@ -33,7 +33,7 @@ module memory_bare_emu #(
   output logic                                        instr_ready_o,
   input  logic                                        instr_ready_i,
   input  logic                   [len5_pkg::XLEN-1:0] instr_addr_i,
-  output logic                   [len5_pkg::ILEN-1:0] instr_rdata_o,
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instr_rdata_o,
   output logic                                        instr_except_raised_o,
   output len5_pkg::except_code_t                      instr_except_code_o,
 
@@ -74,7 +74,7 @@ module memory_bare_emu #(
   // ----------------
   // Answer from the memory
   typedef struct packed {
-    logic [len5_pkg::ILEN-1:0] read;           // instruction read
+    logic [LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] read;           // instruction read
     logic                      except_raised;
     len5_pkg::except_code_t    except_code;
   } instr_mem_ans_t;
@@ -153,8 +153,8 @@ module memory_bare_emu #(
     instr_pipe_reg[0].except_code   = E_UNKNOWN;
 
     if (instr_valid_i) begin  // Memory always ready to answer (instr_ready_o = 1)
-      i_ret                  = mem.ReadW(instr_addr_i);
-      instr_pipe_reg[0].read = mem.read_word;
+      i_ret                  = mem.ReadM(instr_addr_i);
+      instr_pipe_reg[0].read = mem.read_multiple;
 
       // Exception handling
       case (i_ret)

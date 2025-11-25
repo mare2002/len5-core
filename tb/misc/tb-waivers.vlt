@@ -24,6 +24,7 @@ lint_off -rule UNUSED -file "*/memory_class.svh" -match "Signal is not used: 're
 lint_off -rule UNUSED -file "*/memory_class.svh" -match "Signal is not used: 'read_word'"
 lint_off -rule UNUSED -file "*/memory_class.svh" -match "Signal is not used: 'read_doubleword'"
 lint_off -rule UNUSED -file "*/memory_class.svh" -match "Signal is not used: 'read_line'"
+lint_off -rule UNUSED -file "*/memory_class.svh" -match "Signal is not used: 'read_multiple'"
 
 lint_off -rule UNUSED -file "*/memory_bare_emu.sv" -match "Signal is not used: 'mem_dump_file_i'"
 

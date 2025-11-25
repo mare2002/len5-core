@@ -21,6 +21,8 @@ import len5_pkg::BWIDTH;
 import len5_pkg::HWWIDTH;
 import len5_pkg::DWWIDTH;
 import len5_pkg::LWIDTH;
+import len5_config_pkg::LEN5_MULTIPLE_ISSUES;
+import len5_config_pkg::LEN5_MULTIPLE_ISSUES_BITS;
 
 typedef enum int unsigned {
   FILE_MODE_READ,
@@ -40,6 +42,7 @@ class memory_class;
   logic              [ WWIDTH-1:0] read_word;
   logic              [DWWIDTH-1:0] read_doubleword;
   logic              [ LWIDTH-1:0] read_line;
+  logic [LEN5_MULTIPLE_ISSUES-1:0][WWIDTH-1:0] read_multiple;
 
   // Memory data
   // NOTE: delared as static so it's shared by all instances
@@ -247,6 +250,41 @@ class memory_class;
     this.read_word = w;
     return ret;
   endfunction : ReadW
+
+// Read a multiple words
+  function int ReadM(logic [AWIDTH-1:0] addr);
+    logic [AWIDTH-1:0] baddr;  // word address
+    logic [LEN5_MULTIPLE_ISSUES-1:0][WWIDTH-1:0] w;
+    int                ret;
+
+    // Check address alignment
+    if (addr[LEN5_MULTIPLE_ISSUES_BITS+1:0] != {(LEN5_MULTIPLE_ISSUES_BITS+2){1'b0}}) begin
+      $display("ERROR: Word address 0x%h is NOT aligned on a multiple issue", addr);
+      return 1;  // exit
+    end
+
+    // Read words from memory
+    for (int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+      baddr                     = addr + {30'b0,i,2'b0};
+      //two options are here, one read words, the other one read bytes whatever is prefered
+      // Read bytes from memory
+      // for (int k = 0; k < (WWIDTH >> 3); k++) begin
+      //   baddr                     = addr + {30'b0,i,k[1:0]};
+
+      //   // Read current byte
+      //   ret                       = this.ReadB(baddr);
+      //   w[i][BWIDTH*(k+1)-1-:BWIDTH] = this.read_byte;
+      // end
+      //
+      //read words currently used
+      ret = this.ReadW(baddr);
+      w[i] = this.read_word;
+    end
+
+    // Save the requested words
+    this.read_multiple = w;
+    return ret;
+  endfunction : ReadM
 
   // Read a doubleword
   function int ReadDW(logic [AWIDTH-1:0] addr);
