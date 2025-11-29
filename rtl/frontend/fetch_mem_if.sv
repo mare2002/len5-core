@@ -36,7 +36,7 @@ module fetch_mem_if #(
   output logic                                        instr_ready_o,
   output logic                                        instr_valid_o,
   output logic                                        instr_we_o,
-  input  logic [len5_config_pkg:LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] instr_rdata_i,
+  input  logic [len5_pkg::ILEN-1:0] instr_rdata_i,
   output logic                   [len5_pkg::XLEN-1:0] instr_addr_o,
   input  logic                                        instr_except_raised_i,
   input  len5_pkg::except_code_t                      instr_except_code_i

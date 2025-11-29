@@ -34,8 +34,8 @@ module memory_bare_emu #(
   input  logic                                        instr_ready_i,
   input  logic                   [len5_pkg::XLEN-1:0] instr_addr_i,
   output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instr_rdata_o,
-  output logic                                        instr_except_raised_o,
-  output len5_pkg::except_code_t                      instr_except_code_o,
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_o,
+  output len5_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_o,
 
   // Load port interface
   input  logic                                                data_load_valid_i,
@@ -75,8 +75,8 @@ module memory_bare_emu #(
   // Answer from the memory
   typedef struct packed {
     logic [LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] read;           // instruction read
-    logic                      except_raised;
-    len5_pkg::except_code_t    except_code;
+    logic         [LEN5_MULTIPLE_ISSUES-1:0] except_raised;
+    len5_pkg::except_code_t  [LEN5_MULTIPLE_ISSUES-1:0] except_code;
   } instr_mem_ans_t;
 
   typedef struct packed {
@@ -149,43 +149,49 @@ module memory_bare_emu #(
   // -------------------
   always_comb begin : p_ins_mem_req
     instr_pipe_reg[0].read          = 'h0;
-    instr_pipe_reg[0].except_raised = 1'b0;
-    instr_pipe_reg[0].except_code   = E_UNKNOWN;
-
+    instr_pipe_reg[0].except_raised = 'b0;
+    //Set the unknown default code
+    //%TODO Check with Michele whether there is a better way
+    for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+      instr_pipe_reg[0].except_code[i]   = E_UNKNOWN;
+    end
     if (instr_valid_i) begin  // Memory always ready to answer (instr_ready_o = 1)
-      i_ret                  = mem.ReadM(instr_addr_i);
-      instr_pipe_reg[0].read = mem.read_multiple;
+    //read multiple instructions at a time
+      for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+        i_ret                  = mem.ReadW(instr_addr_i);
+        instr_pipe_reg[0].read[i] = mem.read_word;
 
-      // Exception handling
-      case (i_ret)
-        0: instr_pipe_reg[0].except_raised = 1'b0;
-        1: begin  // address_misaligned
-          if (instr_addr_i != instr_addr_q)
-            $display(
-                "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h", $time, instr_addr_i
-            );
-          instr_pipe_reg[0].except_raised = 1'b1;
-          instr_pipe_reg[0].except_code   = E_I_ADDR_MISALIGNED;
-        end
-        2: begin  // access_fault
-          if (instr_addr_i != instr_addr_q)
-            $display(
-                "[%8t] MEM EMU > WARNING: reading uninitialized INSTRUCTION at %h",
-                $time,
-                instr_addr_i
-            );
-          instr_pipe_reg[0].except_raised = 1'b1;
-          instr_pipe_reg[0].except_code   = E_I_ACCESS_FAULT;
-        end
-        default: begin
-          if (instr_addr_i != instr_addr_q)
-            $display(
-                "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h", $time, instr_addr_i
-            );
-          instr_pipe_reg[0].except_raised = 1'b1;
-          instr_pipe_reg[0].except_code   = E_UNKNOWN;
-        end
-      endcase
+        // Exception handling
+        case (i_ret)
+          0: instr_pipe_reg[0].except_raised[i] = 1'b0;
+          1: begin  // address_misaligned
+            if (instr_addr_i != instr_addr_q)
+              $display(
+                  "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h", $time, instr_addr_i
+              );
+            instr_pipe_reg[0].except_raised[i] = 1'b1;
+            instr_pipe_reg[0].except_code[i]   = E_I_ADDR_MISALIGNED;
+          end
+          2: begin  // access_fault
+            if (instr_addr_i != instr_addr_q)
+              $display(
+                  "[%8t] MEM EMU > WARNING: reading uninitialized INSTRUCTION at %h",
+                  $time,
+                  instr_addr_i
+              );
+            instr_pipe_reg[0].except_raised[i] = 1'b1;
+            instr_pipe_reg[0].except_code[i]   = E_I_ACCESS_FAULT;
+          end
+          default: begin
+            if (instr_addr_i != instr_addr_q)
+              $display(
+                  "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h", $time, instr_addr_i
+              );
+            instr_pipe_reg[0].except_raised[i] = 1'b1;
+            instr_pipe_reg[0].except_code[i]   = E_UNKNOWN;
+          end
+        endcase
+      end
     end
   end
 
