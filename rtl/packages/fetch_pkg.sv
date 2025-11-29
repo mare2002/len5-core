@@ -61,13 +61,14 @@ package fetch_pkg;
     logic            taken;
     logic [XLEN-1:0] target;
   } resolution_t;
-
+  //TODO Check with Michele whether we change the structure to accomodate more instr
+  //or we keep the structures the same and just use them more([3:0])
   // Memory interface answer spill cell data type
   typedef struct packed {
     logic [LEN5_MULTIPLE_ISSUES-1:0][ILEN-1:0] instr;
-    prediction_t     pred_data;
-    logic            except_raised;
-    except_code_t    except_code;
+    prediction_t [LEN5_MULTIPLE_ISSUES-1:0] pred_data;
+    logic [LEN5_MULTIPLE_ISSUES-1:0] except_raised;
+    except_code_t [LEN5_MULTIPLE_ISSUES-1:0] except_code;
   } mem_if_ans_reg_t;
 
   // ----------

@@ -20,15 +20,15 @@ module fetch_mem_if #(
   // Fetch unit (BPU and PC generator)
   input  logic                   fetch_valid_i,
   output logic                   fetch_ready_o,
-  input  fetch_pkg::prediction_t fetch_pred_i,   // contains the current PC
+  input  fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_pred_i,   // contains the current PC
 
   // Issue stage
   output logic                   issue_valid_o,
   input  logic                   issue_ready_i,
-  output len5_pkg::instr_t       issue_instr_o,
-  output fetch_pkg::prediction_t issue_pred_o,           // contains the served PC
-  output logic                   issue_except_raised_o,
-  output len5_pkg::except_code_t issue_except_code_o,
+  output len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_instr_o,
+  output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,           // contains the served PC
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_except_raised_o,
+  output len5_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_except_code_o,
 
   // Memory
   input  logic                                        instr_valid_i,
@@ -36,10 +36,10 @@ module fetch_mem_if #(
   output logic                                        instr_ready_o,
   output logic                                        instr_valid_o,
   output logic                                        instr_we_o,
-  input  logic [len5_pkg::ILEN-1:0] instr_rdata_i,
-  output logic                   [len5_pkg::XLEN-1:0] instr_addr_o,
-  input  logic                                        instr_except_raised_i,
-  input  len5_pkg::except_code_t                      instr_except_code_i
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instr_rdata_i,
+  output logic [len5_pkg::XLEN-1:0] instr_addr_o,
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_i,
+  input  len5_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_i
 );
 
   import fetch_pkg::mem_if_ans_reg_t;
@@ -73,7 +73,7 @@ module fetch_mem_if #(
   // REQUEST REGISTER
   // ----------------
     spill_cell_flush #(
-    .DATA_T(prediction_t),
+    .DATA_T(prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0]),
     .SKIP  (FETCH_REQ_SPILL_SKIP)
   ) u_req_reg (
     .clk_i  (clk_i),
@@ -94,7 +94,7 @@ module fetch_mem_if #(
   assign pred_fifo_push = instr_valid_o & instr_ready_i;
   assign pred_fifo_pop  = instr_valid_i & instr_ready_o;
   fifo_nohs #(
-    .DATA_T(prediction_t),
+    .DATA_T(prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0]),
     .DEPTH (MAX_MEM_OUTSTANDING_REQUESTS)
   ) u_pred_fifo (
     .clk_i  (clk_i),
