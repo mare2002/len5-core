@@ -305,22 +305,34 @@ if __name__ == "__main__":
     #get path of the run dir
     cwd = os.getcwd()
     benchmarks_dir = os.path.join(cwd, PATH, 'logs/sim')
-
+    BENCH_WHITE_LISTE = ['cubic', 'nbody', 'nettle-sha256', 'st', 'ud']
     print("Benchmark summary:")
     #get benchmarks
     benchmarks = get_benchmarks(benchmarks_dir)
     correctly_ex = 0
-    for i in benchmarks:
-        with open(os.path.join(benchmarks_dir, i)) as f:
+    for i, b in enumerate(benchmarks):
+        with open(os.path.join(benchmarks_dir, b)) as f:
             output_log = f.read()
             start_report = get_report_start(output_log)
             output_log = output_log[start_report:]
-            stats = update_table(stats, i, output_log)
-        print(f"{i[:-4]}: {stats[i]['status']} (IPC={stats[i]['ipc'] : 2f})")
-        if stats[i]["status"]:
+            stats = update_table(stats, b, output_log)
+        if stats[b]["status"]:
+            print(f"{i+1:4d}) {b[:-4]:15}: \033[92mSUCCESS\033[00m (IPC={stats[b]['ipc'] : .2f})")
             correctly_ex += 1
-    
-    print(f"Correctly executed testbenches {correctly_ex} out of {len(stats)}.")
+        else:
+            print(f"{i:4d}) {b[:-4]:15}: \033[91mFAILURE\033[00m (IPC={stats[b]['ipc'] : .2f})")
 
-    print(f"Saving the csv report to {PATH}/output")
+    print(f"Correctly executed testbenches {correctly_ex} out of {len(stats)}.")
+    
+    if not all([s["status"] for b, s in stats.items() if b[:-4] not in BENCH_WHITE_LISTE]):
+        print("\033[91mFailed tests: ",end='')
+        benchmarks_fail = ""
+        for b, s in stats.items():
+            if b[:-4] not in BENCH_WHITE_LISTE and not s["status"]:
+                benchmarks_fail = benchmarks_fail+', '+b[:-4]
+        benchmarks_fail = benchmarks_fail[2:] + ".\033[00m"
+        print(benchmarks_fail)
+        sys.exit(1)
+
+    print(f"Saving the csv report to {PATH}/output.")
     print_table_to_file_csv(stats, PATH)
