@@ -143,11 +143,14 @@ module fetch_mem_if #(
 
   // Fetched instruction
   //connect each of the output instructions to the answer instructions
-  for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin : gen_out
-      issue_instr_o[i].raw     = ans_reg_out.instr[i];
-      issue_pred_o[i]          = ans_reg_out.pred_data[i];
-      issue_except_raised_o[i] = ans_reg_out.except_raised[i];
-      issue_except_code_o[i]   = ans_reg_out.except_code[i];
+  always_comb begin : comb_out
+    for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin : gen_out
+        issue_instr_o[i].raw     = ans_reg_out.instr[i];
+        issue_pred_o[i]          = ans_reg_out.pred_data[i];
+        issue_except_raised_o[i] = ans_reg_out.except_raised[i];
+        issue_except_code_o[i]   = ans_reg_out.except_code[i];
+    end   
   end
+
 
 endmodule
