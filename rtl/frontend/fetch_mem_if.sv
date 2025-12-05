@@ -53,6 +53,7 @@ module fetch_mem_if #(
   prediction_t req_reg_out;
   logic pred_fifo_push, pred_fifo_pop;
   prediction_t pred_fifo_out;
+  //updated the mem_if_ans_reg_t to keep bundles inside
   mem_if_ans_reg_t ans_reg_in, ans_reg_out;
 
   // -------
@@ -110,7 +111,7 @@ module fetch_mem_if #(
   // ---------------
 
   // Answer register data
-  assign ans_reg_in.instr         = instr_rdata_i[ILEN-1:0];
+  assign ans_reg_in.instr         = instr_rdata_i;
   assign ans_reg_in.pred_data     = pred_fifo_out;
   assign ans_reg_in.except_raised = instr_except_raised_i;
   assign ans_reg_in.except_code   = instr_except_code_i;
@@ -141,9 +142,12 @@ module fetch_mem_if #(
   assign instr_addr_o          = req_reg_out.pc;
 
   // Fetched instruction
-  assign issue_instr_o.raw     = ans_reg_out.instr;
-  assign issue_pred_o          = ans_reg_out.pred_data;
-  assign issue_except_raised_o = ans_reg_out.except_raised;
-  assign issue_except_code_o   = ans_reg_out.except_code;
+  //connect each of the output instructions to the answer instructions
+  for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin : gen_out
+      issue_instr_o[i].raw     = ans_reg_out.instr[i];
+      issue_pred_o[i]          = ans_reg_out.pred_data[i];
+      issue_except_raised_o[i] = ans_reg_out.except_raised[i];
+      issue_except_code_o[i]   = ans_reg_out.except_code[i];
+  end
 
 endmodule
