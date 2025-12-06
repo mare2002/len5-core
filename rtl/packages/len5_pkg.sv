@@ -24,7 +24,7 @@ package len5_pkg;
   localparam int unsigned BWIDTH = 32'd8;
   localparam int unsigned HWWIDTH = WWIDTH >> 1;
   localparam int unsigned DWWIDTH = WWIDTH << 1;
-  localparam int unsigned LWIDTH = WWIDTH << 4;
+  localparam int unsigned LWIDTH = WWIDTH << LEN5_MULTIPLE_ISSUES_BITS;
 
   // Global constants
   localparam int unsigned ILEN = 32'd32;  // instruction width

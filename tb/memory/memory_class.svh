@@ -21,6 +21,7 @@ import len5_pkg::BWIDTH;
 import len5_pkg::HWWIDTH;
 import len5_pkg::DWWIDTH;
 import len5_pkg::LWIDTH;
+import len5_config_pkg::LEN5_MULTIPLE_ISSUES_BITS;
 
 typedef enum int unsigned {
   FILE_MODE_READ,
@@ -281,7 +282,7 @@ class memory_class;
     int                ret;
 
     // Check address alignment
-    if (addr[5:0] != 6'b000000) begin
+    if (addr[LEN5_MULTIPLE_ISSUES_BITS+1:0] != {(LEN5_MULTIPLE_ISSUES_BITS+2){1'b0}}) begin
       $display("ERROR: Line address 0x%h is NOT aligned on 512 bits", addr);
       return 1;  // exit
     end

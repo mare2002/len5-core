@@ -150,48 +150,43 @@ module memory_bare_emu #(
   always_comb begin : p_ins_mem_req
     instr_pipe_reg[0].read          = 'h0;
     instr_pipe_reg[0].except_raised = 'b0;
-    //Set the unknown default code
-    //%TODO Check with Michele whether there is a better way
-    for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
-      instr_pipe_reg[0].except_code[i]   = E_UNKNOWN;
-    end
+    instr_pipe_reg[0].except_code = {LEN5_MULTIPLE_ISSUES{E_UNKNOWN}};
+    
     if (instr_valid_i) begin  // Memory always ready to answer (instr_ready_o = 1)
     //read multiple instructions at a time
-      for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
-        i_ret                  = mem.ReadW(instr_addr_i);
-        instr_pipe_reg[0].read[i] = mem.read_word;
+      i_ret                  = mem.ReadLine(instr_addr_i);
+      instr_pipe_reg[0].read = mem.read_line;
 
-        // Exception handling
-        case (i_ret)
-          0: instr_pipe_reg[0].except_raised[i] = 1'b0;
-          1: begin  // address_misaligned
-            if (instr_addr_i != instr_addr_q)
-              $display(
-                  "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h", $time, instr_addr_i
-              );
-            instr_pipe_reg[0].except_raised[i] = 1'b1;
-            instr_pipe_reg[0].except_code[i]   = E_I_ADDR_MISALIGNED;
-          end
-          2: begin  // access_fault
-            if (instr_addr_i != instr_addr_q)
-              $display(
-                  "[%8t] MEM EMU > WARNING: reading uninitialized INSTRUCTION at %h",
-                  $time,
-                  instr_addr_i
-              );
-            instr_pipe_reg[0].except_raised[i] = 1'b1;
-            instr_pipe_reg[0].except_code[i]   = E_I_ACCESS_FAULT;
-          end
-          default: begin
-            if (instr_addr_i != instr_addr_q)
-              $display(
-                  "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h", $time, instr_addr_i
-              );
-            instr_pipe_reg[0].except_raised[i] = 1'b1;
-            instr_pipe_reg[0].except_code[i]   = E_UNKNOWN;
-          end
-        endcase
-      end
+      // Exception handling
+      case (i_ret)
+        0: instr_pipe_reg[0].except_raised = 1'b0;
+        1: begin  // address_misaligned
+          if (instr_addr_i != instr_addr_q)
+            $display(
+                "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h", $time, instr_addr_i
+            );
+          instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b1}};
+          instr_pipe_reg[0].except_code   = {LEN5_MULTIPLE_ISSUES{E_I_ADDR_MISALIGNED}};
+        end
+        2: begin  // access_fault
+          if (instr_addr_i != instr_addr_q)
+            $display(
+                "[%8t] MEM EMU > WARNING: reading uninitialized INSTRUCTION at %h",
+                $time,
+                instr_addr_i
+            );
+          instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b1}};
+          instr_pipe_reg[0].except_code   = {LEN5_MULTIPLE_ISSUES{E_I_ACCESS_FAULT}};
+        end
+        default: begin
+          if (instr_addr_i != instr_addr_q)
+            $display(
+                "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h", $time, instr_addr_i
+            );
+          instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b1}};
+          instr_pipe_reg[0].except_code   = {LEN5_MULTIPLE_ISSUES{E_UNKNOWN}};
+        end
+      endcase
     end
   end
 
