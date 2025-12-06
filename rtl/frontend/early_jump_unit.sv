@@ -18,10 +18,10 @@ module early_jump_unit (
   input logic rst_ni,
   input logic flush_i,
 
-  input  len5_pkg::instr_t                            instr_i,
+  input  len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_i,
   input  logic                                        instr_valid_i,
   input  logic                                        issue_ready_i,
-  input  fetch_pkg::prediction_t                      mem_if_pred_i,
+  input  fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred_i,
   input  logic                   [len5_pkg::XLEN-1:0] early_jump_target_i,
   input  logic                                        call_confirm_i,
   input  logic                                        ret_confirm_i,
@@ -36,6 +36,10 @@ module early_jump_unit (
   import len5_config_pkg::RAS_DEPTH;
   import instr_pkg::JAL;
   import instr_pkg::JALR;
+
+  //TODO Check with Michele, here we need to check every instruction and it's prediction
+  //One question is we don't need to propagate the all of the predictions in the memory fetch unit, because only one can happen in one isntruction bundle
+  //this might lower the number of bits that we are transfering  
 
   // PARAMETERS
   localparam logic [ILEN-1:0] RET = {12'b0, 5'b00001, 3'b000, 5'b00000, JALR[OPCODE_LEN-1:0]};
