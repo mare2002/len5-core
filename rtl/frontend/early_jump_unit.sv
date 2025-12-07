@@ -22,6 +22,8 @@ module early_jump_unit (
   input  logic                                        instr_valid_i,
   input  logic                                        issue_ready_i,
   input  fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred_i,
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr_i,
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr_o,
   input  logic                   [len5_pkg::XLEN-1:0] early_jump_target_i,
   input  logic                                        call_confirm_i,
   input  logic                                        ret_confirm_i,
@@ -79,11 +81,15 @@ module early_jump_unit (
   // --------------------
   // Jump instruction decoder
   always_comb begin : jump_dec
-    if (instr_i.raw == RET) jump_type = JUMP_TYPE_RET;
-    else if (instr_i.j.opcode == JAL[OPCODE_LEN-1:0] && instr_i.j.rd == 5'b00001)
-      jump_type = JUMP_TYPE_CALL;
-    else if (instr_i.j.opcode == JAL[OPCODE_LEN-1:0]) jump_type = JUMP_TYPE_JAL;
-    else jump_type = JUMP_TYPE_NONE;
+    jump_type = JUMP_TYPE_NONE;
+    for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i++) begin : jump_type_of_oldest_instr
+      if (valid_instr_i[i]) begin
+        if (instr_i[i].raw == RET) jump_type = JUMP_TYPE_RET;
+        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[i].j.rd == 5'b00001)
+          jump_type = JUMP_TYPE_CALL;
+        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) jump_type = JUMP_TYPE_JAL;
+      end
+    end
   end
 
   // jal instruction decoder
