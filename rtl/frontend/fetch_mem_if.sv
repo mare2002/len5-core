@@ -21,6 +21,8 @@ module fetch_mem_if #(
   input  logic                   fetch_valid_i,
   output logic                   fetch_ready_o,
   input  fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_pred_i,   // contains the current PC
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr_i,
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr_o, 
 
   // Issue stage
   output logic                   issue_valid_o,
@@ -50,12 +52,22 @@ module fetch_mem_if #(
   import expipe_pkg::*;
   // INTERNAL SIGNALS
   // ----------------
-  prediction_t req_reg_out;
   logic pred_fifo_push, pred_fifo_pop;
-  prediction_t pred_fifo_out;
   //updated the mem_if_ans_reg_t to keep bundles inside
   mem_if_ans_reg_t ans_reg_in, ans_reg_out;
 
+  //internal type
+  typedef struct packed {
+    prediction_t [LEN5_MULTIPLE_ISSUES-1:0] pred_data;
+    logic [LEN5_MULTIPLE_ISSUES-1:0] valid_instr;
+  } pred_valid_t;
+
+  pred_valid_t fetch_pred_valid;
+  pred_valid_t req_reg_out;
+  pred_valid_t pred_fifo_out;
+
+  assign fetch_pred_valid.pred_data = fetch_pred_i;
+  assign fetch_pred_valid.valid_instr = valid_instr_i;
   // -------
   // MODULES
   // -------
@@ -74,7 +86,7 @@ module fetch_mem_if #(
   // REQUEST REGISTER
   // ----------------
     spill_cell_flush #(
-    .DATA_T(prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0]),
+    .DATA_T(pred_valid_t),
     .SKIP  (FETCH_REQ_SPILL_SKIP)
   ) u_req_reg (
     .clk_i  (clk_i),
@@ -95,7 +107,7 @@ module fetch_mem_if #(
   assign pred_fifo_push = instr_valid_o & instr_ready_i;
   assign pred_fifo_pop  = instr_valid_i & instr_ready_o;
   fifo_nohs #(
-    .DATA_T(prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0]),
+    .DATA_T(pred_valid_t),
     .DEPTH (MAX_MEM_OUTSTANDING_REQUESTS)
   ) u_pred_fifo (
     .clk_i  (clk_i),
@@ -112,9 +124,10 @@ module fetch_mem_if #(
 
   // Answer register data
   assign ans_reg_in.instr         = instr_rdata_i;
-  assign ans_reg_in.pred_data     = pred_fifo_out;
+  assign ans_reg_in.pred_data     = pred_fifo_out.pred_data;
   assign ans_reg_in.except_raised = instr_except_raised_i;
   assign ans_reg_in.except_code   = instr_except_code_i;
+  assign ans_reg_in.valid_instr   = pred_fifo_out.valid_instr;
 
   spill_cell_flush #(
     .DATA_T(mem_if_ans_reg_t),
@@ -149,6 +162,7 @@ module fetch_mem_if #(
         issue_pred_o[i]          = ans_reg_out.pred_data[i];
         issue_except_raised_o[i] = ans_reg_out.except_raised[i];
         issue_except_code_o[i]   = ans_reg_out.except_code[i];
+        valid_instr_o[i]         = ans_reg_out.valid_instr[i];
     end   
   end
 

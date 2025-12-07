@@ -69,6 +69,7 @@ package fetch_pkg;
     prediction_t [LEN5_MULTIPLE_ISSUES-1:0] pred_data;
     logic [LEN5_MULTIPLE_ISSUES-1:0] except_raised;
     except_code_t [LEN5_MULTIPLE_ISSUES-1:0] except_code;
+    logic [LEN5_MULTIPLE_ISSUES-1:0] valid_instr;
   } mem_if_ans_reg_t;
 
   // ----------

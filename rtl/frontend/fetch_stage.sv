@@ -83,6 +83,12 @@ module fetch_stage #(
   logic        [ALEN-1:0] early_jump_base;
   prediction_t            mem_if_pred;
 
+  //gen valid instr <--> Memory Interface
+  logic [LEN5_MULTIPLE_ISSUES-1:0] gen_valid_mem_o;
+
+  //gen valid instr <--> PC generator
+  prediction_t taken_pred;
+
 
   // -------
   // MODULES
@@ -124,8 +130,8 @@ module fetch_stage #(
     .comm_except_pc_i    (comm_except_pc_i),
     .bu_res_valid_i      (bu_pcgen_valid_i),
     .bu_res_i            (bu_res_i),
-    .pred_target_i       (curr_pred.target),
-    .pred_taken_i        (curr_pred.hit & curr_pred.taken),
+    .pred_target_i       (taken_pred.target),
+    .pred_taken_i        (taken_pred.hit & taken_pred.taken),
     .mem_ready_i         (memif_pcgen_ready),
     .valid_o             (pcgen_memif_valid),
     .bu_ready_o          (bu_pcgen_ready_o),
@@ -181,6 +187,14 @@ module fetch_stage #(
     .mem_flush_o        (early_jump_mem_flush_o),
     .early_jump_offs_o  (early_jump_offs),
     .early_jump_base_o  (early_jump_base)
+  );
+
+  //generate valid instruction that should be executed
+  gen_valid_instr u_gen_valid_instr(
+    .pc_i(curr_pc),
+    .pred_i(curr_pred),
+    .valid_o(gen_valid_mem_o),
+    .pred_o(taken_pred)
   );
 
   // Output signals
