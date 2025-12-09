@@ -60,6 +60,7 @@ module fetch_stage #(
   import len5_pkg::instr_t;
   import fetch_pkg::prediction_t;
   import fetch_pkg::INIT_C2B;
+  import len5_config_pkg::*;
 
   // INTERNAL SIGNALS
   // ----------------
@@ -84,11 +85,16 @@ module fetch_stage #(
   prediction_t            mem_if_pred;
 
   //gen valid instr <--> Memory Interface
-  logic [LEN5_MULTIPLE_ISSUES-1:0] gen_valid_mem_o;
+  logic [LEN5_MULTIPLE_ISSUES-1:0] gen_valid_mem;
 
   //gen valid instr <--> PC generator
   prediction_t taken_pred;
 
+  // Memory Interface <--> early jump unit
+  logic [LEN5_MULTIPLE_ISSUES-1:0] mem_valid_early;
+
+  //Early jump unit <--> issue stage
+  logic [LEN5_MULTIPLE_ISSUES-1:0] early_valid_mixer;
 
   // -------
   // MODULES
@@ -152,6 +158,8 @@ module fetch_stage #(
     .flush_i              (flush_i | early_jump_mem_flush_o),
     .fetch_valid_i        (pcgen_memif_valid),
     .fetch_ready_o        (memif_pcgen_ready),
+    .valid_instr_i        (gen_valid_mem),
+    .valid_instr_o        (mem_valid_early),
     .fetch_pred_i         (curr_pred),
     .issue_valid_o        (issue_valid),
     .issue_ready_i        (issue_ready_i),
@@ -178,6 +186,8 @@ module fetch_stage #(
     .instr_valid_i      (issue_valid),
     .instr_i            (fetched_instr),
     .issue_ready_i      (issue_ready_i),
+    .valid_instr_i      (mem_valid_early),
+    .valid_instr_o      (early_valid_mixer),
     .early_jump_target_i(early_jump_target),
     .call_confirm_i     (bu_call_confirm_i),
     .ret_confirm_i      (bu_ret_confirm_i),
@@ -193,7 +203,7 @@ module fetch_stage #(
   gen_valid_instr u_gen_valid_instr(
     .pc_i(curr_pc),
     .pred_i(curr_pred),
-    .valid_o(gen_valid_mem_o),
+    .valid_o(gen_valid_mem),
     .pred_o(taken_pred)
   );
 

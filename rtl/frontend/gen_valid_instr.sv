@@ -14,7 +14,7 @@ module gen_valid_instr (
         logic [LEN5_MULTIPLE_ISSUES-1:0] predicted_taken, selected_taken, n_skipped;
         
         //check whether the instruction has been preditced to be taken and it has its pc in btb
-        for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+        for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin : gen_predicted_taken
             assign predicted_taken[i] = pred_i[i].hit & pred_i[i].taken;
         end
 
@@ -22,7 +22,7 @@ module gen_valid_instr (
         // it's either this way, or nested loop
         always_comb begin : gen_selected_taken
             logic selected = 1'b1;
-            for(int i = 1; i < LEN5_MULTIPLE_ISSUES; i++) begin
+            for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
                 selected_taken[i] = selected;
                 if (predicted_taken[i]) begin
                     selected = 1'b0;
@@ -33,7 +33,7 @@ module gen_valid_instr (
         // detect which instructions are skipped because pc counter didn't land on 00 address
         always_comb begin : gen_skipped
             logic n_skipped_var = 1'b0;
-            for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+            for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
                 if(pc_i[LEN5_MULTIPLE_ISSUES_BITS-1:0] == i[LEN5_MULTIPLE_ISSUES_BITS-1:0]) begin
                     n_skipped_var = 1'b1;
                 end
@@ -42,11 +42,11 @@ module gen_valid_instr (
         end
 
         // generate valid_o
-        assign valid_o = skipped & selected_taken;
+        assign valid_o = n_skipped & selected_taken;
 
         //generate selected prediction
         always_comb begin : gen_sel_pred
-            for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i++) begin
+            for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin
                 if (predicted_taken[i]) begin
                     pred_o = pred_i[i];
                 end

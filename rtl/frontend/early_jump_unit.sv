@@ -35,7 +35,7 @@ module early_jump_unit (
 );
 
   import len5_pkg::*;
-  import len5_config_pkg::RAS_DEPTH;
+  import len5_config_pkg::*;
   import instr_pkg::JAL;
   import instr_pkg::JALR;
 
@@ -76,18 +76,43 @@ module early_jump_unit (
   logic ras_push, ras_pop;
   logic ras_addr_valid;
 
+  // jump location if found
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] jump_valid;
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES_BITS:0] jump_location;
+
   // --------------------
   // FINITE STATE MACHINE
   // --------------------
-  // Jump instruction decoder
+  // Jump instruction decoder and locator of jump instruction
   always_comb begin : jump_dec
     jump_type = JUMP_TYPE_NONE;
-    for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i++) begin : jump_type_of_oldest_instr
+    jump_location = {LEN5_MULTIPLE_ISSUES_BITS+1{1'b1}};
+
+    for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin : jump_type_of_oldest_instr
       if (valid_instr_i[i]) begin
-        if (instr_i[i].raw == RET) jump_type = JUMP_TYPE_RET;
-        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[i].j.rd == 5'b00001)
+        if (instr_i[i].raw == RET) begin
+          jump_type = JUMP_TYPE_RET;
+          jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
+        end
+        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN:0] && instr_i[i].j.rd == 5'b00001) begin
           jump_type = JUMP_TYPE_CALL;
-        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) jump_type = JUMP_TYPE_JAL;
+          jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
+        end
+        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) begin
+          jump_type = JUMP_TYPE_JAL;
+          jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
+        end
+      end
+    end
+  end
+
+  always_comb begin : gen_jump_valid
+    logic n_jump_found = 1'b1;
+    jump_valid = '0;
+    for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+      jump_valid[i] = n_jump_found;
+      if (jump_location == i[LEN5_MULTIPLE_ISSUES_BITS:0]) begin
+        n_jump_found = 1'b0;
       end
     end
   end
@@ -97,7 +122,7 @@ module early_jump_unit (
     unique case (jump_type)
       JUMP_TYPE_RET:  target_valid = ras_addr_valid;
       JUMP_TYPE_NONE: target_valid = 1'b0;
-      default:        target_valid = ~mem_if_pred_i.hit;  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
+      default:        target_valid = ~mem_if_pred_i[jump_location].hit;  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
     endcase
   end
 
@@ -168,7 +193,7 @@ module early_jump_unit (
 
   // Link address adder
   // TODO: can we share another adder, like the one in the branch unit?
-  assign link_addr = mem_if_pred_i.pc + {32'b0, (ILEN >> 3)};
+  assign link_addr = mem_if_pred_i[jump_location].pc + {32'b0, (ILEN >> 3)};
 
   // RAS LIFO buffer
   ras #(
@@ -196,9 +221,9 @@ module early_jump_unit (
         early_jump_offs = ras_addr;
       end
       default: begin
-        early_jump_base = mem_if_pred_i.pc;
+        early_jump_base = mem_if_pred_i[jump_location].pc;
         early_jump_offs = XLEN'(signed'({
-          instr_i.j.imm20, instr_i.j.imm19, instr_i.j.imm11, instr_i.j.imm10, 1'b0
+          instr_i[jump_location].j.imm20, instr_i[jump_location].j.imm19, instr_i[jump_location].j.imm11, instr_i[jump_location].j.imm10, 1'b0
         }));
       end
     endcase
@@ -209,8 +234,9 @@ module early_jump_unit (
   assign early_jump_offs_o   = early_jump_offs;
 
   // Prediction for the execution stage
-  assign issue_pred_o.pc     = mem_if_pred_i.pc;
-  assign issue_pred_o.hit    = target_valid | mem_if_pred_i.hit;
-  assign issue_pred_o.target = (target_valid) ? early_jump_target_i : mem_if_pred_i.target;
-  assign issue_pred_o.taken  = target_valid | mem_if_pred_i.taken;
+  assign issue_pred_o.pc     = mem_if_pred_i[jump_location].pc;
+  assign issue_pred_o.hit    = target_valid | mem_if_pred_i[jump_location].hit;
+  assign issue_pred_o.target = (target_valid) ? early_jump_target_i : mem_if_pred_i[jump_location].target;
+  assign issue_pred_o.taken  = target_valid | mem_if_pred_i[jump_location].taken;
+  assign valid_instr_o = valid_instr_i & jump_valid;
 endmodule

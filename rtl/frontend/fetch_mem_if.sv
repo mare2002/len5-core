@@ -152,7 +152,7 @@ module fetch_mem_if #(
   assign instr_we_o            = 1'b0;
 
   // Memory request
-  assign instr_addr_o          = req_reg_out.pc;
+  assign instr_addr_o          = req_reg_out.pred_data[0].pc;
 
   // Fetched instruction
   //connect each of the output instructions to the answer instructions
