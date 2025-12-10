@@ -96,7 +96,7 @@ module fetch_mem_if #(
     .ready_i(instr_ready_i),
     .valid_o(instr_valid_o),
     .ready_o(fetch_ready_o),
-    .data_i (fetch_pred_i),
+    .data_i (fetch_pred_valid),
     .data_o (req_reg_out)
   );
 

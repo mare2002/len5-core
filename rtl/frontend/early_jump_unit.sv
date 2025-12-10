@@ -94,7 +94,7 @@ module early_jump_unit (
           jump_type = JUMP_TYPE_RET;
           jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
         end
-        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN:0] && instr_i[i].j.rd == 5'b00001) begin
+        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[i].j.rd == 5'b00001) begin
           jump_type = JUMP_TYPE_CALL;
           jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
         end
