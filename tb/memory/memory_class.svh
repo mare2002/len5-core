@@ -21,7 +21,7 @@ import len5_pkg::BWIDTH;
 import len5_pkg::HWWIDTH;
 import len5_pkg::DWWIDTH;
 import len5_pkg::LWIDTH;
-import len5_config_pkg::LEN5_MULTIPLE_ISSUES_BITS;
+import len5_pkg::LEN5_MULTIPLE_ISSUES_BITS;
 
 typedef enum int unsigned {
   FILE_MODE_READ,

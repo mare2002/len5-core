@@ -18,6 +18,8 @@ package len5_pkg;
   // LEN5 configuration
   import len5_config_pkg::*;
 
+  localparam int unsigned LEN5_MULTIPLE_ISSUES_BITS = $clog2(LEN5_MULTIPLE_ISSUES);//number of bits that are used to show that
+
   // Parameters
   localparam int unsigned WWIDTH = 32'd32;
   localparam int unsigned AWIDTH = 32'd64;
