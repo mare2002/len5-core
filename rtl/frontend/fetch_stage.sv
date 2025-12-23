@@ -78,7 +78,7 @@ module fetch_stage #(
   logic                   issue_valid;
 
   // Jump early decoder
-  instr_t                 fetched_instr;
+  instr_t [LEN5_MULTIPLE_ISSUES-1:0] fetched_instr;
   logic                   early_jump_valid;
   logic        [ALEN-1:0] early_jump_offs;
   logic        [ALEN-1:0] early_jump_target;
@@ -209,6 +209,13 @@ module fetch_stage #(
     .pred_o(taken_pred)
   );
 
+  //instruction mixer 
+  instr_mixer u_instr_mixer(
+    .valid_i(),
+    .instructions_i(),
+    .valid_o(),
+    .instructions_o()
+  );
   // Output signals
   // --------------
   assign issue_valid_o = issue_valid;
