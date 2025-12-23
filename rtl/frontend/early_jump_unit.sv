@@ -77,47 +77,66 @@ module early_jump_unit (
   logic ras_push, ras_pop;
   logic ras_addr_valid;
 
-  // jump location if found
-  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] jump_valid;
-  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES_BITS:0] jump_location;
-
   // --------------------
   // FINITE STATE MACHINE
   // --------------------
+  
   // Jump instruction decoder and locator of jump instruction
-  always_comb begin : jump_dec
-    jump_type = JUMP_TYPE_NONE;
-    jump_location = {LEN5_MULTIPLE_ISSUES_BITS+1{1'b1}};
+  // Separated in two parts, one when the issue is 1 and the other where it's for more than one issue
+  
+  
+  logic [LEN5_MULTIPLE_ISSUES-1:0] jump_valid;
+  logic jump_location;
 
-    for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin : jump_type_of_oldest_instr
-      if (valid_instr_i[i]) begin
-        if (instr_i[i].raw == RET) begin
-          jump_type = JUMP_TYPE_RET;
-          jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
+  if (LEN5_MULTIPLE_ISSUES == 32'd1) begin : gen_single_issue
+    
+    assign jump_location = '0;
+    assign jump_valid = 1'b1;
+
+    always_comb begin : jump_dec
+      jump_type = JUMP_TYPE_NONE;
+
+      if (valid_instr_i[0]) begin
+        if (instr_i[0].raw == RET) jump_type = JUMP_TYPE_RET;
+        else if (instr_i[0].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[0].j.rd == 5'b00001) jump_type = JUMP_TYPE_CALL;
+        else if (instr_i[0].j.opcode == JAL[OPCODE_LEN-1:0]) jump_type = JUMP_TYPE_JAL;
+      end
+    end
+  end else begin : gen_multiple_issues
+
+    always_comb begin : jump_dec
+      jump_type = JUMP_TYPE_NONE;
+      jump_location = {LEN5_MULTIPLE_ISSUES_BITS{1'b1}};
+
+      for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin : jump_type_of_oldest_instr
+        if (valid_instr_i[i]) begin
+          if (instr_i[i].raw == RET) begin
+            jump_type = JUMP_TYPE_RET;
+            jump_location = i[LEN5_MULTIPLE_ISSUES_BITS-1:0];
+          end
+          else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[i].j.rd == 5'b00001) begin
+            jump_type = JUMP_TYPE_CALL;
+            jump_location = i[LEN5_MULTIPLE_ISSUES_BITS-1:0];
+          end
+          else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) begin
+            jump_type = JUMP_TYPE_JAL;
+            jump_location = i[LEN5_MULTIPLE_ISSUES_BITS-1:0];
+          end
         end
-        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[i].j.rd == 5'b00001) begin
-          jump_type = JUMP_TYPE_CALL;
-          jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
-        end
-        else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) begin
-          jump_type = JUMP_TYPE_JAL;
-          jump_location = i[LEN5_MULTIPLE_ISSUES_BITS:0];
+      end
+    end
+
+    always_comb begin : gen_jump_valid
+      logic n_jump_found = 1'b1;
+      jump_valid = '0;
+      for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+        jump_valid[i] = n_jump_found;
+        if (jump_location == i[LEN5_MULTIPLE_ISSUES_BITS-1:0]) begin
+          n_jump_found = 1'b0;
         end
       end
     end
   end
-
-  always_comb begin : gen_jump_valid
-    logic n_jump_found = 1'b1;
-    jump_valid = '0;
-    for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
-      jump_valid[i] = n_jump_found;
-      if (jump_location == i[LEN5_MULTIPLE_ISSUES_BITS:0]) begin
-        n_jump_found = 1'b0;
-      end
-    end
-  end
-
   // jal instruction decoder
   always_comb begin : is_jump_dec
     unique case (jump_type)
