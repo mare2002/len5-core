@@ -38,10 +38,10 @@ module fetch_stage #(
   // From/to instruction decode
   input  logic                    issue_ready_i,
   output logic                    issue_valid_o,
-  output len5_pkg::instr_t        issue_instr_o,
-  output fetch_pkg::prediction_t  issue_pred_o,
-  output logic                    issue_except_raised_o,
-  output fetch_pkg::except_code_t issue_except_code_o,
+  output len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_instr_o,
+  output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_except_raised_o,
+  output fetch_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_except_code_o,
 
   // From branch unit
   output logic                      bu_pcgen_ready_o,
@@ -94,8 +94,12 @@ module fetch_stage #(
   // Memory Interface <--> early jump unit
   logic [LEN5_MULTIPLE_ISSUES-1:0] mem_valid_early;
 
-  //Early jump unit <--> issue stage
+  //Early jump unit <--> mixer stage
   logic [LEN5_MULTIPLE_ISSUES-1:0] early_valid_mixer;
+
+  //Instr mixer <--> issue stage
+  logic [LEN5_MULTIPLE_ISSUES-1:0] mixer_valid_issue;
+  instr_t [LEN5_MULTIPLE_ISSUES-1:0] mixed_instr;
 
   // -------
   // MODULES
@@ -211,13 +215,13 @@ module fetch_stage #(
 
   //instruction mixer 
   instr_mixer u_instr_mixer(
-    .valid_i(),
-    .instructions_i(),
-    .valid_o(),
-    .instructions_o()
+    .valid_i(early_valid_mixer),
+    .instructions_i(fetched_instr),
+    .valid_o(mixer_valid_issue),
+    .instructions_o(mixed_instr)
   );
   // Output signals
   // --------------
   assign issue_valid_o = issue_valid;
-  assign issue_instr_o = fetched_instr;
+  assign issue_instr_o = mixed_instr;
 endmodule

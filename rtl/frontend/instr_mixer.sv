@@ -1,19 +1,21 @@
 module instr_mixer (
     input logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_i,
-    input logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instructions_i,
+    input len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instructions_i,
     output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_o,
-    output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instructions_o
+    output len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instructions_o
   ); 
 
     import len5_config_pkg::*;
     import len5_pkg::*;
 
     generate
+        //in case of single issue there is no need to do anything
         if (LEN5_MULTIPLE_ISSUES==1) begin : gen_one_instr
             assign valid_o = valid_i;
             assign instructions_o = instructions_i;
         end else begin : gen_mult_instr
-            logic [LEN5_MULTIPLE_ISSUES-1:0][LEN5_MULTIPLE_ISSUES-1:0][ILEN-1:0] intermediate_signals;
+        //in case of multiple issues create a multiplexer network which shifts the outputs
+            instr_t [LEN5_MULTIPLE_ISSUES-1:0][LEN5_MULTIPLE_ISSUES-1:0] intermediate_signals;
             logic [LEN5_MULTIPLE_ISSUES-1:0][LEN5_MULTIPLE_ISSUES-1:0] intermediate_valid;
             assign intermediate_signals[0] = instructions_i;
             assign intermediate_valid[0] = valid_i;

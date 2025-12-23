@@ -20,6 +20,7 @@ filesets:
     - frontend/ras.sv
     - frontend/early_jump_unit.sv
     - frontend/gen_valid_instr.sv
+    - frontend/instr_mixer.sv
    file_type: systemVerilogSource
 
  verilator-waivers:
