@@ -210,19 +210,16 @@ module issue_stage (
   assign new_instr.except_raised = fetch_except_raised_i;
   assign new_instr.except_code   = fetch_except_code_i;
 
-  fifo #(
-    .DATA_T(iq_entry_t),
-    .DEPTH (IQ_DEPTH)
-  ) u_issue_fifo (
+  issue_queue u_issue_queue (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .flush_i(iq_flush),
-    .valid_i(fetch_valid_i&fecth_valid_instr_i),
-    .ready_i(cu_iq_ready),
-    .valid_o(iq_cu_valid),
-    .ready_o(fetch_ready_o),
-    .data_i (new_instr),
-    .data_o (iq_data_out)
+    .fetch_valid_i(fetch_valid_i&fecth_valid_instr_i),
+    .issue_ready_i(cu_iq_ready),
+    .issue_valid_o(iq_cu_valid),
+    .fetch_ready_o(fetch_ready_o),
+    .push_instr_i (new_instr),
+    .pop_instr_o (iq_data_out)
   );
 
   assign iq_cu_except_raised = iq_data_out.except_raised;
