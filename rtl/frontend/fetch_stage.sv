@@ -96,6 +96,7 @@ module fetch_stage #(
 
   //Early jump unit <--> mixer stage
   logic [LEN5_MULTIPLE_ISSUES-1:0] early_valid_mixer;
+  prediction_t [LEN5_MULTIPLE_ISSUES-1:0] early_pred_mixer;
 
   //Instr mixer <--> issue stage
   logic [LEN5_MULTIPLE_ISSUES-1:0] mixer_valid_issue;
@@ -198,7 +199,7 @@ module fetch_stage #(
     .ret_confirm_i      (bu_ret_confirm_i),
     .res_link_addr_i    (bu_link_addr_i),
     .mem_if_pred_i      (mem_if_pred),
-    .issue_pred_o       (issue_pred_o),
+    .issue_pred_o       (early_pred_mixer),
     .early_jump_valid_o (early_jump_valid),
     .mem_flush_o        (early_jump_mem_flush_o),
     .early_jump_offs_o  (early_jump_offs),
@@ -217,8 +218,10 @@ module fetch_stage #(
   instr_mixer u_instr_mixer(
     .valid_i(early_valid_mixer),
     .instructions_i(fetched_instr),
+    .pred_i(early_pred_mixer),
     .valid_o(mixer_valid_issue),
-    .instructions_o(mixed_instr)
+    .instructions_o(mixed_instr),
+    .pred_o(issue_pred_o)
   );
   // Output signals
   // --------------
