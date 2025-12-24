@@ -35,6 +35,7 @@ module issue_queue (
   output expipe_pkg::iq_entry_t pop_instr_o
 );
   import len5_pkg::*;
+  import len5_config_pkg::*;
   import expipe_pkg::*;
 
   // ----------------
@@ -42,23 +43,98 @@ module issue_queue (
   // ----------------
   // Assemble new queue entry with the data from the fetch unit
 
-  fifo #(
-    .DATA_T(iq_entry_t),
-    .DEPTH (len5_config_pkg::IQ_DEPTH)
-  ) u_issue_fifo (
+    // INTERNAL SIGNALS
+  // ----------------
+
+  // Head and tail counters
+  logic [$clog2(IQ_DEPTH)-1:0] head_cnt, tail_cnt;
+  logic head_cnt_en, tail_cnt_en;
+  logic head_cnt_clr, tail_cnt_clr;
+
+  // FIFO data
+  iq_entry_t data      [IQ_DEPTH];
+  logic  data_valid[IQ_DEPTH];
+
+  // FIFO control
+  logic fifo_push, fifo_pop;
+
+  // -----------------
+  // FIFO CONTROL UNIT
+  // -----------------
+
+  // Push/pop control
+  assign fifo_push    = fetch_valid_i && fetch_ready_o && fetch_valid_instr_i;
+  assign fifo_pop     = issue_valid_o && issue_ready_i;
+
+  // Counters control
+  assign head_cnt_clr = flush_i;
+  assign tail_cnt_clr = flush_i;
+  assign head_cnt_en  = fifo_pop;
+  assign tail_cnt_en  = fifo_push;
+
+  // -----------
+  // FIFO UPDATE
+  // -----------
+  // NOTE: operations priority:
+  // 1) push
+  // 2) pop
+  always_ff @(posedge clk_i or negedge rst_ni) begin : fifo_update
+    if (!rst_ni) begin
+      foreach (data[i]) begin
+        data_valid[i] <= 1'b0;
+        data[i]       <= '0;
+      end
+    end else if (flush_i) begin
+      foreach (data[i]) begin
+        data_valid[i] <= 1'b0;  // clearing valid is enough
+      end
+    end else begin
+      foreach (data[i]) begin
+        if (fifo_push && tail_cnt == i[$clog2(IQ_DEPTH)-1:0]) begin
+          data_valid[i] <= 1'b1;
+          data[i]       <= push_instr_i;
+        end else if (fifo_pop && head_cnt == i[$clog2(IQ_DEPTH)-1:0]) begin
+          data_valid[i] <= 1'b0;
+        end
+      end
+    end
+  end
+
+  // --------------
+  // OUTPUT CONTROL
+  // --------------
+
+  // NOTE: output valid when head entry is valid
+  //       output ready when tail entry is empty
+  assign issue_valid_o = data_valid[head_cnt];
+  assign fetch_ready_o = !data_valid[tail_cnt];
+  assign pop_instr_o  = data[head_cnt];
+
+  // ----------------------
+  // HEAD AND TAIL COUNTERS
+  // ----------------------
+
+  modn_counter #(
+    .N(IQ_DEPTH)
+  ) u_head_counter (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
-    .flush_i(flush_i),
-    .valid_i(fetch_valid_i&fetch_valid_instr_i),
-    .ready_i(issue_ready_i),
-    .valid_o(issue_valid_o),
-    .ready_o(fetch_ready_o),
-    .data_i (push_instr_i),
-    .data_o (pop_instr_o)
+    .en_i   (head_cnt_en),
+    .clr_i  (head_cnt_clr),
+    .count_o(head_cnt),
+    .tc_o   ()               // not needed
   );
 
-  // Output instruction
-  // ------------------
+  modn_counter #(
+    .N(IQ_DEPTH)
+  ) u_tail_counter (
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .en_i   (tail_cnt_en),
+    .clr_i  (tail_cnt_clr),
+    .count_o(tail_cnt),
+    .tc_o   ()               // not needed
+  );
 
 
 endmodule
