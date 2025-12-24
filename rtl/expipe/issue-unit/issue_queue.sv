@@ -21,6 +21,9 @@ module issue_queue (
   input  logic fetch_valid_i,
   output logic fetch_ready_o,
 
+  // Valid instructions from fetch unit
+  input logic fetch_valid_instr_i,
+
   // Data from fetch unit
   input expipe_pkg::iq_entry_t push_instr_i,
 
@@ -46,7 +49,7 @@ module issue_queue (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .flush_i(flush_i),
-    .valid_i(fetch_valid_i),
+    .valid_i(fetch_valid_i&fetch_valid_instr_i),
     .ready_i(issue_ready_i),
     .valid_o(issue_valid_o),
     .ready_o(fetch_ready_o),

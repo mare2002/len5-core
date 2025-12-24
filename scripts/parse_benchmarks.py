@@ -320,7 +320,7 @@ if __name__ == "__main__":
             print(f"{i+1:4d}) {b[:-4]:15}: \033[92mSUCCESS\033[00m (IPC={stats[b]['ipc'] : .2f})")
             correctly_ex += 1
         else:
-            print(f"{i:4d}) {b[:-4]:15}: \033[91mFAILURE\033[00m (IPC={stats[b]['ipc'] : .2f})")
+            print(f"{i+1:4d}) {b[:-4]:15}: \033[91mFAILURE\033[00m (IPC={stats[b]['ipc'] : .2f})")
 
     print(f"Correctly executed testbenches {correctly_ex} out of {len(stats)}.")
     

@@ -141,7 +141,7 @@ module datapath #(
 
     .fetch_valid_i        (fe_be_valid),
     .fetch_ready_o        (be_fe_ready),
-    .fecth_valid_instr_i  (fe_be_valid_instr),
+    .fetch_valid_instr_i  (fe_be_valid_instr),
     .fetch_instr_i        (fe_be_instr),
     .fetch_pred_i         (fe_be_pred),
     .fetch_except_raised_i(fe_be_except_raised),
