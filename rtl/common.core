@@ -32,6 +32,7 @@ filesets:
     - common/spill_cell.sv
     - common/ssram.sv
     - common/updown_counter.sv
+    - common/modn_counter_special.sv
    file_type: systemVerilogSource
 
   verilator-waivers:
