@@ -72,6 +72,7 @@ module datapath #(
   // Frontend <--> backend
   // ---------------------
   logic                    fe_be_valid;
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fe_be_valid_instr;
   logic                    be_fe_ready;
   logic         [ILEN-1:0] fe_be_instr;
   prediction_t             fe_be_pred;
@@ -115,6 +116,7 @@ module datapath #(
     .instr_except_code_i   (instr_except_code_i),
     .issue_ready_i         (be_fe_ready),
     .issue_valid_o         (fe_be_valid),
+    .issue_valid_instr_o   (fe_be_valid_instr),
     .issue_instr_o         (fe_be_instr),
     .issue_pred_o          (fe_be_pred),
     .issue_except_raised_o (fe_be_except_raised),
@@ -139,6 +141,7 @@ module datapath #(
 
     .fetch_valid_i        (fe_be_valid),
     .fetch_ready_o        (be_fe_ready),
+    .fecth_valid_instr_i  (fe_be_valid_instr),
     .fetch_instr_i        (fe_be_instr),
     .fetch_pred_i         (fe_be_pred),
     .fetch_except_raised_i(fe_be_except_raised),

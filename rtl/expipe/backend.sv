@@ -17,6 +17,7 @@ module backend (
   // Frontend
   input  logic                                        fetch_valid_i,
   output logic                                        fetch_ready_o,
+  input logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fecth_valid_instr_i,
   input  logic                   [len5_pkg::ILEN-1:0] fetch_instr_i,
   input  fetch_pkg::prediction_t                      fetch_pred_i,
   input  logic                                        fetch_except_raised_i,
@@ -237,6 +238,7 @@ module backend (
 
     .fetch_valid_i        (fetch_valid_i),
     .fetch_ready_o        (fetch_ready_o),
+    .fecth_valid_instr_i  (fecth_valid_instr_i),
     .fetch_pred_i         (fetch_pred_i),
     .fetch_instr_i        (fetch_instr_i),
     .fetch_except_raised_i(fetch_except_raised_i),

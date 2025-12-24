@@ -21,6 +21,7 @@ module issue_stage (
   // Fetch unit
   input  logic                                        fetch_valid_i,
   output logic                                        fetch_ready_o,
+  input logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fecth_valid_instr_i,
   input  logic                   [len5_pkg::ILEN-1:0] fetch_instr_i,
   input  fetch_pkg::prediction_t                      fetch_pred_i,
   input  logic                                        fetch_except_raised_i,
@@ -216,7 +217,7 @@ module issue_stage (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .flush_i(iq_flush),
-    .valid_i(fetch_valid_i),
+    .valid_i(fetch_valid_i&fecth_valid_instr_i),
     .ready_i(cu_iq_ready),
     .valid_o(iq_cu_valid),
     .ready_o(fetch_ready_o),

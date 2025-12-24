@@ -38,6 +38,7 @@ module fetch_stage #(
   // From/to instruction decode
   input  logic                    issue_ready_i,
   output logic                    issue_valid_o,
+  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_valid_instr_o,
   output len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_instr_o,
   output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
   output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_except_raised_o,
@@ -225,6 +226,7 @@ module fetch_stage #(
   );
   // Output signals
   // --------------
+  assign issue_valid_instr_o = mixer_valid_issue;
   assign issue_valid_o = issue_valid;
   assign issue_instr_o = mixed_instr;
 endmodule
