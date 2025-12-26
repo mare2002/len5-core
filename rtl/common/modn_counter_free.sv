@@ -12,9 +12,10 @@
 // Author: Michele Caon
 // Date: 17/10/2019
 
-module modn_counter_special #(
+module modn_counter_free #(
   parameter int unsigned N = 16, //maximal value of the counter
   parameter int unsigned I = 4, //maximal number of bits to represend the increment
+  parameter int unsigned D = 1, //maximal number of bits to represent the decrement
   parameter logic [$clog2(N)-1:0] INIT = '0  // initial value at reset and clear
 ) (
   // Input signals
@@ -22,17 +23,27 @@ module modn_counter_special #(
   input logic rst_ni,  // Asynchronous reset
   input logic en_i,
   input logic clr_i,   // Synchronous clear
-  input logic [I-1:0] increase_val_i,
+  input logic [I-1:0] increase_val_i, // free IQ entries
+  input logic [D-1:0] decrease_val_i, // take IQ entries
   // Output signals
-  output logic [$clog2(N)-1:0] count_o  // Counter value
+  output logic available_o,  // checks whether the is enough available entries
+  output logic empty_no // checks whether the 
 );
   //%TODO Check with Michele if this is OK assumption
   // This special counter assumes that the number of entries to the IQ is power of S2
   //INTERNAL SIGNALS
   //----------------
-  logic [$clog2(N)-1:0] adder_res;
+  logic [$clog2(N)-1:0] adder_res1;
+  logic [$clog2(N)-1:0] adder_res2;
+  logic [$clog2(N)-1:0] mux_res;
+  logic carry;
+  
+  assign adder_res1 = count_o + {{$clog2(N)-I{1'b0}},increase_val};
+  
+  assign {carry, adder_res2} = adder_res1 - {{$clog2(N)-D{1'b0}},decrease_val};
 
-  assign adder_res = count_o + {{$clog2(N)-I{1'b0}},increase_val_i};
+  // In case there is not enough space in the fifo carry will be 1, meaning just free space
+  assign mux_res = (carry) ? adder_res1 : adder_res2;
 
   // Main counting process. The counter clears when reaching the threshold
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -41,7 +52,7 @@ module modn_counter_special #(
     end else if (clr_i) begin
       count_o <= INIT;  // Synchronous clear when requested
     end else if (en_i) begin
-      count_o <= adder_res;
+      count_o <= mux_res;
     end
   end
 

@@ -116,12 +116,12 @@ module issue_queue (
 
   modn_counter_special #(
     .N(IQ_DEPTH),
-    .I(1)
+    .I(1) 
   ) u_head_counter (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .en_i   (head_cnt_en),
-    .increase_val(head_cnt_en),
+    .increase_val_i(head_cnt_en),
     .clr_i  (head_cnt_clr),
     .count_o(head_cnt)
   );
@@ -133,7 +133,7 @@ module issue_queue (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .en_i   (tail_cnt_en),
-    .increase_val(tail_cnt_en),
+    .increase_val_i(tail_cnt_en),
     .clr_i  (tail_cnt_clr),
     .count_o(tail_cnt)
   );
