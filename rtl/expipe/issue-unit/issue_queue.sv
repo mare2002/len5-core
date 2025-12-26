@@ -78,6 +78,8 @@ module issue_queue (
   // NOTE: operations priority:
   // 1) push
   // 2) pop
+  //%TODO Check with Michele if this is ok?????
+  //Allows for the push and pop to the same address
   always_ff @(posedge clk_i or negedge rst_ni) begin : fifo_update
     if (!rst_ni) begin
       foreach (data[i]) begin
@@ -90,12 +92,13 @@ module issue_queue (
       end
     end else begin
       foreach (data[i]) begin
+        if (fifo_pop && head_cnt == i[$clog2(IQ_DEPTH)-1:0]) begin
+          data_valid[i] <= 1'b0;
+        end
         if (fifo_push && tail_cnt == i[$clog2(IQ_DEPTH)-1:0]) begin
           data_valid[i] <= 1'b1;
           data[i]       <= push_instr_i;
-        end else if (fifo_pop && head_cnt == i[$clog2(IQ_DEPTH)-1:0]) begin
-          data_valid[i] <= 1'b0;
-        end
+        end 
       end
     end
   end
