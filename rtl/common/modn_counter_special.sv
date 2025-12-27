@@ -22,7 +22,7 @@ module modn_counter_special #(
   input logic rst_ni,  // Asynchronous reset
   input logic en_i,
   input logic clr_i,   // Synchronous clear
-  input logic [I-1:0] increase_val_i,
+  input logic [I:0] increase_val_i,
   // Output signals
   output logic [$clog2(N)-1:0] count_o  // Counter value
 );
@@ -32,7 +32,7 @@ module modn_counter_special #(
   //----------------
   logic [$clog2(N)-1:0] adder_res;
 
-  assign adder_res = count_o + {{$clog2(N)-I{1'b0}},increase_val_i};
+  assign adder_res = count_o + {{$clog2(N)-I-1{1'b0}},increase_val_i};
 
   // Main counting process. The counter clears when reaching the threshold
   always_ff @(posedge clk_i or negedge rst_ni) begin

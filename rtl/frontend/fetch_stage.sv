@@ -60,8 +60,7 @@ module fetch_stage #(
 
   import len5_pkg::ALEN;
   import len5_pkg::instr_t;
-  import fetch_pkg::prediction_t;
-  import fetch_pkg::INIT_C2B;
+  import fetch_pkg::*;
   import len5_config_pkg::*;
 
   // INTERNAL SIGNALS
@@ -99,9 +98,30 @@ module fetch_stage #(
   logic [LEN5_MULTIPLE_ISSUES-1:0] early_valid_mixer;
   prediction_t [LEN5_MULTIPLE_ISSUES-1:0] early_pred_mixer;
 
-  //Instr mixer <--> issue stage
-  logic [LEN5_MULTIPLE_ISSUES-1:0] mixer_valid_issue;
-  instr_t [LEN5_MULTIPLE_ISSUES-1:0] mixed_instr;
+  //Memory Interface <--> mixer
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_except_raised_mixer;
+  except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_except_code_mixer;
+
+  //Instr mixer <--> spill cell
+  prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_pred_spill;
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_except_raised_spill;
+  except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_except_code_spill;
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_valid_instr_spill;
+  instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_instr_spill;
+
+  //Spill cell <--> Early, mem
+  logic spill_ready;
+
+  //Spill cell interface
+  typedef struct packed {
+    prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] pred;
+    logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr;
+    instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr;
+    logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] except_raised;
+    except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] except_code;
+  }fetch_stage_output_p;
+
+  fetch_stage_output_p mixer_spill, spill_issue;
 
   // -------
   // MODULES
@@ -169,11 +189,11 @@ module fetch_stage #(
     .valid_instr_o        (mem_valid_early),
     .fetch_pred_i         (curr_pred),
     .issue_valid_o        (issue_valid),
-    .issue_ready_i        (issue_ready_i),
+    .issue_ready_i        (spill_ready),
     .issue_instr_o        (fetched_instr),
     .issue_pred_o         (mem_if_pred),
-    .issue_except_raised_o(issue_except_raised_o),
-    .issue_except_code_o  (issue_except_code_o),
+    .issue_except_raised_o(fetch_except_raised_mixer),
+    .issue_except_code_o  (fetch_except_code_mixer),
     .instr_valid_i        (instr_valid_i),
     .instr_ready_i        (instr_ready_i),
     .instr_ready_o        (instr_ready_o),
@@ -192,7 +212,7 @@ module fetch_stage #(
     .flush_i            (flush_i),
     .instr_valid_i      (issue_valid),
     .instr_i            (fetched_instr),
-    .issue_ready_i      (issue_ready_i),
+    .issue_ready_i      (spill_ready),
     .valid_instr_i      (mem_valid_early),
     .valid_instr_o      (early_valid_mixer),
     .early_jump_target_i(early_jump_target),
@@ -220,13 +240,45 @@ module fetch_stage #(
     .valid_i(early_valid_mixer),
     .instructions_i(fetched_instr),
     .pred_i(early_pred_mixer),
-    .valid_o(mixer_valid_issue),
-    .instructions_o(mixed_instr),
-    .pred_o(issue_pred_o)
+    .except_raised_i(fetch_except_raised_mixer),
+    .except_code_i(fetch_except_code_mixer),
+    .valid_o(mixer_valid_instr_spill),
+    .instructions_o(mixer_instr_spill),
+    .pred_o(mixer_pred_spill),
+    .except_raised_o(mixer_except_raised_spill),
+    .except_code_o(mixer_except_code_spill)
   );
+  
+  // SPILL CELLL INTERFACE
+  assign mixer_spill.valid_instr = mixer_valid_instr_spill;
+  assign mixer_spill.instr = mixer_instr_spill;
+  assign mixer_spill.pred = mixer_pred_spill;
+  assign mixer_spill.except_raised = mixer_except_raised_spill;
+  assign mixer_spill.except_code = mixer_except_code_spill;
+
+  //SPILL CELL
+  //----------
+  //breaks the loop that would originally come from the issue stage free counter
+  spill_cell_flush #(
+    .DATA_T(fetch_stage_output_p)
+  ) u_out_reg(
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .flush_i(flush_i),
+    .valid_i(issue_valid),
+    .ready_i(issue_ready_i),
+    .valid_o(issue_valid_o),
+    .ready_o(spill_ready),
+    .data_i (mixer_spill),
+    .data_o (spill_issue)
+  );
+  
   // Output signals
   // --------------
-  assign issue_valid_instr_o = mixer_valid_issue;
-  assign issue_valid_o = issue_valid;
-  assign issue_instr_o = mixed_instr;
+  assign issue_instr_o = spill_issue.instr;
+  assign issue_valid_instr_o = spill_issue.valid_instr;
+  assign issue_pred_o = spill_issue.pred;
+  assign issue_except_code_o = spill_issue.except_code;
+  assign issue_except_raised_o = spill_issue.except_raised;
+
 endmodule

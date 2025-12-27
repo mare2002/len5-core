@@ -58,6 +58,11 @@ module issue_queue (
   // FIFO control
   logic fifo_push, fifo_pop;
 
+  // Free space counter
+  // logic free_en;
+  // logic free_clr;
+  // logic free_increase_val, free_decrease_val;
+
   // -----------------
   // FIFO CONTROL UNIT
   // -----------------
@@ -72,13 +77,17 @@ module issue_queue (
   assign head_cnt_en  = fifo_pop;
   assign tail_cnt_en  = fifo_push;
 
+  // Free space controls
+  // assign free_en = head_cnt_en | tail_cnt_en;
+  // assign free_increase_val = head_cnt_en;//change later
+  // assign free_decrease_val = tail_cnt_en;//change later
+  // assign free_clr = flush_i;
   // -----------
   // FIFO UPDATE
   // -----------
   // NOTE: operations priority:
-  // 1) push
-  // 2) pop
-  //%TODO Check with Michele if this is ok?????
+  // 1) pop
+  // 2) push
   //Allows for the push and pop to the same address
   always_ff @(posedge clk_i or negedge rst_ni) begin : fifo_update
     if (!rst_ni) begin
@@ -119,7 +128,7 @@ module issue_queue (
 
   modn_counter_special #(
     .N(IQ_DEPTH),
-    .I(1) 
+    .I(0) 
   ) u_head_counter (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
@@ -131,7 +140,7 @@ module issue_queue (
 
   modn_counter_special #(
     .N(IQ_DEPTH),
-    .I(1)
+    .I(LEN5_MULTIPLE_ISSUES_BITS)
   ) u_tail_counter (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
@@ -140,6 +149,21 @@ module issue_queue (
     .clr_i  (tail_cnt_clr),
     .count_o(tail_cnt)
   );
+
+  // modn_counter_free #(
+  //   .N(IQ_DEPTH),
+  //   .I(0),
+  //   .D(LEN5_MULTIPLE_ISSUES_BITS)
+  // ) u_free_space_counter(
+  //   .clk_i(clk_i),
+  //   .rst_ni(rst_ni),
+  //   .en_i(free_en),
+  //   .clr_i(free_clr),
+  //   .increase_val_i(free_increase_val),
+  //   .decrease_val_i(free_decrease_val),
+  //   .available_o(fetch_ready_o),
+  //   .empty_no(issue_valid_o)
+  // );
 
 
 endmodule
