@@ -59,9 +59,9 @@ module issue_queue (
   logic fifo_push, fifo_pop;
 
   // Free space counter
-  // logic free_en;
-  // logic free_clr;
-  // logic free_increase_val, free_decrease_val;
+  logic free_en;
+  logic free_clr;
+  logic free_increase_val, free_decrease_val;
 
   // -----------------
   // FIFO CONTROL UNIT
@@ -78,10 +78,10 @@ module issue_queue (
   assign tail_cnt_en  = fifo_push;
 
   // Free space controls
-  // assign free_en = head_cnt_en | tail_cnt_en;
-  // assign free_increase_val = head_cnt_en;//change later
-  // assign free_decrease_val = tail_cnt_en;//change later
-  // assign free_clr = flush_i;
+  assign free_en = head_cnt_en | tail_cnt_en;
+  assign free_increase_val = head_cnt_en;//change later
+  assign free_decrease_val = tail_cnt_en;//change later
+  assign free_clr = flush_i;
   // -----------
   // FIFO UPDATE
   // -----------
@@ -118,8 +118,8 @@ module issue_queue (
 
   // NOTE: output valid when head entry is valid
   //       output ready when tail entry is empty
-  assign issue_valid_o = data_valid[head_cnt];
-  assign fetch_ready_o = !data_valid[tail_cnt];
+  // assign issue_valid_o = data_valid[head_cnt];
+  // assign fetch_ready_o = !data_valid[tail_cnt];
   assign pop_instr_o  = data[head_cnt];
 
   // ----------------------
@@ -150,20 +150,20 @@ module issue_queue (
     .count_o(tail_cnt)
   );
 
-  // modn_counter_free #(
-  //   .N(IQ_DEPTH),
-  //   .I(0),
-  //   .D(LEN5_MULTIPLE_ISSUES_BITS)
-  // ) u_free_space_counter(
-  //   .clk_i(clk_i),
-  //   .rst_ni(rst_ni),
-  //   .en_i(free_en),
-  //   .clr_i(free_clr),
-  //   .increase_val_i(free_increase_val),
-  //   .decrease_val_i(free_decrease_val),
-  //   .available_o(fetch_ready_o),
-  //   .empty_no(issue_valid_o)
-  // );
+  modn_counter_free #(
+    .N(IQ_DEPTH),
+    .I(0),
+    .D(LEN5_MULTIPLE_ISSUES_BITS)
+  ) u_free_space_counter(
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
+    .en_i(free_en),
+    .clr_i(free_clr),
+    .increase_val_i(free_increase_val),
+    .decrease_val_i(free_decrease_val),
+    .available_o(fetch_ready_o),
+    .empty_no(issue_valid_o)
+  );
 
 
 endmodule
