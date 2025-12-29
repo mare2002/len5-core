@@ -60,3 +60,4 @@ lint_off -rule PINCONNECTEMPTY -file "*/fp_regstat.sv" -match "Instance pin conn
 lint_off -rule PINCONNECTEMPTY -file "*/ras.sv" -match "Instance pin connected by name with empty reference: 'valid_o'"
 lint_off -rule PINCONNECTEMPTY -file "*/fpu_wrapper.sv" -match "Instance pin connected by name with empty reference: '*_o'"
 lint_off -rule PINCONNECTEMPTY -file "*/issue_queue.sv" -match "Instance pin connected by name with empty reference: 'tc_o'"
+lint_off -rule PINCONNECTEMPTY -file "*/issue_queue.sv" -match "Instance pin connected by name with empty reference: 'empty_o'"

@@ -22,10 +22,10 @@ module issue_queue (
   output logic fetch_ready_o,
 
   // Valid instructions from fetch unit
-  input logic fetch_valid_instr_i,
+  input logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_valid_instr_i,
 
   // Data from fetch unit
-  input expipe_pkg::iq_entry_t push_instr_i,
+  input expipe_pkg::iq_entry_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] push_instr_i,
 
   // Handshake from/to the issue logic
   input  logic issue_ready_i,
@@ -52,23 +52,27 @@ module issue_queue (
   logic head_cnt_clr, tail_cnt_clr;
 
   // FIFO data
-  iq_entry_t data      [IQ_DEPTH];
+  iq_entry_t data  [IQ_DEPTH];
   logic  data_valid[IQ_DEPTH];
 
   // FIFO control
   logic fifo_push, fifo_pop;
 
-  // Free space counter
-  logic free_en;
-  logic free_clr;
-  logic free_increase_val, free_decrease_val;
+  // Push logic FIFO
+  logic [LEN5_MULTIPLE_ISSUES-1:0] alloc_nav;
+  logic [IQ_DEPTH-1:0] write_instr_en;
+  iq_entry_t [IQ_DEPTH-1:0] push_instr_demux;
+
+  //Increase tail logic
+  logic [$clog2(LEN5_MULTIPLE_ISSUES+1)-1:0] increase_tail;
+  
 
   // -----------------
   // FIFO CONTROL UNIT
   // -----------------
 
   // Push/pop control
-  assign fifo_push    = fetch_valid_i && fetch_ready_o && fetch_valid_instr_i;
+  assign fifo_push    = fetch_valid_i && fetch_ready_o;
   assign fifo_pop     = issue_valid_o && issue_ready_i;
 
   // Counters control
@@ -77,11 +81,6 @@ module issue_queue (
   assign head_cnt_en  = fifo_pop;
   assign tail_cnt_en  = fifo_push;
 
-  // Free space controls
-  assign free_en = head_cnt_en | tail_cnt_en;
-  assign free_increase_val = head_cnt_en;//change later
-  assign free_decrease_val = tail_cnt_en;//change later
-  assign free_clr = flush_i;
   // -----------
   // FIFO UPDATE
   // -----------
@@ -104,9 +103,9 @@ module issue_queue (
         if (fifo_pop && head_cnt == i[$clog2(IQ_DEPTH)-1:0]) begin
           data_valid[i] <= 1'b0;
         end
-        if (fifo_push && tail_cnt == i[$clog2(IQ_DEPTH)-1:0]) begin
+        else if (fifo_push && write_instr_en[i]) begin
           data_valid[i] <= 1'b1;
-          data[i]       <= push_instr_i;
+          data[i]       <= push_instr_demux[i];
         end 
       end
     end
@@ -118,8 +117,9 @@ module issue_queue (
 
   // NOTE: output valid when head entry is valid
   //       output ready when tail entry is empty
-  // assign issue_valid_o = data_valid[head_cnt];
+  assign issue_valid_o = data_valid[head_cnt];
   // assign fetch_ready_o = !data_valid[tail_cnt];
+  assign fetch_ready_o = |alloc_nav;
   assign pop_instr_o  = data[head_cnt];
 
   // ----------------------
@@ -145,26 +145,32 @@ module issue_queue (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .en_i   (tail_cnt_en),
-    .increase_val_i(tail_cnt_en),
+    .increase_val_i(increase_tail),
     .clr_i  (tail_cnt_clr),
     .count_o(tail_cnt)
   );
 
-  modn_counter_free #(
-    .N(IQ_DEPTH),
-    .I(0),
-    .D(LEN5_MULTIPLE_ISSUES_BITS)
-  ) u_free_space_counter(
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .en_i(free_en),
-    .clr_i(free_clr),
-    .increase_val_i(free_increase_val),
-    .decrease_val_i(free_decrease_val),
-    .available_o(fetch_ready_o),
-    .empty_no(issue_valid_o)
-  );
+  always_comb begin : gen_ready_write
+    logic [LEN5_MULTIPLE_ISSUES-1:0][$clog2(IQ_DEPTH)-1:0] counter_h;
+    alloc_nav = '0;
+    write_instr_en = '0;
+    push_instr_demux = '0;
+    for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+      counter_h[i] = tail_cnt+i[$clog2(IQ_DEPTH)-1:0];
+      alloc_nav[i] = (~data_valid[counter_h[i]])&fetch_valid_instr_i[i];
+      write_instr_en[counter_h[i]] = fetch_valid_instr_i[i];
+      push_instr_demux[counter_h[i]] = push_instr_i[i];
+    end
+  end
 
+  lzc #(
+    .WIDTH(LEN5_MULTIPLE_ISSUES),
+    .MODE(1)
+  ) u_loc (
+    .in_i(~fetch_valid_instr_i),
+    .cnt_o(increase_tail),
+    .empty_o()
+  );
 
 endmodule
 

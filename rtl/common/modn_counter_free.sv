@@ -15,7 +15,7 @@
 module modn_counter_free #(
   parameter int unsigned N = 16, //maximal value of the counter
   parameter int unsigned I = 4, //maximal number of bits to represend the increment
-  parameter int unsigned D = 1, //maximal number of bits to represent the decrement
+  parameter int unsigned D = 1 //maximal number of bits to represent the decrement
 ) (
   // Input signals
   input logic clk_i,
@@ -39,7 +39,7 @@ module modn_counter_free #(
   logic [$clog2(N):0] count_free_q;
   logic [$clog2(N)-1:0] count_tail_q;
   logic [$clog2(N)-1:0] count_head_q;
-  logic
+
   logic carry;
 
   

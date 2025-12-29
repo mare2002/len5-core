@@ -33,7 +33,6 @@ filesets:
     - common/ssram.sv
     - common/updown_counter.sv
     - common/modn_counter_special.sv
-    - common/modn_counter_free.sv
    file_type: systemVerilogSource
 
   verilator-waivers:
