@@ -29,11 +29,11 @@ module fetch_stage #(
   output logic                                         instr_ready_o,
   output logic                                         instr_valid_o,
   output logic                                         instr_we_o,
-  input  logic                    [len5_pkg::ILEN-1:0] instr_rdata_i,
+  input  logic [LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instr_rdata_i,
   output logic                    [len5_pkg::ALEN-1:0] instr_addr_o,
   output logic                                         early_jump_mem_flush_o,
-  input  logic                                         instr_except_raised_i,
-  input  fetch_pkg::except_code_t                      instr_except_code_i,
+  input  logic [LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_i,
+  input  fetch_pkg::except_code_t [LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_i,
 
   // From/to instruction decode
   input  logic                    issue_ready_i,
@@ -68,7 +68,7 @@ module fetch_stage #(
 
   // Current program counter
   logic        [ALEN-1:0] curr_pc;
-  prediction_t            curr_pred;
+  prediction_t [LEN5_MULTIPLE_ISSUES-1:0] curr_pred;
 
   // Memory Interface <--> PC generator
   logic                   memif_pcgen_ready;
@@ -83,7 +83,7 @@ module fetch_stage #(
   logic        [ALEN-1:0] early_jump_offs;
   logic        [ALEN-1:0] early_jump_target;
   logic        [ALEN-1:0] early_jump_base;
-  prediction_t            mem_if_pred;
+  prediction_t [LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred;
 
   //gen valid instr <--> Memory Interface
   logic [LEN5_MULTIPLE_ISSUES-1:0] gen_valid_mem;

@@ -28,7 +28,7 @@ module early_jump_unit (
   input  logic                                        call_confirm_i,
   input  logic                                        ret_confirm_i,
   input  logic [len5_pkg::ALEN-1:0]                   res_link_addr_i,
-  output fetch_pkg::prediction_t                      issue_pred_o,
+  output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
   output logic                                        early_jump_valid_o,
   output logic                                        mem_flush_o,
   output logic                   [len5_pkg::XLEN-1:0] early_jump_base_o,
@@ -260,9 +260,12 @@ module early_jump_unit (
   assign early_jump_offs_o   = early_jump_offs;
 
   // Prediction for the execution stage
-  assign issue_pred_o.pc     = mem_if_pred_i[jump_location].pc;
-  assign issue_pred_o.hit    = target_valid | mem_if_pred_i[jump_location].hit;
-  assign issue_pred_o.target = (target_valid) ? early_jump_target_i : mem_if_pred_i[jump_location].target;
-  assign issue_pred_o.taken  = target_valid | mem_if_pred_i[jump_location].taken;
+  always_comb begin : gen_out
+    issue_pred_o = mem_if_pred_i;
+    issue_pred_o[jump_location].pc     = mem_if_pred_i[jump_location].pc;
+    issue_pred_o[jump_location].hit    = target_valid | mem_if_pred_i[jump_location].hit;
+    issue_pred_o[jump_location].target = (target_valid) ? early_jump_target_i : mem_if_pred_i[jump_location].target;
+    issue_pred_o[jump_location].taken  = target_valid | mem_if_pred_i[jump_location].taken;
+  end
   assign valid_instr_o = valid_instr_i & jump_valid;
 endmodule
