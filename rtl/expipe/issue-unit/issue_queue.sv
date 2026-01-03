@@ -64,7 +64,7 @@ module issue_queue (
   iq_entry_t [IQ_DEPTH-1:0] push_instr_demux;
 
   //Increase tail logic
-  logic [$clog2(LEN5_MULTIPLE_ISSUES+1)-1:0] increase_tail;
+  logic [$clog2(LEN5_MULTIPLE_ISSUES):0] increase_tail;
   
 
   // -----------------
@@ -164,10 +164,10 @@ module issue_queue (
   end
 
   lzc #(
-    .WIDTH(LEN5_MULTIPLE_ISSUES),
+    .WIDTH(LEN5_MULTIPLE_ISSUES+1),
     .MODE(1)
   ) u_loc (
-    .in_i(~fetch_valid_instr_i),
+    .in_i({~fetch_valid_instr_i,1'b1}),
     .cnt_o(increase_tail),
     .empty_o()
   );
