@@ -15,10 +15,10 @@ module datapath #(
   output logic                                        instr_rready_o,
   output logic                                        instr_we_o,
   output logic                   [len5_pkg::XLEN-1:0] instr_addr_o,
-  input  logic                   [len5_pkg::ILEN-1:0] instr_rdata_i,
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instr_rdata_i,
   // manca instr_be_o perchè è sempre LWORD
-  input  logic                                        instr_except_raised_i,
-  input  len5_pkg::except_code_t                      instr_except_code_i,
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_i,
+  input  len5_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_i,
 
   // ----------------------
   // Data memory interface
@@ -74,10 +74,10 @@ module datapath #(
   logic                    fe_be_valid;
   logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fe_be_valid_instr;
   logic                    be_fe_ready;
-  logic         [ILEN-1:0] fe_be_instr;
-  prediction_t             fe_be_pred;
-  logic                    fe_be_except_raised;
-  except_code_t            fe_be_except_code;
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [ILEN-1:0] fe_be_instr;
+  prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fe_be_pred;
+  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fe_be_except_raised;
+  except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fe_be_except_code;
   logic                    be_fe_mis_flush;
   logic                    be_fe_except_flush;
   logic                    be_fe_bpu_valid;
