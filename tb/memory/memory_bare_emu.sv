@@ -159,7 +159,7 @@ module memory_bare_emu #(
 
       // Exception handling
       case (i_ret)
-        0: instr_pipe_reg[0].except_raised = 1'b0;
+        0: instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b0}};
         1: begin  // address_misaligned
           if (instr_addr_i != instr_addr_q)
             $display(
