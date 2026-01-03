@@ -85,9 +85,9 @@ module tb_bare #(
   logic                               dp2mem_instr_ready;
   logic                               mem2dp_instr_valid;
   logic            [        XLEN-1:0] dp2mem_instr_addr;
-  logic            [        ILEN-1:0] mem2dp_instr_rdata;
-  logic                               mem2dp_instr_except_raised;
-  except_code_t                       mem2dp_instr_except_code;
+  logic [LEN5_MULTIPLE_ISSUES-1:0] [        ILEN-1:0] mem2dp_instr_rdata;
+  logic [LEN5_MULTIPLE_ISSUES-1:0] mem2dp_instr_except_raised;
+  except_code_t [LEN5_MULTIPLE_ISSUES-1:0] mem2dp_instr_except_code;
 
   logic                               dp2mem_load_valid;
   logic                               mem2dp_load_ready;
