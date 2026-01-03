@@ -51,6 +51,7 @@ module gen_valid_instr (
 
             //generate selected prediction
             always_comb begin : gen_sel_pred
+                pred_o = '0;
                 for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin
                     if (predicted_taken[i]) begin
                         pred_o = pred_i[i];

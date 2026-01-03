@@ -75,7 +75,7 @@ module bpu #(
       assign pred_o[i].pc     = curr_pc_i;
     end
     else begin : gen_multiple
-      assign pred_o[i].pc     = {curr_pc_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS], i[LEN5_MULTIPLE_ISSUES_BITS-1:0]};
+      assign pred_o[i].pc     = {curr_pc_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS+2], i[LEN5_MULTIPLE_ISSUES_BITS-1:0], 2'b00};
     end
     assign pred_o[i].hit    = btb_hit[i];
     assign pred_o[i].taken  = gshare_taken[i];

@@ -111,7 +111,7 @@ module early_jump_unit (
         jump_type = JUMP_TYPE_NONE;
         jump_location = {LEN5_MULTIPLE_ISSUES_BITS{1'b1}};
 
-        for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin : jump_type_of_oldest_instr
+        for(int i = LEN5_MULTIPLE_ISSUES; i >= 0; i--) begin : jump_type_of_oldest_instr
           if (valid_instr_i[i]) begin
             if (instr_i[i].raw == RET) begin
               jump_type = JUMP_TYPE_RET;

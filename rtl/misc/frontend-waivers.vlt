@@ -18,3 +18,5 @@ lint_off -rule UNOPTFLAT -file "*/jump_early_dec.sv" -match "Signal unoptimizabl
 lint_off -rule UNUSEDSIGNAL -file "*/fetch_stage.sv" -match "Bits of signal are not used: 'taken_pred'[129:66]"
 //lint_off -rule UNUSEDSIGNAL -file "*/fetch_stage.sv" -match "Signal is not used: 'mixer_valid_issue'"
 lint_off -rule UNUSEDSIGNAL -file "*/gen_valid_instr.sv" -match "Signal is not used: 'pc_i'"
+lint_off -rule ALWCOMBORDER -file "*/instr_mixer.sv" -match "Always_comb variable driven after use: '*'"
+lint_off -rule UNUSEDSIGNAL -file "*/gen_valid_instr.sv" -match "Bits of signal are not used: 'pc_i'*"
