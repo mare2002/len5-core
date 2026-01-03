@@ -22,10 +22,10 @@ module issue_stage (
   input  logic                                        fetch_valid_i,
   output logic                                        fetch_ready_o,
   input logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_valid_instr_i,
-  input  logic                   [len5_pkg::ILEN-1:0] fetch_instr_i,
-  input  fetch_pkg::prediction_t                      fetch_pred_i,
-  input  logic                                        fetch_except_raised_i,
-  input  len5_pkg::except_code_t                      fetch_except_code_i,
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] fetch_instr_i,
+  input  fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_pred_i,
+  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_except_raised_i,
+  input  len5_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_except_code_i,
   output logic                                        fetch_mis_flush_o,
 
   // Integer register status register
@@ -146,7 +146,7 @@ module issue_stage (
   logic      [      XLEN-1:0] imm_value;  // selected immediate
 
   // Fetch stage <--> issue queue
-  iq_entry_t                  new_instr;
+  iq_entry_t [LEN5_MULTIPLE_ISSUES-1:0] new_instr;
 
   // Issue queue <--> issuing instruction register
   iq_entry_t                  iq_data_out;
@@ -203,13 +203,14 @@ module issue_stage (
   // Assemble new queue entry with the data from the fetch unit
 
   assign iq_flush                = flush_i | cu_mis_flush;
-  assign new_instr.curr_pc       = fetch_pred_i.pc;
-  assign new_instr.instruction   = fetch_instr_i;
-  assign new_instr.pred_target   = fetch_pred_i.target;
-  assign new_instr.pred_taken    = fetch_pred_i.hit & fetch_pred_i.taken;
-  assign new_instr.except_raised = fetch_except_raised_i;
-  assign new_instr.except_code   = fetch_except_code_i;
-
+  for(genvar i=0; i < LEN5_MULTIPLE_ISSUES; i++) begin : gen_new_instr_bundle
+    assign new_instr[i].curr_pc       = fetch_pred_i[i].pc;
+    assign new_instr[i].instruction   = fetch_instr_i[i];
+    assign new_instr[i].pred_target   = fetch_pred_i[i].target;
+    assign new_instr[i].pred_taken    = fetch_pred_i[i].hit & fetch_pred_i[i].taken;
+    assign new_instr[i].except_raised = fetch_except_raised_i[i];
+    assign new_instr[i].except_code   = fetch_except_code_i[i];
+  end
   issue_queue u_issue_queue (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
