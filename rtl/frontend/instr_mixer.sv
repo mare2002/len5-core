@@ -48,7 +48,7 @@ module instr_mixer (
                             intermediate_instr[i][j] = (intermediate_valid[i-1][0]) ? intermediate_instr[i-1][j] : '0;
                             intermediate_prediction[i][j] = (intermediate_valid[i-1][0]) ? intermediate_prediction[i-1][j] : '0;
                             intermediate_exc_raised[i][j] = (intermediate_valid[i-1][0]) ? intermediate_exc_raised[i-1][j] : '0;
-                            intermediate_exc_code[i][j] = (intermediate_valid[i-1][0]) ? intermediate_exc_code[i-1][j] : '0;
+                            intermediate_exc_code[i][j] = (intermediate_valid[i-1][0]) ? intermediate_exc_code[i-1][j] : E_UNKNOWN;
                             intermediate_valid[i][j] = (intermediate_valid[i-1][0]) ? intermediate_valid[i-1][j] : '0;
                         end
                     end
