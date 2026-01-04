@@ -63,7 +63,7 @@ module branch_unit #(
   logic                   rs_bu_pred_taken;
   branch_ctl_t            rs_bu_branch_type;
 
-  // Beanch logic <--> Reservation Station
+  // Branch logic <--> Reservation Station
   logic                   bu_rs_ready;
   logic                   bu_rs_valid;
   logic                   rs_bu_valid;
