@@ -28,7 +28,7 @@ module gen_valid_instr (
                 logic selected = 1'b1;
                 for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
                     selected_taken[i] = selected;
-                    if (predicted_taken[i] & (~n_skipped)) begin
+                    if (predicted_taken[i] & (~n_skipped[i])) begin
                         selected = 1'b0;
                     end
                 end

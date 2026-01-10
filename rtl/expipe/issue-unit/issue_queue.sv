@@ -167,9 +167,9 @@ module issue_queue (
 
   lzc #(
     .WIDTH(LEN5_MULTIPLE_ISSUES+1),
-    .MODE(1)
+    .MODE(0)
   ) u_loc (
-    .in_i({~fetch_valid_instr_i,1'b1}),
+    .in_i({1'b1,~fetch_valid_instr_i}),
     .cnt_o(increase_tail),
     .empty_o()
   );
