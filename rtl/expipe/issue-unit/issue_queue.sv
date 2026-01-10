@@ -119,7 +119,7 @@ module issue_queue (
   //       output ready when tail entry is empty
   assign issue_valid_o = data_valid[head_cnt];
   // assign fetch_ready_o = !data_valid[tail_cnt];
-  assign fetch_ready_o = |alloc_nav;
+  assign fetch_ready_o = &alloc_nav;
   assign pop_instr_o  = data[head_cnt];
 
   // ----------------------
@@ -151,13 +151,15 @@ module issue_queue (
   );
 
   always_comb begin : gen_ready_write
-    logic [LEN5_MULTIPLE_ISSUES-1:0][$clog2(IQ_DEPTH)-1:0] counter_h;
+    logic [LEN5_MULTIPLE_ISSUES-1:0][$clog2(IQ_DEPTH)-1:0] counter_h = '0;
+    logic [LEN5_MULTIPLE_ISSUES-1:0] valid_data_queue = '0;
     alloc_nav = '0;
     write_instr_en = '0;
     push_instr_demux = '0;
     for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
       counter_h[i] = tail_cnt+i[$clog2(IQ_DEPTH)-1:0];
-      alloc_nav[i] = (~data_valid[counter_h[i]])&fetch_valid_instr_i[i];
+      valid_data_queue[i] = data_valid[counter_h[i]];
+      alloc_nav[i] = ~(valid_data_queue[i]&fetch_valid_instr_i[i]);
       write_instr_en[counter_h[i]] = fetch_valid_instr_i[i];
       push_instr_demux[counter_h[i]] = push_instr_i[i];
     end
