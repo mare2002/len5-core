@@ -50,8 +50,15 @@ module pc_gen #(
   if (LEN5_MULTIPLE_ISSUES==1) begin: gen_single_pc_increase
     assign pc_increase = -1'b1;
   end else begin: gen_multiple_pc_increase
-    assign pc_increase = -{1'b1, add_pc_base[ILEN_BIT_SUFF+LEN5_MULTIPLE_ISSUES_BITS-1:ILEN_BIT_SUFF]};
+    always_comb begin : pc_increase_mux
+      if (bu_res_valid_i && bu_res_i.mispredict) begin
+        pc_increase = {{LEN5_MULTIPLE_ISSUES_BITS{1'b0}}, 1'b1};
+      end else begin
+        pc_increase = -{1'b1, pc_o[ILEN_BIT_SUFF+LEN5_MULTIPLE_ISSUES_BITS-1:ILEN_BIT_SUFF]};
+      end
+    end
   end
+
   always_comb begin : tgt_addr_op_mux
     if (early_jump_valid_i && !(bu_res_valid_i && bu_res_i.mispredict)) begin
       add_pc_offset     = early_jump_base_i;

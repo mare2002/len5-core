@@ -100,7 +100,7 @@ function automatic void tb_len5_update_commit(bit dump_trace, int fd);
   for (expipe_pkg::rob_idx_t i = commit_idx; i != commit_idx - 1; i++) begin
     if (buffer_valid[i]) begin
       if (dump_trace) begin
-        $fdisplay(fd, "core %3d: 0x%16h (0x%8h)", tb_len5_get_cpu_id(),
+        $fdisplay(fd, "[%5t] core %3d: 0x%16h (0x%8h)", $time, tb_len5_get_cpu_id(),
                 commit_buffer[i].instr_pc, commit_buffer[i].instruction.raw);
         if (rf_valid[i]) begin
           $fdisplay(fd, "core %3d: %2d 0x%16h (0x%16h) x%1d 0x%16h", tb_len5_get_cpu_id(), 
