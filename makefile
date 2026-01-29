@@ -25,6 +25,9 @@ MAX_CYCLES		?= 100000
 LOG_LEVEL		?= LOG_MEDIUM
 DUMP_TRACE		?= true
 
+#Waveform font size
+FONT_SIZE       ?= 14
+
 # Regression tests
 TEST_DIRS		:= $(wildcard sw/applications/*/)
 TESTS			:= $(patsubst sw/applications/%/,%,$(TEST_DIRS))
@@ -110,7 +113,7 @@ $(BUILD_DIR)/sim-common/sim-trace.log: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)
 # Open dumped waveform with GTKWave
 .PHONY: verilator-waves
 verilator-waves: $(BUILD_DIR)/sim-common/waves.fst | .check-gtkwave
-	gtkwave -a tb/misc/verilator-waves.gtkw $<
+	gtkwave -a tb/misc/verilator-waves.gtkw $< --rcvar 'fontname_signals Monospace $(FONT_SIZE)' --rcvar 'fontname_waves Monospace $(FONT_SIZE)'
 
 # QuestaSim
 .PHONY: questasim-sim
