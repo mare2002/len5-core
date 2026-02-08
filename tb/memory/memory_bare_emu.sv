@@ -154,39 +154,42 @@ module memory_bare_emu #(
     
     if (instr_valid_i) begin  // Memory always ready to answer (instr_ready_o = 1)
     //read multiple instructions at a time
-      i_ret                  = mem.ReadLine(instr_addr_i);
-      instr_pipe_reg[0].read = mem.read_line;
+      for (int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+        logic [XLEN-1:0] address_read = {instr_addr_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS+1], i[LEN5_MULTIPLE_ISSUES_BITS:0]};
+        i_ret                  = mem.ReadW(address_read);
+        instr_pipe_reg[0].read[i] = mem.read_word;
 
-      // Exception handling
-      case (i_ret)
-        0: instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b0}};
-        1: begin  // address_misaligned
-          if (instr_addr_i != instr_addr_q)
-            $display(
-                "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h", $time, instr_addr_i
-            );
-          instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b1}};
-          instr_pipe_reg[0].except_code   = {LEN5_MULTIPLE_ISSUES{E_I_ADDR_MISALIGNED}};
-        end
-        2: begin  // access_fault
-          if (instr_addr_i != instr_addr_q)
-            $display(
-                "[%8t] MEM EMU > WARNING: reading uninitialized INSTRUCTION at %h",
-                $time,
-                instr_addr_i
-            );
-          instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b1}};
-          instr_pipe_reg[0].except_code   = {LEN5_MULTIPLE_ISSUES{E_I_ACCESS_FAULT}};
-        end
-        default: begin
-          if (instr_addr_i != instr_addr_q)
-            $display(
-                "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h", $time, instr_addr_i
-            );
-          instr_pipe_reg[0].except_raised = {LEN5_MULTIPLE_ISSUES{1'b1}};
-          instr_pipe_reg[0].except_code   = {LEN5_MULTIPLE_ISSUES{E_UNKNOWN}};
-        end
-      endcase
+        // Exception handling
+        case (i_ret)
+          0: instr_pipe_reg[0].except_raised[i] = 1'b0;
+          1: begin  // address_misaligned
+            if (instr_addr_i != instr_addr_q)
+              $display(
+                  "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h", $time, address_read
+              );
+            instr_pipe_reg[0].except_raised[i] = 1'b1;
+            instr_pipe_reg[0].except_code[i]   = E_I_ADDR_MISALIGNED;
+          end
+          2: begin  // access_fault
+            if (instr_addr_i != instr_addr_q)
+              $display(
+                  "[%8t] MEM EMU > WARNING: reading uninitialized INSTRUCTION at %h",
+                  $time,
+                  instr_addr_i
+              );
+            instr_pipe_reg[0].except_raised[i] = 1'b1;
+            instr_pipe_reg[0].except_code[i]   = E_I_ACCESS_FAULT;
+          end
+          default: begin
+            if (instr_addr_i != instr_addr_q)
+              $display(
+                  "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h", $time, instr_addr_i
+              );
+            instr_pipe_reg[0].except_raised[i] = 1'b1;
+            instr_pipe_reg[0].except_code[i]   = E_UNKNOWN;
+          end
+        endcase
+      end
     end
   end
 
@@ -247,7 +250,7 @@ module memory_bare_emu #(
           $display(
               "[%8t] MEM EMU > WARNING: misaligned memory READ at %h", $time, data_load_addr_q
           );
-        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
+        data_load_pipe_reg[0].except_raised = '0;//data_load_pipe_valid[0];
         data_load_pipe_reg[0].except_code   = E_LD_ADDR_MISALIGNED;
       end
       2: begin : access_fault
@@ -255,7 +258,7 @@ module memory_bare_emu #(
           $display(
               "[%8t] MEM EMU > WARNING: uninitialized memory READ at %h", $time, data_load_addr_q
           );
-        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
+        data_load_pipe_reg[0].except_raised = '0;//data_load_pipe_valid[0];
         data_load_pipe_reg[0].except_code   = E_LD_ACCESS_FAULT;
       end
       default: begin
@@ -265,7 +268,7 @@ module memory_bare_emu #(
               $time,
               data_load_addr_q
           );
-        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
+        data_load_pipe_reg[0].except_raised = '0;//data_load_pipe_valid[0];
         data_load_pipe_reg[0].except_code   = E_UNKNOWN;
       end
     endcase
