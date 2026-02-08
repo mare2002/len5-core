@@ -147,6 +147,17 @@ module memory_bare_emu #(
 
   // INSTRUCTION REQUEST
   // -------------------
+  logic [LEN5_MULTIPLE_ISSUES-1:0][XLEN-1:0] address_read;
+  generate
+    if (LEN5_MULTIPLE_ISSUES == 32'd1) begin : gen_single_isntr
+      assign address_read[0] = instr_addr_i;
+    end else begin : gen_multiple_instr
+      for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin : gen_multiple_instr_for
+        assign address_read[i] = {instr_addr_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS+2], i[LEN5_MULTIPLE_ISSUES_BITS-1:0], {2'b0}};
+      end
+    end
+  endgenerate
+
   always_comb begin : p_ins_mem_req
     instr_pipe_reg[0].read          = 'h0;
     instr_pipe_reg[0].except_raised = 'b0;
@@ -155,8 +166,7 @@ module memory_bare_emu #(
     if (instr_valid_i) begin  // Memory always ready to answer (instr_ready_o = 1)
     //read multiple instructions at a time
       for (int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
-        logic [XLEN-1:0] address_read = {instr_addr_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS+1], i[LEN5_MULTIPLE_ISSUES_BITS:0]};
-        i_ret                  = mem.ReadW(address_read);
+        i_ret                  = mem.ReadW(address_read[i]);
         instr_pipe_reg[0].read[i] = mem.read_word;
 
         // Exception handling
@@ -250,7 +260,7 @@ module memory_bare_emu #(
           $display(
               "[%8t] MEM EMU > WARNING: misaligned memory READ at %h", $time, data_load_addr_q
           );
-        data_load_pipe_reg[0].except_raised = '0;//data_load_pipe_valid[0];
+        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
         data_load_pipe_reg[0].except_code   = E_LD_ADDR_MISALIGNED;
       end
       2: begin : access_fault
@@ -258,7 +268,7 @@ module memory_bare_emu #(
           $display(
               "[%8t] MEM EMU > WARNING: uninitialized memory READ at %h", $time, data_load_addr_q
           );
-        data_load_pipe_reg[0].except_raised = '0;//data_load_pipe_valid[0];
+        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
         data_load_pipe_reg[0].except_code   = E_LD_ACCESS_FAULT;
       end
       default: begin
@@ -268,7 +278,7 @@ module memory_bare_emu #(
               $time,
               data_load_addr_q
           );
-        data_load_pipe_reg[0].except_raised = '0;//data_load_pipe_valid[0];
+        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
         data_load_pipe_reg[0].except_code   = E_UNKNOWN;
       end
     endcase
