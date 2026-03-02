@@ -35,6 +35,7 @@ filesets:
     - tb/memory/memory_if.sv
     - tb/memory/memory_bare_emu.sv
     - tb/len5_utils.svh: {is_include_file: true}
+    - tb/visualization/len5_visualization_pkg.svh
     - tb/tb_bare.sv
     file_type: systemVerilogSource
 
@@ -43,6 +44,7 @@ filesets:
     - polito:len5:verilator-common
     files:
     - tb/verilator/len5_tb.cpp
+    - tb/visualization/len5_save_db.cpp
     file_type: cppSource
 
   questasim-bare-tb:
@@ -121,6 +123,11 @@ targets:
         - -vmake
       verilator:
         mode: cc
+        make_options:
+        - "CXXFLAGS+=-std=c++17"
+        - "CXXFLAGS+=-O2"
+        - "LDLIBS+=-lsqlite3"
+        - "LDLIBS+=-lz"
         verilator_options:
         - '--cc'
         - '--assert'

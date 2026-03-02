@@ -17,6 +17,8 @@
 
 `define TOP u_datapath
 
+import len5_visualization_pkg::*;
+
 // ----------
 // DATA TYPES
 // ----------
@@ -41,11 +43,45 @@ typedef struct packed {
 // GLOBAL VARIABLES
 // ----------------
 // Instruction reordering
-expipe_pkg::rob_entry_t [len5_config_pkg::ROB_DEPTH-1:0] commit_buffer;
-bit [len5_config_pkg::ROB_DEPTH-1:0] rf_valid;
-bit [len5_config_pkg::ROB_DEPTH-1:0] buffer_valid;
-expipe_pkg::rob_idx_t commit_idx = 0;
-logic flush_q, commit_check;
+
+// --------------------------------------
+// DPI-C Wrappers
+// --------------------------------------
+
+// Init database wrapper
+function int tb_len5_db_init_database(input string file, output longint unsigned db_handle, output longint unsigned stmt_handle);
+  return dpi_init_database(file, db_handle, stmt_handle);
+endfunction : tb_len5_db_init_database
+
+// Insert cycle wrapper
+function int tb_len5_db_insert_state(input longint unsigned db_handle, input longint unsigned stmt_handle, input longint unsigned traceC_handle);
+  return dpi_insert_state(db_handle, stmt_handle, traceC_handle);
+endfunction : tb_len5_db_insert_state
+
+// Close database wrapper
+function int tb_len5_db_close(input longint unsigned db_handle, input longint unsigned stmt_handle);
+  return dpi_close_database(db_handle, stmt_handle);
+endfunction : tb_len5_db_close
+
+// Create struct wrapper
+function int tb_len5_create_struct(output longint unsigned traceC_handle);
+  return dpi_create_struct(traceC_handle);
+endfunction : tb_len5_create_struct
+
+// Delete struct wrapper
+function int tb_len5_delete_struct(input longint unsigned traceC_handle);
+  return dpi_delete_struct(traceC_handle);
+endfunction : tb_len5_delete_struct
+
+// Update traceC cycle wrapper
+function int tb_len5_update_trace_cycle(input longint unsigned traceC_handle, input longint unsigned cycle);
+  return dpi_update_trace_cycle(traceC_handle, cycle);
+endfunction : tb_len5_update_trace_cycle
+
+// Update traceC pc wrapper
+function int tb_len5_update_trace_pc(input longint unsigned traceC_handle, input longint unsigned pc);
+  return dpi_update_trace_pc(traceC_handle, pc);
+endfunction : tb_len5_update_trace_pc
 
 // ---------
 // FUNCTIONS
@@ -85,53 +121,45 @@ function logic [len5_pkg::ILEN-1:0] tb_len5_get_commit_instr();
   return `TOP.u_backend.u_commit_stage.comm_reg_data.data.instruction.raw;
 endfunction: tb_len5_get_commit_instr
 
-// Committed instruction dump
-// NOTE: call at every cycle to ensure no instruction is missed
-function automatic void tb_len5_update_commit(bit dump_trace, int fd);
-  expipe_pkg::rob_idx_t rob_idx = tb_len5_get_commit_idx();
 
-  // Register new committing instruction
-  if (tb_len5_get_committing()) begin
-    commit_buffer[rob_idx] <= tb_len5_get_commit_entry();
-    rf_valid[rob_idx]      <= tb_len5_get_rf_valid();
-    buffer_valid[rob_idx]  <= 1'b1;
-  end
-  
-  for (expipe_pkg::rob_idx_t i = commit_idx; i != commit_idx - 1; i++) begin
-    if (buffer_valid[i]) begin
-      if (dump_trace) begin
-        $fdisplay(fd, "[%5t] core %3d: 0x%16h (0x%8h)", $time, tb_len5_get_cpu_id(),
-                commit_buffer[i].instr_pc, commit_buffer[i].instruction.raw);
-        if (rf_valid[i]) begin
-          $fdisplay(fd, "core %3d: %2d 0x%16h (0x%16h) x%1d 0x%16h", tb_len5_get_cpu_id(), 
-                commit_buffer[i].rd_idx, commit_buffer[i].instr_pc, commit_buffer[i].instruction.raw, commit_buffer[i].rd_idx, commit_buffer[i].res_value); 
-        end else begin 
-          $fdisplay(fd, "core %3d: %2d 0x%16h (0x%16h)", tb_len5_get_cpu_id(), 
-          commit_buffer[i].rd_idx, commit_buffer[i].instr_pc, commit_buffer[i].instruction.raw); 
-        end
-      end
-      buffer_valid[i] <= 0;
-    end else begin
-      commit_idx <= i[expipe_pkg::ROB_IDX_LEN-1:0];
-      break;
-    end
-  end
+// -----------------------------------
+// Database functions (VISUALIZATION)
+// -----------------------------------
 
-  // Check that all the entries were committed after flushing
-  if (commit_check && buffer_valid != '0) begin
-    $display("\033[1;31m[%8t] TB > ERROR: flushing uncommitted instructions!\033[0m", $time);
-    // $finish;
-  end
+// initialize db and stmt and allocate the memory necessary for storing data in the DB
+function int tb_len5_visualization_init(input string file, output longint unsigned db_handle, output longint unsigned stmt_handle, output longint unsigned traceC_handle);
+  int rc;
+  //initialize the db and the statement used for the inserting in the table
+  rc = tb_len5_db_init_database(file, db_handle, stmt_handle);
+  // in case there was an error exit with rc
+  if(rc!=0) return -1;
+  //allocate the memory for the states to be saved
+  rc = tb_len5_create_struct(traceC_handle);
+  if(rc!=0) return -1;
+  return 0;
+endfunction : tb_len5_visualization_init
 
-  // Flush the queue if requested
-  if (flush_q) begin
-    commit_idx <= 0;
-  end
+// free the allocated memory and finalize the things necessary
+function int tb_len5_visualization_finalize(input longint unsigned db_handle, input longint unsigned stmt_handle, input longint unsigned traceC_handle);
+  int rc;
+  rc = tb_len5_db_close(db_handle, stmt_handle);
+  if(rc!=0) return -1;
+  rc = tb_len5_delete_struct(traceC_handle);
+  if(rc!=0) return -1;
+  return 0;
+endfunction : tb_len5_visualization_finalize
 
-  // Update flush signal on misprediction
-  flush_q      <= `TOP.u_backend.u_commit_stage.cu_mis_flush;
-  commit_check <= flush_q;
-endfunction: tb_len5_update_commit
+// update the trace state and save it to the table in DB
+function int tb_len5_visualization_save_state(input longint unsigned db_handle, input longint unsigned stmt_handle, input longint unsigned traceC_handle);
+  int rc;
+  rc = tb_len5_update_trace_cycle(traceC_handle, unsigned'(`TOP.u_backend.u_csrs.mcycle));
+  if(rc!=0) return -1;
+  rc = tb_len5_update_trace_pc(traceC_handle, `TOP.u_fetch_stage.u_pc_gen.pc_o);
+  if(rc!=0) return -1;
+  rc = tb_len5_db_insert_state(db_handle, stmt_handle, traceC_handle);
+  if(rc!=0) return -1;
+  return 0;
+endfunction : tb_len5_visualization_save_state
 
 // Get stats from LEN5
 function len5_data_t tb_len5_get_data(longint unsigned mem_instr, longint unsigned mem_read, longint unsigned mem_write);

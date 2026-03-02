@@ -15,7 +15,7 @@
 
 module tb_bare #(
   parameter string           MEM_DUMP_FILE = "mem_dump.txt",
-  parameter string           TRACE_FILE    = "logs/sim-trace.log",
+  parameter string           TRACE_FILE    = "logs/sim-trace.db",
   parameter longint unsigned BOOT_PC       = 64'h0,
   parameter longint unsigned SERIAL_ADDR   = 64'h20000000,
   parameter longint unsigned EXIT_ADDR     = 64'h20000100,
@@ -45,7 +45,7 @@ module tb_bare #(
   // the number of its pipeline stages, plus the two internal registers of
   // the output spill cell, if implemented. The fetch stage must buffer the
   // same number of requests.
-  localparam bit MemEmuSkipInstrOutReg = 1'b0;
+  localparam bit MemEmuSkipInstrOutReg = 1'b1;
   localparam int unsigned FetchMemIfFifoDepth = MemPipeNum + ((MemEmuSkipInstrOutReg) ? 0 : 2);
 
   // INTERNAL SIGNALS
@@ -67,8 +67,11 @@ module tb_bare #(
   bit                                 exit_cnt_en;
   int unsigned                        exit_cnt_q;
 
-  // Trace logger
-  int                                 trace_fd;
+  // State logger for visualisation tool
+  longint unsigned db_handle; // pointer to the db
+  longint unsigned stmt_handle; // pointer to the statement
+  longint unsigned traceC_handle; // pointer to the structure
+
 
   // Memory monitor
   longint unsigned                    num_instr_loads;
@@ -235,9 +238,12 @@ module tb_bare #(
 
       // Print execution report
       tb_len5_print_report(cpu_data);
-
-      // Clean up and terminate simulation
-      $fclose(trace_fd);
+      
+      if (trace_en_i) begin
+        // finalize and close the DB and free the memory
+        int rc = tb_len5_visualization_finalize(db_handle, stmt_handle, traceC_handle);
+        if (rc != 0) $fatal(1, "tb_len5_visualization_finalize failed rc=%0d", rc);
+      end
       $finish();
     end else if (exit_cnt_en) begin
       exit_cnt_q <= exit_cnt_q + 1;
@@ -246,15 +252,23 @@ module tb_bare #(
 
   // Execution trace logger
   // ----------------------
-  // Create trace dump file
+  // Create trace database file
   initial begin
-    if (trace_en_i) trace_fd = $fopen(TRACE_FILE, "w");
+    if (trace_en_i) begin
+      //initialize the visualization structures
+      int rc = tb_len5_visualization_init(TRACE_FILE, db_handle, stmt_handle, traceC_handle);
+      if (rc != 0) $fatal(1, "tb_len5_visualization_init failed rc=%0d", rc);
+    end
   end
 
   // Print the currently committing instruction and its program counter
   always_ff @(posedge clk_i) begin : trace_logger
     // Check if an instruction is committing
-    tb_len5_update_commit(trace_en_i, trace_fd);
+    if(trace_en_i) begin
+      //save the states to the db
+      int rc = tb_len5_visualization_save_state(db_handle, stmt_handle, traceC_handle);
+      if (rc != 0) $fatal(1, "tb_len5_visualization_save_state failed rc=%0d", rc);
+    end
   end
 
   // -------
