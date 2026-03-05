@@ -33,12 +33,13 @@ package len5_visualization_pkg;
 
   import "DPI-C" function int dpi_update_trace_cycle(
     input longint unsigned traceC_handle,
-    input longint unsigned cycle
+    input longint unsigned cycle,
+    input longint unsigned cur_time
   );
 
   import "DPI-C" function int dpi_update_trace_pc(
     input longint unsigned traceC_handle,
-    input longint unsigned pc
+    input logic [71:0] pc_gen
   );
 
 endpackage

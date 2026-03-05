@@ -12,17 +12,33 @@
 #include <filesystem>
 #include <cstdint>
 #include <iostream>
+#include <string.h>
+#include "verilated_dpi.h"
+#include "svdpi.h"      
 
+// --------------------------------------------------
+// Macros
+// --------------------------------------------------
+#define PC_GEN_SIZE             9
 // --------------------------------------------------
 // Struct for keeping the values between the calls
 // --------------------------------------------------
 
 struct TraceCycle{
     uint64_t cycle = 0;
-    uint64_t pc = 0;
+    uint64_t time = 0;
+    uint8_t* pc_gen = nullptr;
 };
+// --------------------------------------------------
+// FUNCTIONS
+// --------------------------------------------------
 
-static int check_rc(int rc, sqlite3* db)
+// --------------------------------------------------
+// check_rc
+//   - check the status of sqlite exec
+//   Returns 0 on success, -1 on failure.
+// --------------------------------------------------
+static int check_rc(int rc)
 {
     // SQLITE_OK, SQLITE_DONE and SQLITE_ROW are possible returns
     if (rc == SQLITE_OK || rc == SQLITE_DONE || rc == SQLITE_ROW) return 0;
@@ -62,7 +78,7 @@ int dpi_init_database(const char* filename,
     //create a db
     int rc = sqlite3_open(filename, &db);
     //if it encounters a problem return
-    if (check_rc(rc, db)) {
+    if (check_rc(rc)) {
         if (db) sqlite3_close(db);
         return -1;
     }
@@ -70,25 +86,26 @@ int dpi_init_database(const char* filename,
     //statement to create the table
     const char* create_sql =
         "CREATE TABLE IF NOT EXISTS trace ("
-        "  id    INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "  cycle INTEGER NOT NULL,"
-        "  data  INTEGER NOT NULL"
+        "  id       INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  cycle    INTEGER NOT NULL,"
+        "  time     INTEGER NOT NULL,"
+        "  pc_gen   BLOB NOT NULL"
         ");";
 
     //create a table
     rc = sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
     //on error exit
-    if (check_rc(rc, db)) {
+    if (check_rc(rc)) {
         sqlite3_close(db);
         return -1;
     }
 
     //create an insert statement for later use and on error exit
     const char* insert_sql =
-        "INSERT INTO trace(cycle, data) VALUES(?, ?);";
+        "INSERT INTO trace(cycle, time, pc_gen) VALUES(?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, nullptr);
-    if (check_rc(rc, db)) {
+    if (check_rc(rc)) {
         sqlite3_close(db);
         return -1;
     }
@@ -96,7 +113,7 @@ int dpi_init_database(const char* filename,
     //acquire a write lock on the database so that noone else can write anything to it
     //in case it fails exit
     rc = sqlite3_exec(db, "BEGIN IMMEDIATE;", nullptr, nullptr, nullptr);
-    if (check_rc(rc, db)) {
+    if (check_rc(rc)) {
         sqlite3_finalize(stmt);
         sqlite3_close(db);
         return -1;
@@ -134,32 +151,33 @@ int dpi_insert_state(uint64_t db_handle,
 
     // Bind parameter 1: cycle
     rc = sqlite3_bind_int(stmt, 1, traceC->cycle);
-    if (check_rc(rc, db)) return -1;
+    if (check_rc(rc)) return -1;
 
     //%TODO for later tests
-    // Bind parameter 2: blob bytes
-    //SQLITE_TRANSIENT necessaary for the DB to make the copy of the data immediatly
-    // rc = sqlite3_bind_blob(stmt, 2, data, size, SQLITE_TRANSIENT);
-    // if (check_rc(rc, db)) return -1;
     
-    // Bind parameter 2: pc
-    rc = sqlite3_bind_int(stmt, 2, traceC->pc);
-    if (check_rc(rc, db)) return -1;
+    
+    // Bind parameter 2: time
+    rc = sqlite3_bind_int(stmt, 2, traceC->time);
+    if (check_rc(rc)) return -1;
 
+    // Bind parameter 2: blob bytes
+    // SQLITE_TRANSIENT necessaary for the DB to make the copy of the data immediatly
+    rc = sqlite3_bind_blob(stmt, 3, traceC->pc_gen, PC_GEN_SIZE, SQLITE_TRANSIENT);
+    if (check_rc(rc)) return -1;
 
     // Execute insert
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
-        check_rc(rc, db);
+        check_rc(rc);
         return -1;
     }
 
     // Prepare for reuse
     rc = sqlite3_reset(stmt);
-    if (check_rc(rc, db)) return -1;
+    if (check_rc(rc)) return -1;
 
     rc = sqlite3_clear_bindings(stmt);
-    if (check_rc(rc, db)) return -1;
+    if (check_rc(rc)) return -1;
 
     return 0;
 }
@@ -195,12 +213,16 @@ int dpi_close_database(uint64_t db_handle,
 int dpi_create_struct(uint64_t* traceC_handle){
     
     TraceCycle* traceC = new TraceCycle();
+    //allocate space for the pc generator
+    traceC->pc_gen = new uint8_t[PC_GEN_SIZE];
+    //store the pointer in traceC_handle
     *traceC_handle = reinterpret_cast<uint64_t>(traceC);
     return 0;
 }
 
 // --------------------------------------------------
 // dpi_delete_struct
+//   - frees the allocated memory
 //   - deletes struct and its fields
 // Returns 0 on success, -1 on failure.
 // --------------------------------------------------
@@ -208,6 +230,7 @@ int dpi_delete_struct(uint64_t traceC_handle){
     
     if (!traceC_handle) return -1;
     TraceCycle* traceC = reinterpret_cast<TraceCycle*>(traceC_handle);
+    delete[] traceC->pc_gen;
     delete traceC;
     return 0;
 }
@@ -215,25 +238,29 @@ int dpi_delete_struct(uint64_t traceC_handle){
 // --------------------------------------------------
 // dpi_update_trace_cycle
 //   - update cycle field in traceC_handle
+//   - update time  field in traceC_handle
 // Returns 0 on success, -1 on failure.
 // --------------------------------------------------
-int dpi_update_trace_cycle(uint64_t traceC_handle, uint64_t cycle){
+int dpi_update_trace_cycle(uint64_t traceC_handle, uint64_t cycle, uint64_t cur_time){
     
     if (!traceC_handle) return -1;
     TraceCycle* traceC = reinterpret_cast<TraceCycle*>(traceC_handle);
     traceC->cycle = cycle;
+    traceC->time = cur_time;
     return 0;
 }
 
 // --------------------------------------------------
 // dpi_update_trace_pc
-//   - update pc field in traceC_handle
+//   - update pc_gen field in traceC_handle
 // Returns 0 on success, -1 on failure.
 // --------------------------------------------------
-int dpi_update_trace_pc(uint64_t traceC_handle, uint64_t pc){
+int dpi_update_trace_pc(uint64_t traceC_handle, svBitVecVal* pc_gen){
     if (!traceC_handle) return -1;
     TraceCycle* traceC = reinterpret_cast<TraceCycle*>(traceC_handle);
-    traceC->pc = pc;
+
+    //copy nine bytes
+    std::memcpy(traceC->pc_gen, pc_gen, PC_GEN_SIZE);
     return 0;
 }
 

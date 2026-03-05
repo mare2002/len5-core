@@ -241,8 +241,7 @@ module tb_bare #(
       
       if (trace_en_i) begin
         // finalize and close the DB and free the memory
-        int rc = tb_len5_visualization_finalize(db_handle, stmt_handle, traceC_handle);
-        if (rc != 0) $fatal(1, "tb_len5_visualization_finalize failed rc=%0d", rc);
+        tb_len5_visualization_finalize(db_handle, stmt_handle, traceC_handle);
       end
       $finish();
     end else if (exit_cnt_en) begin
@@ -256,8 +255,7 @@ module tb_bare #(
   initial begin
     if (trace_en_i) begin
       //initialize the visualization structures
-      int rc = tb_len5_visualization_init(TRACE_FILE, db_handle, stmt_handle, traceC_handle);
-      if (rc != 0) $fatal(1, "tb_len5_visualization_init failed rc=%0d", rc);
+      tb_len5_visualization_init(TRACE_FILE, db_handle, stmt_handle, traceC_handle);
     end
   end
 
@@ -266,8 +264,7 @@ module tb_bare #(
     // Check if an instruction is committing
     if(trace_en_i) begin
       //save the states to the db
-      int rc = tb_len5_visualization_save_state(db_handle, stmt_handle, traceC_handle);
-      if (rc != 0) $fatal(1, "tb_len5_visualization_save_state failed rc=%0d", rc);
+      tb_len5_visualization_save_state(db_handle, stmt_handle, traceC_handle);
     end
   end
 
