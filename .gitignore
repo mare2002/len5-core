@@ -60,3 +60,6 @@ build*
 *.jpg
 *.pdf
 *.csv
+
+#Veridian yml
+veridian.yml
