@@ -16,10 +16,6 @@
 `define LEN5_UTILS_SVH
 
 `define TOP u_datapath
-`define PC_GEN `TOP.u_fetch_stage.u_pc_gen
-
-import len5_visualization_pkg::*;
-import len5_config_pkg::*;
 
 // ----------
 // DATA TYPES
@@ -41,59 +37,15 @@ typedef struct packed {
   longint unsigned write_req;
 } len5_data_t;
 
-typedef enum logic [2:0]{
-  PC_RST            = 'h0,
-  EXCEPTION         = 'h1,
-  MISPRED_TAKEN     = 'h2,
-  MISPRED_NOT_TAKEN = 'h3,
-  BRANCH_PRED       = 'h4,
-  JUMP              = 'h5,
-  DEFAULT           = 'h6
-} pc_gen_next_t;
-
 // ----------------
 // GLOBAL VARIABLES
 // ----------------
 // Instruction reordering
-
-// --------------------------------------
-// DPI-C Wrappers
-// --------------------------------------
-
-// Init database wrapper
-function int tb_len5_db_init_database(input string file, output longint unsigned db_handle, output longint unsigned stmt_handle);
-  return dpi_init_database(file, db_handle, stmt_handle);
-endfunction : tb_len5_db_init_database
-
-// Insert cycle wrapper
-function int tb_len5_db_insert_state(input longint unsigned db_handle, input longint unsigned stmt_handle, input longint unsigned traceC_handle);
-  return dpi_insert_state(db_handle, stmt_handle, traceC_handle);
-endfunction : tb_len5_db_insert_state
-
-// Close database wrapper
-function int tb_len5_db_close(input longint unsigned db_handle, input longint unsigned stmt_handle);
-  return dpi_close_database(db_handle, stmt_handle);
-endfunction : tb_len5_db_close
-
-// Create struct wrapper
-function int tb_len5_create_struct(output longint unsigned traceC_handle);
-  return dpi_create_struct(traceC_handle);
-endfunction : tb_len5_create_struct
-
-// Delete struct wrapper
-function int tb_len5_delete_struct(input longint unsigned traceC_handle);
-  return dpi_delete_struct(traceC_handle);
-endfunction : tb_len5_delete_struct
-
-// Update traceC cycle wrapper
-function int tb_len5_update_trace_cycle(input longint unsigned traceC_handle, input longint unsigned cycle, input longint unsigned cur_time);
-  return dpi_update_trace_cycle(traceC_handle, cycle, cur_time);
-endfunction : tb_len5_update_trace_cycle
-
-// Update traceC pc wrapper
-function int tb_len5_update_trace_pc(input longint unsigned traceC_handle, input logic [71:0] pc);
-  return dpi_update_trace_pc(traceC_handle, pc);
-endfunction : tb_len5_update_trace_pc
+expipe_pkg::rob_entry_t [len5_config_pkg::ROB_DEPTH-1:0] commit_buffer;
+bit [len5_config_pkg::ROB_DEPTH-1:0] rf_valid;
+bit [len5_config_pkg::ROB_DEPTH-1:0] buffer_valid;
+expipe_pkg::rob_idx_t commit_idx = 0;
+logic flush_q, commit_check;
 
 // ---------
 // FUNCTIONS
@@ -133,77 +85,53 @@ function logic [len5_pkg::ILEN-1:0] tb_len5_get_commit_instr();
   return `TOP.u_backend.u_commit_stage.comm_reg_data.data.instruction.raw;
 endfunction: tb_len5_get_commit_instr
 
+// Committed instruction dump
+// NOTE: call at every cycle to ensure no instruction is missed
+function automatic void tb_len5_update_commit(bit dump_trace, int fd);
+  expipe_pkg::rob_idx_t rob_idx = tb_len5_get_commit_idx();
 
-// -----------------------------------
-// Database functions (VISUALIZATION)
-// -----------------------------------
-
-// initialize db and stmt and allocate the memory necessary for storing data in the DB
-function void tb_len5_visualization_init(input string file, output longint unsigned db_handle, output longint unsigned stmt_handle, output longint unsigned traceC_handle);
-  int rc;
-  //initialize the db and the statement used for the inserting in the table
-  rc = tb_len5_db_init_database(file, db_handle, stmt_handle);
-  // in case there was an error exit with rc
-  if (rc != 0) $fatal(1, "tb_len5_visualization_init failed rc=%0d", rc);
-  //allocate the memory for the states to be saved
-  rc = tb_len5_create_struct(traceC_handle);
-  if (rc != 0) $fatal(1, "tb_len5_visualization_init failed rc=%0d", rc);
-endfunction : tb_len5_visualization_init
-
-// free the allocated memory and finalize the things necessary
-function void tb_len5_visualization_finalize(input longint unsigned db_handle, input longint unsigned stmt_handle, input longint unsigned traceC_handle);
-  int rc;
-  rc = tb_len5_db_close(db_handle, stmt_handle);
-  if (rc != 0) $fatal(1, "tb_len5_visualization_finalize failed rc=%0d", rc);
-  rc = tb_len5_delete_struct(traceC_handle);
-  if (rc != 0) $fatal(1, "tb_len5_visualization_finalize failed rc=%0d", rc);
-endfunction : tb_len5_visualization_finalize
-
-// save the time and cycle to traceC
-function void tb_len5_save_cycle(input longint unsigned traceC_handle);
-  int rc;
-  rc = tb_len5_update_trace_cycle(traceC_handle, unsigned'(`TOP.u_backend.u_csrs.mcycle), unsigned'($time));
-  if (rc != 0) $fatal(1, "tb_len5_visualization_save_state failed rc=%0d", rc);
-endfunction : tb_len5_save_cycle
-
-// save the pc_gen states to traceC
-function automatic void tb_len5_save_pc_gen_states(input longint unsigned traceC_handle);
-  int rc;
-  logic [71:0] pc_gen_state = '0;
-  pc_gen_next_t next_pc;
-  if (!`PC_GEN.rst_ni) begin
-    next_pc = PC_RST;
-  end else if (`PC_GEN.comm_except_raised_i) begin
-    next_pc = EXCEPTION;
-  end else if (`PC_GEN.bu_res_valid_i && `PC_GEN.bu_res_i.mispredict) begin
-    if (`PC_GEN.bu_res_i.taken) begin
-      next_pc = MISPRED_TAKEN;
-    end else begin
-      next_pc = MISPRED_NOT_TAKEN;
-    end
-  end else if (`PC_GEN.pred_taken_i) begin
-    next_pc = BRANCH_PRED;
-  end else if (`PC_GEN.early_jump_valid_i) begin
-    next_pc = JUMP;
-  end else begin
-    next_pc = DEFAULT;
+  // Register new committing instruction
+  if (tb_len5_get_committing()) begin
+    commit_buffer[rob_idx] <= tb_len5_get_commit_entry();
+    rf_valid[rob_idx]      <= tb_len5_get_rf_valid();
+    buffer_valid[rob_idx]  <= 1'b1;
   end
-  pc_gen_state = {5'b0, `PC_GEN.pc_o, next_pc};
-  rc = tb_len5_update_trace_pc(traceC_handle, pc_gen_state);
-  if (rc != 0) $fatal(1, "tb_len5_visualization_save_state failed rc=%0d", rc);
-endfunction : tb_len5_save_pc_gen_states
+  
+  for (expipe_pkg::rob_idx_t i = commit_idx; i != commit_idx - 1; i++) begin
+    if (buffer_valid[i]) begin
+      if (dump_trace) begin
+        $fdisplay(fd, "[%5t] core %3d: 0x%16h (0x%8h)", $time, tb_len5_get_cpu_id(),
+                commit_buffer[i].instr_pc, commit_buffer[i].instruction.raw);
+        if (rf_valid[i]) begin
+          $fdisplay(fd, "core %3d: %2d 0x%16h (0x%16h) x%1d 0x%16h", tb_len5_get_cpu_id(), 
+                commit_buffer[i].rd_idx, commit_buffer[i].instr_pc, commit_buffer[i].instruction.raw, commit_buffer[i].rd_idx, commit_buffer[i].res_value); 
+        end else begin 
+          $fdisplay(fd, "core %3d: %2d 0x%16h (0x%16h)", tb_len5_get_cpu_id(), 
+          commit_buffer[i].rd_idx, commit_buffer[i].instr_pc, commit_buffer[i].instruction.raw); 
+        end
+      end
+      buffer_valid[i] <= 0;
+    end else begin
+      commit_idx <= i[expipe_pkg::ROB_IDX_LEN-1:0];
+      break;
+    end
+  end
 
-// update the trace state and save it to the table in DB
-function void tb_len5_visualization_save_state(input longint unsigned db_handle, input longint unsigned stmt_handle, input longint unsigned traceC_handle);
-  int rc;
-  //save time and cycle
-  tb_len5_save_cycle(traceC_handle);
-  //save pc_gen
-  tb_len5_save_pc_gen_states(traceC_handle);
-  //insert into the table
-  rc = tb_len5_db_insert_state(db_handle, stmt_handle, traceC_handle);
-  if (rc != 0) $fatal(1, "tb_len5_visualization_save_state failed rc=%0d", rc);
-endfunction : tb_len5_visualization_save_state
+  // Check that all the entries were committed after flushing
+  if (commit_check && buffer_valid != '0) begin
+    $display("\033[1;31m[%8t] TB > ERROR: flushing uncommitted instructions!\033[0m", $time);
+    // $finish;
+  end
+
+  // Flush the queue if requested
+  if (flush_q) begin
+    commit_idx <= 0;
+  end
+
+  // Update flush signal on misprediction
+  flush_q      <= `TOP.u_backend.u_commit_stage.cu_mis_flush;
+  commit_check <= flush_q;
+endfunction: tb_len5_update_commit
 
 // Get stats from LEN5
 function len5_data_t tb_len5_get_data(longint unsigned mem_instr, longint unsigned mem_read, longint unsigned mem_write);
