@@ -88,7 +88,8 @@ module l0_cache #(
   assign ld_idx     = ld_addr_i[StIdxW+3-1:3];
 
   // Cached instruction still valid in store buffer
-  assign st_hit     = st_cached_i & st_cached_width_i == ld_width_i & st_cached_addr_i == ld_addr_i;
+  assign st_hit     = data[ld_idx].valid & st_cached_i &
+                      (st_cached_width_i == ld_width_i) & (st_cached_addr_i == ld_addr_i);
 
   // --------------
   // OUTPUT NETWORK

@@ -57,6 +57,13 @@ module load_buffer #(
   input logic                              sb_oldest_completed_i,
   input logic [len5_pkg::STBUFF_TAG_W-1:0] sb_oldest_idx_i,
 
+  // Protect older loads from younger stores until their values are captured.
+  output logic [DEPTH-1:0]                  sb_pending_loads_o,
+  input  logic [DEPTH-1:0]                  sb_older_loads_i,
+  input  logic [len5_pkg::XLEN-1:0]          sb_mem_addr_i,
+  input  expipe_pkg::ldst_width_t           sb_mem_type_i,
+  output logic                             sb_mem_blocked_o,
+
   // Level-zero cache
   input  logic                                         l0_valid_i,
   input  logic                    [len5_pkg::XLEN-1:0] l0_value_i,
@@ -145,6 +152,38 @@ module load_buffer #(
   logic [$clog2(XLEN>>3)-1:0] byte_offs;
   logic [           XLEN-1:0] cdb_data;
 
+  function automatic logic [3:0] access_size(ldst_width_t access_type);
+    case (access_type)
+      LS_BYTE, LS_BYTE_U:         return 4'd1;
+      LS_HALFWORD, LS_HALFWORD_U: return 4'd2;
+      LS_WORD, LS_WORD_U:         return 4'd4;
+      LS_DOUBLEWORD:             return 4'd8;
+      default:                   return 4'd0;
+    endcase
+  endfunction
+
+  // A store snapshots the pending-load bitmap at issue, so only older loads
+  // can block it. Completed entries no longer need their memory value protected.
+  always_comb begin : store_before_load_control
+    sb_mem_blocked_o = 1'b0;
+    for (int i = 0; i < DEPTH; i++) begin
+      sb_pending_loads_o[i] = (curr_state[i] != LOAD_S_EMPTY) &&
+                              (curr_state[i] != LOAD_S_COMPLETED);
+      if (sb_older_loads_i[i] && sb_pending_loads_o[i]) begin
+        case (curr_state[i])
+          LOAD_S_DEP_WAIT, LOAD_S_MEM_REQ, LOAD_S_MEM_WAIT: begin
+            // Differences test byte-range overlap without overflowing an end address.
+            if (((data[i].imm_addr_value - sb_mem_addr_i) < XLEN'(access_size(sb_mem_type_i))) ||
+                ((sb_mem_addr_i - data[i].imm_addr_value) < XLEN'(access_size(data[i].load_type)))) begin
+              sb_mem_blocked_o = 1'b1;
+            end
+          end
+          default: sb_mem_blocked_o = 1'b1;  // address is not known yet
+        endcase
+      end
+    end
+  end
+
   // -----------------
   // FIFO CONTROL UNIT
   // -----------------
@@ -226,7 +265,14 @@ module load_buffer #(
         end
         LOAD_S_DEP_WAIT: begin
           if (!store_dep[i] || store_dep_clr[i]) begin
-            next_state[i] = LOAD_S_MEM_REQ;
+            // Capture the cached value on dependency release rather than
+            // losing a forwarding opportunity during the state transition.
+            if (LEN5_STORE_LOAD_FWD_EN && l0_valid_i && mem_idx == i[IdxW-1:0]) begin
+              lb_op[i]      = LOAD_OP_SAVE_CACHED;
+              next_state[i] = LOAD_S_COMPLETED;
+            end else begin
+              next_state[i] = LOAD_S_MEM_REQ;
+            end
           end else begin
             next_state[i] = LOAD_S_DEP_WAIT;
           end

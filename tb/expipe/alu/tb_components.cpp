@@ -56,7 +56,7 @@ void Drv::drive(ReqTx *req)
     if (req != NULL)
     {
         dut->rs1_i = req->rs1;
-        dut->rs2_i = req->rs2;
+        dut->rs2_i = req>rs2;
         dut-> ctl_i = req->alu_ctl;
         dut->valid_i = req->valid;
         dut->flush_i = req->flush;

@@ -305,7 +305,7 @@ if __name__ == "__main__":
     #get path of the run dir
     cwd = os.getcwd()
     benchmarks_dir = os.path.join(cwd, PATH, 'logs/sim')
-    BENCH_WHITE_LISTE = ['cubic', 'nbody', 'nettle-sha256', 'st', 'ud']
+    BENCH_WHITE_LISTE = ['cubic', 'nbody', 'st', 'ud']
     print("Benchmark summary:")
     #get benchmarks
     benchmarks = get_benchmarks(benchmarks_dir)

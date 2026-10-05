@@ -20,6 +20,7 @@
  */
 module store_buffer #(
   parameter  int unsigned DEPTH = 4,
+  parameter  int unsigned LB_DEPTH = len5_config_pkg::LDBUFF_DEPTH,
   // Dependent parameters: do NOT override
   localparam int unsigned IdxW  = $clog2(DEPTH)
 ) (
@@ -60,6 +61,12 @@ module store_buffer #(
   output logic [IdxW-1:0] lb_latest_idx_o,        // tag of the latest store
   output logic            lb_oldest_completed_o,  // the oldest store has completed
   output logic [IdxW-1:0] lb_oldest_idx_o,        // tag of the oldest active store
+
+  // Older loads that still need to capture their values.
+  input  logic [LB_DEPTH-1:0] lb_pending_i,
+  output logic [LB_DEPTH-1:0] lb_older_loads_o,
+  output expipe_pkg::ldst_width_t lb_mem_type_o,
+  input  logic lb_mem_blocked_i,
 
   // Level-zero cache control (store-to-load forwarding)
   input  logic                    [          IdxW-1:0] l0_idx_i,           // requested entry
@@ -147,6 +154,7 @@ module store_buffer #(
   sb_data_t [DEPTH-1:0] data;
   logic     [DEPTH-1:0] active;
   sb_state_t [DEPTH-1:0] curr_state, next_state;
+  logic [LB_DEPTH-1:0] older_loads[DEPTH];
 
   // Load buffer control
   logic push, pop, save_rs, addr_accepted, save_addr, mem_accepted, mem_done;
@@ -371,6 +379,21 @@ module store_buffer #(
     else if (push) latest_idx <= tail_idx;
   end
 
+  // Snapshot load age at issue. Clear dependencies before load slots can be
+  // reused, so a younger load in the same slot cannot block an older store.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : older_loads_reg
+    if (!rst_ni) begin
+      foreach (older_loads[i]) older_loads[i] <= '0;
+    end else if (flush_i) begin
+      foreach (older_loads[i]) older_loads[i] <= '0;
+    end else begin
+      foreach (older_loads[i]) begin
+        if (push && tail_idx == i[IdxW-1:0]) older_loads[i] <= lb_pending_i;
+        else older_loads[i] <= older_loads[i] & lb_pending_i;
+      end
+    end
+  end
+
   // -----------------
   // OUTPUT EVALUATION
   // -----------------
@@ -408,6 +431,8 @@ module store_buffer #(
   assign lb_latest_idx_o          = latest_idx;
   assign lb_oldest_completed_o    = mem_done;  // TODO : check if mem_accepted is enough
   assign lb_oldest_idx_o          = mem_tag_i;
+  assign lb_older_loads_o         = older_loads[mem_idx];
+  assign lb_mem_type_o            = data[mem_idx].store_type;
 
   // Level-zero cache
   generate
@@ -425,7 +450,7 @@ module store_buffer #(
   endgenerate
 
   // Memory system
-  assign mem_valid_o = curr_state[mem_idx] == STORE_S_MEM_REQ;
+  assign mem_valid_o = (curr_state[mem_idx] == STORE_S_MEM_REQ) && !lb_mem_blocked_i;
   assign mem_ready_o = 1'b1;
   assign mem_we_o    = 1'b1;
   assign mem_tag_o   = mem_idx;

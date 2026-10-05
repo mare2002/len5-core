@@ -97,6 +97,9 @@ module load_store_unit #(
   logic [STBUFF_TAG_W-1:0] sb_lb_latest_idx;
   logic                    sb_lb_oldest_completed;
   logic [STBUFF_TAG_W-1:0] sb_lb_oldest_idx;
+  logic [LB_DEPTH-1:0] lb_sb_pending, sb_lb_older_loads;
+  ldst_width_t sb_lb_mem_type;
+  logic lb_sb_mem_blocked;
 
   // Load/store buffer  <--> address adder
   logic lb_adder_valid, sb_adder_valid;
@@ -148,6 +151,11 @@ module load_store_unit #(
     .sb_latest_idx_i      (sb_lb_latest_idx),
     .sb_oldest_completed_i(sb_lb_oldest_completed),
     .sb_oldest_idx_i      (sb_lb_oldest_idx),
+    .sb_pending_loads_o   (lb_sb_pending),
+    .sb_older_loads_i     (sb_lb_older_loads),
+    .sb_mem_addr_i        (mem_store_addr_o),
+    .sb_mem_type_i        (sb_lb_mem_type),
+    .sb_mem_blocked_o     (lb_sb_mem_blocked),
     .adder_valid_i        (adder_lb_valid),
     .adder_ready_i        (adder_lb_ready),
     .adder_valid_o        (lb_adder_valid),
@@ -174,7 +182,8 @@ module load_store_unit #(
   // STORE BUFFER
   // ------------
   store_buffer #(
-    .DEPTH(SB_DEPTH)
+    .DEPTH(SB_DEPTH),
+    .LB_DEPTH(LB_DEPTH)
   ) u_store_buffer (
     .clk_i                (clk_i),
     .rst_ni               (rst_ni),
@@ -197,6 +206,10 @@ module load_store_unit #(
     .lb_latest_idx_o      (sb_lb_latest_idx),
     .lb_oldest_completed_o(sb_lb_oldest_completed),
     .lb_oldest_idx_o      (sb_lb_oldest_idx),
+    .lb_pending_i         (lb_sb_pending),
+    .lb_older_loads_o     (sb_lb_older_loads),
+    .lb_mem_type_o        (sb_lb_mem_type),
+    .lb_mem_blocked_i     (lb_sb_mem_blocked),
     .adder_valid_i        (adder_sb_valid),
     .adder_ready_i        (adder_sb_ready),
     .adder_valid_o        (sb_adder_valid),
@@ -260,7 +273,7 @@ module load_store_unit #(
     if (LEN5_STORE_LOAD_FWD_EN) begin : gen_store_load_fwd
       assign sb_l0_valid = mem_store_valid_o & mem_store_ready_i;
       assign sb_l0_addr  = mem_store_addr_o;
-      assign sb_l0_idx   = mem_store_tag_i;
+      assign sb_l0_idx   = mem_store_tag_o[StIdxW-1:0];
       assign lb_l0_addr  = mem_load_addr_o;
       l0_cache u_l0_cache (
         .clk_i            (clk_i),
