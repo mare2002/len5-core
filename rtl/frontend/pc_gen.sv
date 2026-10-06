@@ -76,8 +76,8 @@ module pc_gen #(
   // Priority list for choosing the next PC value:
   // 1) Exception
   // 2) Misprediction
-  // 3) Branch prediction
-  // 4) Default PC+jump immediate
+  // 3) Default PC+jump immediate
+  // 4) Branch prediction
   // 5) Default PC+4
   always_comb begin : pc_priority_enc
     if (comm_except_raised_i) begin
@@ -88,7 +88,7 @@ module pc_gen #(
       end else begin
         next_pc = adder_out;
       end
-    end else if (pred_taken_i) begin
+    end else if (pred_taken_i && !early_jump_valid_i) begin
       next_pc = pred_target_i;
     end else begin
       next_pc = adder_out;
