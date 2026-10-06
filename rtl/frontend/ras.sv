@@ -47,6 +47,8 @@ module ras #(
   logic [DEPTH-1:0][ALEN-1:0] ras_addr_q;
   logic [DEPTH-1:0]           ras_valid_confirmed_q;
   logic [DEPTH-1:0][ALEN-1:0] ras_addr_confirmed_q;
+  logic [DEPTH-1:0]           ras_valid_confirmed_d;
+  logic [DEPTH-1:0][ALEN-1:0] ras_addr_confirmed_d;
 
   // RAS pointers
   logic [IdxW-1:0] last_idx, new_idx, confirmed_last_idx, confirmed_new_idx;
@@ -62,8 +64,9 @@ module ras #(
     if (!rst_ni) begin
       ras_valid_q <= '0;
     end else if (flush_i) begin
-      ras_valid_q <= ras_valid_confirmed_q;
-      ras_addr_q  <= ras_addr_confirmed_q;
+      // Include any call/return confirmed in the recovery cycle.
+      ras_valid_q <= ras_valid_confirmed_d;
+      ras_addr_q  <= ras_addr_confirmed_d;
     end else begin
       if (push_i && pop_i) begin
         ras_addr_q[last_idx] <= link_addr_i;
@@ -82,20 +85,34 @@ module ras #(
     end
   end
 
-  // LIFO confirmed entries update
-  always_ff @(posedge clk_i or negedge rst_ni) begin : lifo_spec
+  // Update the recovery copy only from resolved calls and returns.
+  always_comb begin : lifo_confirmed_next
+    ras_valid_confirmed_d = ras_valid_confirmed_q;
+    ras_addr_confirmed_d  = ras_addr_confirmed_q;
+
+    if (call_confirm_i ^ ret_confirm_i) begin
+      if (call_confirm_i && ras_confirmed_full) begin
+        // Keep the most recent DEPTH confirmed return addresses.
+        for (int unsigned i = 0; i < DEPTH - 1; i++) begin
+          ras_addr_confirmed_d[i] = ras_addr_confirmed_q[i+1];
+        end
+        ras_addr_confirmed_d[DEPTH-1] = res_link_addr_i;
+      end else if (call_confirm_i) begin
+        ras_valid_confirmed_d[confirmed_new_idx] = 1'b1;
+        ras_addr_confirmed_d[confirmed_new_idx]  = res_link_addr_i;
+      end else if (ret_confirm_i) begin
+        ras_valid_confirmed_d[confirmed_last_idx] = 1'b0;
+      end
+    end
+  end
+
+  // LIFO confirmed entries register
+  always_ff @(posedge clk_i or negedge rst_ni) begin : lifo_confirmed_upd
     if (!rst_ni) begin
       ras_valid_confirmed_q <= '0;
-    end else if (push_i && !pop_i && ras_full) begin
-      // Start over
-      ras_valid_confirmed_q <= {1'b0, ras_valid_confirmed_q[DEPTH-1:1]};
-    end else if (call_confirm_i ^ ret_confirm_i) begin
-      if (call_confirm_i && !ras_confirmed_full) begin
-        ras_valid_confirmed_q[confirmed_new_idx] <= 1'b1;
-        ras_addr_confirmed_q[confirmed_new_idx]  <= res_link_addr_i;
-      end else if (ret_confirm_i) begin
-        ras_valid_confirmed_q[confirmed_last_idx] <= 1'b0;
-      end
+    end else begin
+      ras_valid_confirmed_q <= ras_valid_confirmed_d;
+      ras_addr_confirmed_q  <= ras_addr_confirmed_d;
     end
   end
 
