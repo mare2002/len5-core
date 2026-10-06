@@ -95,6 +95,9 @@ module btb #(
       if(BTB_BITS>LEN5_MULTIPLE_ISSUES_BITS) begin : gen_btb_len_bits
         assign addr_r[i]   = {curr_pc_i[BTB_BITS+OFFSET-1:OFFSET+LEN5_MULTIPLE_ISSUES_BITS], i[LEN5_MULTIPLE_ISSUES_BITS-1:0]};
         assign tag_r[i]    = curr_pc_i[XLEN-1:BTB_BITS+OFFSET];
+	  end else if (BTB_BITS == LEN5_MULTIPLE_ISSUES_BITS) begin : gen_when_equal
+		assign addr_r[i] = i[BTB_BITS-1:0];
+		assign tag_r[i]  = curr_pc_i[XLEN-1:BTB_BITS+OFFSET];
       end else begin : gen_len_btb_bits
         assign addr_r[i] = i[BTB_BITS-1:0];
         assign tag_r[i] = {curr_pc_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS+OFFSET], i[LEN5_MULTIPLE_ISSUES_BITS-1:BTB_BITS]};
