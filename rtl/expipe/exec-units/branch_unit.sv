@@ -126,8 +126,14 @@ module branch_unit #(
 
   // Call execution confirmation
   // ---------------------------
+  // Faulting jumps must not update the confirmed recovery stack.
+`ifndef LEN5_C_EN
+  assign call_confirm_d = rs_bu_valid & !except_raised & (rs_bu_branch_type == BU_CALL);
+  assign ret_confirm_d  = rs_bu_valid & !except_raised & (rs_bu_branch_type == BU_RET);
+`else
   assign call_confirm_d = rs_bu_valid & (rs_bu_branch_type == BU_CALL);
   assign ret_confirm_d  = rs_bu_valid & (rs_bu_branch_type == BU_RET);
+`endif  /* LEN5_C_EN */
 
   // Branch target computation
   // -------------------------

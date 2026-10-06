@@ -95,7 +95,9 @@ module branch_cu (
         bu_confirm_en_o = 1'b1;
       end
       MIS: begin
-        issue_mis_o = 1'b1;
+        issue_mis_o     = 1'b1;
+        // Confirm once before the frontend restores the RAS on recovery.
+        bu_confirm_en_o = 1'b1;
       end
       MIS_LOAD_PC: begin
         fe_bpu_valid_o   = 1'b1;
@@ -107,6 +109,9 @@ module branch_cu (
       STALL:   ;  // use default values
       default: ;  // use default values
     endcase
+
+    // A backend flush cancels the registered resolution.
+    if (flush_i) bu_confirm_en_o = 1'b0;
   end
 
   // State update
