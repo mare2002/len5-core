@@ -25,7 +25,8 @@ module gen_valid_instr (
             //%TODO check with Michele, 
             // it's either this way, or nested loop
             always_comb begin : gen_selected_taken
-                logic selected = 1'b1;
+                logic selected;
+                selected = 1'b1;
                 for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
                     selected_taken[i] = selected;
                     if (predicted_taken[i] && skipped_n[i]) begin
@@ -37,7 +38,8 @@ module gen_valid_instr (
             // detect which instructions are skipped because pc counter didn't land on 00 address
             assign pc_lsbs = pc_i[LEN5_MULTIPLE_ISSUES_BITS-1+2:2];
             always_comb begin : geskipped_n
-                logic skipped_var_n = 1'b0;
+                logic skipped_var_n;
+                skipped_var_n = 1'b0;
                 for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
                     if(pc_lsbs == i[LEN5_MULTIPLE_ISSUES_BITS-1:0]) begin
                         skipped_var_n = 1'b1;

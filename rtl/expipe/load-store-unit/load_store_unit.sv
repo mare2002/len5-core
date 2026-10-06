@@ -81,6 +81,9 @@ module load_store_unit #(
   input  len5_pkg::except_code_t                              mem_store_except_code_i
 );
 
+	//%TODO when the time is right check the load store unit(near the end when
+	//the commit unit is at work)
+
   import len5_config_pkg::*;
   import expipe_pkg::*;
   import len5_pkg::*;

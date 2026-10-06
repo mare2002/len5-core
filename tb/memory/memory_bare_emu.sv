@@ -97,7 +97,6 @@ module memory_bare_emu #(
   dload_mem_ans_t                       data_load_rsp;
   dstore_mem_ans_t                      data_store_rsp;
   logic            [len5_pkg::XLEN-1:0] instr_addr_q;
-  logic            [len5_pkg::XLEN-1:0] data_load_addr_q;
   logic            [len5_pkg::XLEN-1:0] data_store_addr_q;
 
   // To load combinatorily the data from the memory
@@ -244,44 +243,30 @@ module memory_bare_emu #(
     data_load_pipe_reg[0].read          <= 'h0;
     data_load_pipe_reg[0].except_raised <= 1'b0;
     data_load_pipe_reg[0].except_code   <= E_UNKNOWN;
-    // Memory always ready to answer (data_load_ready_o set to '1')
+    // Capture the data, tag, and exception from the same load request.
     if (data_load_valid_i) begin
-      data_load_addr_q           <= data_load_addr_i;
       data_load_pipe_reg[0].read <= sampled_data;
+      case (dl_ret)
+        0: ;
+        1: begin
+          data_load_pipe_reg[0].except_raised <= 1'b1;
+          data_load_pipe_reg[0].except_code   <= E_LD_ADDR_MISALIGNED;
+          $display("[%8t] MEM EMU > WARNING: misaligned memory READ at %h", $time,
+                   data_load_addr_i);
+        end
+        2: begin
+          data_load_pipe_reg[0].except_raised <= 1'b1;
+          data_load_pipe_reg[0].except_code   <= E_LD_ACCESS_FAULT;
+          $display("[%8t] MEM EMU > WARNING: uninitialized memory READ at %h", $time,
+                   data_load_addr_i);
+        end
+        default: begin
+          data_load_pipe_reg[0].except_raised <= 1'b1;
+          $display("[%8t] MEM EMU > WARNING: unknown memory READ exception at %h", $time,
+                   data_load_addr_i);
+        end
+      endcase
     end
-  end
-
-  // Exception handling
-  always_comb begin : load_exc_handling
-    case (dl_ret)
-      0: data_load_pipe_reg[0].except_raised = 1'b0;
-      1: begin : address_misaligned
-        if (data_load_pipe_valid[0] && data_load_addr_q != data_load_addr_i)
-          $display(
-              "[%8t] MEM EMU > WARNING: misaligned memory READ at %h", $time, data_load_addr_q
-          );
-        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
-        data_load_pipe_reg[0].except_code   = E_LD_ADDR_MISALIGNED;
-      end
-      2: begin : access_fault
-        if (data_load_pipe_valid[0] && data_load_addr_q != data_load_addr_i)
-          $display(
-              "[%8t] MEM EMU > WARNING: uninitialized memory READ at %h", $time, data_load_addr_q
-          );
-        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
-        data_load_pipe_reg[0].except_code   = E_LD_ACCESS_FAULT;
-      end
-      default: begin
-        if (data_load_pipe_valid[0] && data_load_addr_q != data_load_addr_i)
-          $display(
-              "[%8t] MEM EMU > WARNING: unknown memory READ exception at %h",
-              $time,
-              data_load_addr_q
-          );
-        data_load_pipe_reg[0].except_raised = data_load_pipe_valid[0];
-        data_load_pipe_reg[0].except_code   = E_UNKNOWN;
-      end
-    endcase
   end
 
   // DATA STORE REQUEST

@@ -130,7 +130,8 @@ module early_jump_unit (
       end
 
       always_comb begin : gen_jump_valid
-        logic n_jump_found = 1'b1;
+        logic n_jump_found;
+        n_jump_found = 1'b1;
         jump_valid = '0;
         for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
           jump_valid[i] = n_jump_found;
@@ -147,7 +148,7 @@ module early_jump_unit (
     unique case (jump_type)
       JUMP_TYPE_RET:  target_valid = ras_addr_valid;
       JUMP_TYPE_NONE: target_valid = 1'b0;
-      default:        target_valid = ~mem_if_pred_i[jump_location].hit;  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
+      default:        target_valid = ~(mem_if_pred_i[jump_location].hit & mem_if_pred_i[jump_location].taken);  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
     endcase
   end
 

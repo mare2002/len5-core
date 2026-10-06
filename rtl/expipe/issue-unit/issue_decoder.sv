@@ -334,7 +334,6 @@ module issue_decoder (
         issue_type  = ISSUE_TYPE_JUMP;
         assigned_eu = EU_BRANCH_UNIT;
         eu_ctl.bu   = (instruction_i.j.rd == 5'b00001) ? BU_CALL : BU_JAL;
-        mem_crit    = 1'b0;
         imm_format  = IMM_TYPE_J;
       end
       JALR: begin
