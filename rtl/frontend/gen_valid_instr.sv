@@ -6,6 +6,7 @@ module gen_valid_instr (
     output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_o,
     output fetch_pkg::prediction_t pred_o
 );
+	import len5_pkg::*;
     import len5_config_pkg::*;
     generate
         if (LEN5_MULTIPLE_ISSUES == 1) begin : gen_single_issue

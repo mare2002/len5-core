@@ -102,7 +102,7 @@ module datapath #(
   ) u_fetch_stage (
     .clk_i                 (clk_i),
     .rst_ni                (rst_ni),
-    .flush_i               (be_fe_mis_flush),
+    .flush_i               (be_fe_mis_flush | be_fe_except_flush),
     .flush_bpu_i           (be_fe_except_flush),
     .instr_valid_i         (instr_rvalid_i),
     .instr_ready_i         (instr_gnt_i),
@@ -194,6 +194,6 @@ module datapath #(
   // OUTPUT EVALUATION
   // -----------------
   // Memory misprediction flush
-  assign mem_flush_o = be_fe_mis_flush | early_jump_mem_flush;
+  assign mem_flush_o = be_fe_mis_flush | be_fe_except_flush | early_jump_mem_flush;
 
 endmodule
