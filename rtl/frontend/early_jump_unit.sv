@@ -40,17 +40,13 @@ module early_jump_unit (
   import instr_pkg::JAL;
   import instr_pkg::JALR;
 
-  function int clamp(int x);
-    if (x < 0) x = 0;
-    return x;
-  endfunction
-
   //TODO Check with Michele, here we need to check every instruction and it's prediction
   //One question is we don't need to propagate the all of the predictions in the memory fetch unit, because only one can happen in one isntruction bundle
   //this might lower the number of bits that we are transfering  
 
   // PARAMETERS
   localparam logic [ILEN-1:0] RET = {12'b0, 5'b00001, 3'b000, 5'b00000, JALR[OPCODE_LEN-1:0]};
+  localparam int unsigned JUMP_LOCATION_WIDTH = (LEN5_MULTIPLE_ISSUES > 1) ? $clog2(LEN5_MULTIPLE_ISSUES) : 1;
 
   // INTERNAL SIGNALS
   // ----------------
@@ -90,7 +86,7 @@ module early_jump_unit (
   // Separated in two parts, one when the issue is 1 and the other where it's for more than one issue
   
   logic [LEN5_MULTIPLE_ISSUES-1:0] jump_valid;
-  logic [clamp(LEN5_MULTIPLE_ISSUES_BITS-1):0]jump_location;
+  logic [JUMP_LOCATION_WIDTH-1:0] jump_location;
   
   generate
     if (LEN5_MULTIPLE_ISSUES == 32'd1) begin : gen_single_issue
@@ -109,21 +105,21 @@ module early_jump_unit (
     end else begin : gen_multiple_issues
       always_comb begin : jump_dec
         jump_type = JUMP_TYPE_NONE;
-        jump_location = {LEN5_MULTIPLE_ISSUES_BITS{1'b1}};
+        jump_location = '1;
 
-        for(int i = LEN5_MULTIPLE_ISSUES; i >= 0; i--) begin : jump_type_of_oldest_instr
+        for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin : jump_type_of_oldest_instr
           if (valid_instr_i[i]) begin
             if (instr_i[i].raw == RET) begin
               jump_type = JUMP_TYPE_RET;
-              jump_location = i[LEN5_MULTIPLE_ISSUES_BITS-1:0];
+              jump_location = JUMP_LOCATION_WIDTH'(i);
             end
             else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[i].j.rd == 5'b00001) begin
               jump_type = JUMP_TYPE_CALL;
-              jump_location = i[LEN5_MULTIPLE_ISSUES_BITS-1:0];
+              jump_location = JUMP_LOCATION_WIDTH'(i);
             end
             else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) begin
               jump_type = JUMP_TYPE_JAL;
-              jump_location = i[LEN5_MULTIPLE_ISSUES_BITS-1:0];
+              jump_location = JUMP_LOCATION_WIDTH'(i);
             end
           end
         end
@@ -135,7 +131,7 @@ module early_jump_unit (
         jump_valid = '0;
         for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
           jump_valid[i] = n_jump_found;
-          if (jump_location == i[LEN5_MULTIPLE_ISSUES_BITS-1:0]) begin
+          if (jump_location == JUMP_LOCATION_WIDTH'(i)) begin
             n_jump_found = 1'b0;
           end
         end
