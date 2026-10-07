@@ -99,7 +99,7 @@ module pc_gen #(
   always_ff @(posedge clk_i or negedge rst_ni) begin : pc_reg
     if (!rst_ni) begin
       pc_o <= BOOT_PC;
-    end else if ((bu_res_valid_i && bu_res_i.mispredict) || mem_ready_i || early_jump_valid_i) begin
+    end else if (comm_except_raised_i || (bu_res_valid_i && bu_res_i.mispredict) || mem_ready_i || early_jump_valid_i) begin
       pc_o <= next_pc;
     end
   end : pc_reg
