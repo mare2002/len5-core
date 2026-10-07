@@ -146,9 +146,13 @@ module early_jump_unit (
   // jal instruction decoder
   always_comb begin : is_jump_dec
     unique case (jump_type)
-      JUMP_TYPE_RET:  target_valid = ras_addr_valid;
-      JUMP_TYPE_NONE: target_valid = 1'b0;
-      default:        target_valid = ~(mem_if_pred_i[jump_location].hit & mem_if_pred_i[jump_location].taken);  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
+//	%TODO check with Michele, this should be a different way of doing things,
+//	so which one is better, almost no change in IPC and cycles for the
+//	testbenches
+//      JUMP_TYPE_RET:  target_valid = ras_addr_valid && !(mem_if_pred_i[jump_location].hit && mem_if_pred_i[jump_location].taken && (mem_if_pred_i[jump_location].target == ras_addr));
+	  JUMP_TYPE_RET:  target_valid = ras_addr_valid;
+	  JUMP_TYPE_NONE: target_valid = 1'b0;
+      default:        target_valid = ~(mem_if_pred_i[jump_location].hit && mem_if_pred_i[jump_location].taken);  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
     endcase
   end
 
