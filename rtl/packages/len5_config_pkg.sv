@@ -34,7 +34,7 @@ package len5_config_pkg;
 
   // Multi-issue architecture
   // ------------------------
-  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd2;//maximum number of issues per cycle
+  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd8;//maximum number of issues per cycle
 
   // Enable M extension support
   // --------------------------
@@ -116,7 +116,7 @@ package len5_config_pkg;
   // FETCH STAGE
   // -----------
   // Return Address Stack (RAS) depth
-  localparam int unsigned RAS_DEPTH = 32'd8;
+  localparam int unsigned RAS_DEPTH = 32'd4;
 
   // Fetch memory interface
   // NOTE: if the memory is 0-latency, at least one of the fetch unit registers
@@ -128,7 +128,7 @@ package len5_config_pkg;
   // EXECUTION PIPELINE
   // ------------------
   // ISSUE QUEUE
-  localparam int unsigned IQ_DEPTH = 32'd8;  // number of entries in the issue queue (power of 2)
+  localparam int unsigned IQ_DEPTH = 32'd16;  // number of entries in the issue queue (power of 2)
 
   // LOAD/STORE UNIT
   localparam int unsigned LDBUFF_DEPTH = 32'd8;  // number of entries in the load buffer
