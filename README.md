@@ -63,6 +63,12 @@ The trace is saved in `build/sim-common/sim-trace.log`
 
 The `spike-check` target can be used to compare the trace logs from Spike and the RTL simulation and produce a summary of the differences (using `diff`). This target is also used by `make check` to verify that the simulation trace matches the one from the RTL simulation.
 
+An optional [C++ pipeline differential checker](tb/verilator/diff/README.md)
+links Spike directly, supports the modified out-of-order commit path, and
+produces an annotated FST with expected/actual values and an automatic GTKWave
+error marker. See that guide for `diff-build`, `diff-run`, `diff-test`, tested
+instruction coverage and known RTL discrepancies.
+
 ## TODO
 - [x] Fix RTL simulation
 - [x] Map some benchmark

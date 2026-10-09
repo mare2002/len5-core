@@ -296,3 +296,35 @@ export BUILD_DIR
 export PROJECT
 export LINKER
 export COPT
+
+# Optional direct-Spike differential verification (ordinary sim is unchanged).
+DIFF_BUILD_DIR ?= $(BUILD_DIR)/diff
+SPIKE_SRC ?= $(DIFF_BUILD_DIR)/spike-src
+SPIKE_BUILD ?= $(DIFF_BUILD_DIR)/spike-build
+VERILATOR ?= verilator
+FUSESOC ?= fusesoc
+JOBS ?= 4
+DIFF_ARGS ?=
+RISCV_EXE_PREFIX ?= riscv64-unknown-elf
+
+.PHONY: diff-spike diff-build diff-run diff-test diff-unit
+
+diff-spike:
+	python3 tb/verilator/diff/bootstrap_spike.py --source "$(SPIKE_SRC)" --build "$(SPIKE_BUILD)" -j $(JOBS)
+
+diff-build:
+	python3 tb/verilator/diff/compile_model.py --spike-src "$(SPIKE_SRC)" --spike-build "$(SPIKE_BUILD)" \
+		--build-dir "$(DIFF_BUILD_DIR)" --fusesoc "$(FUSESOC)" --verilator "$(VERILATOR)" -j $(JOBS)
+
+diff-run:
+	mkdir -p "$(DIFF_BUILD_DIR)/run"
+	cd "$(DIFF_BUILD_DIR)/run" && ../model/sim-verilator/Vtb_bare --diff \
+		--max_cycles "$(MAX_CYCLES)" --log_level "$(LOG_LEVEL)" \
+		+firmware="$(abspath $(FIRMWARE))" $(DIFF_ARGS)
+
+diff-unit:
+	$(MAKE) -f tests/diff/Makefile test
+
+diff-test: diff-unit
+	python3 tests/diff/run.py --simulator "$(DIFF_BUILD_DIR)/model/sim-verilator/Vtb_bare" \
+		--output "$(DIFF_BUILD_DIR)/tests" --riscv-prefix "$(RISCV_EXE_PREFIX)"

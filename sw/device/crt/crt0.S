@@ -35,6 +35,13 @@ _start:
     la sp, _sp # provided by linker script
     mv s0, sp # save stack pointer to s0
 
+#ifdef __riscv_flen
+    # Enable floating-point state before library calls
+    li t0, 0x6000
+    csrs mstatus, t0 # FS = Dirty; preserve other mstatus fields
+    csrw fcsr, zero # clear exception flags and select round-to-nearest-even
+#endif
+
     # Clear the bss segment
     la a0, __bss_start # bss sections begin (from linker script)
     la a2, __bss_end # bss sections end (from linker script)

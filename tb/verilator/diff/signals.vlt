@@ -1,0 +1,14 @@
+`verilator_config
+// Read-only exposure, confined to differential-verification builds.
+public_flat_rd -module "tb_bare" -var "*"
+public_flat_rd -module "issue_stage" -var "*"
+public_flat_rd -module "issue_queue" -var "*"
+public_flat_rd -module "commit_stage" -var "*"
+public_flat_rd -module "rob" -var "*"
+public_flat_rd -module "int_rf" -var "rf_data"
+public_flat_rd -module "csrs" -var "*"
+public_flat_rd -module "arith_rs*" -var "*"
+public_flat_rd -module "branch_rs" -var "*"
+public_flat_rd -module "load_buffer" -var "*"
+public_flat_rd -module "store_buffer" -var "*"
+public_flat_rd -module "branch_unit" -var "*"
