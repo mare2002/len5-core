@@ -286,7 +286,8 @@ void Monitor::before_falling(Stamp t) {
 bool Monitor::stopped() const { return impl_->checker.stopped(); }
 int Monitor::finish(bool normal, Stamp t, const std::string &original) {
     impl_->checker.finish(normal, t);
-    annotate(original, impl_->checker);
+    if (!original.empty())
+        annotate(original, impl_->checker);
     std::cerr << "Differential verification: status " << impl_->checker.status() << "; "
               << impl_->checker.committed_count() << " commits; report "
               << impl_->checker.directory() << "/report.json\n";

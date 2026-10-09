@@ -59,7 +59,6 @@ scripts/*.log
 reports
 results.txt
 build*
-!tests/diff/build_test.py
 *.png
 *.jpg
 *.pdf

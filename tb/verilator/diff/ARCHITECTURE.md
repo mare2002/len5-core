@@ -26,10 +26,16 @@
 * `annotate.cpp`: streaming FST reader/writer merge, JSON field legend and GTKWave
   save file, using Verilator's bundled GTKWave library.
 
-Original output remains `logs/waves.fst` and, when requested,
-`logs/sim-trace.log`. The checker output directory contains `report.json`,
+When waveform recording is requested, original output remains `logs/waves.fst`.
+The optional instruction text trace is `logs/sim-trace.log`.
+The checker output directory contains `report.json`,
 `events.bin`, `annotated.fst`, `annotated.gtkw` and `fields.json`. `events.bin`
 is a local C++ event spool, not a portable/versioned interchange format.
+With `DUMP_WAVES=false`, only `report.json` is written by the checker; binary
+event journaling and FST post-processing are disabled, while discrepancy
+timestamps and all comparisons remain available. Existing Make simulation and
+benchmark targets enable checking with `VERIFICATION=true`. Verified benchmarks
+have independent working directories, including their trace and report files.
 
 The annotated FST copies the original hierarchy, aliases, widths, time scale and
 time zero, then adds `verification.<stage>.laneN`. Lanes represent simultaneous

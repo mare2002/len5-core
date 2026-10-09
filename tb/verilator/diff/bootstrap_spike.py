@@ -135,7 +135,7 @@ def ensure_spike(source, build, jobs=4):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=ROOT / 'sw/vendor/riscv-isa-sim')
-    parser.add_argument('--build', type=Path, default=ROOT / 'build/diff/spike-build')
+    parser.add_argument('--build', type=Path, default=ROOT / 'build/spike-build')
     parser.add_argument('-j', type=int, default=4)
     args = parser.parse_args()
     try:

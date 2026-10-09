@@ -12,6 +12,7 @@
 // Author: Michele Caon
 // Date: 30/01/2024
 
+#include <cstdio>
 #include <cstdlib>
 #include <getopt.h>
 #include <verilated.h>
@@ -28,7 +29,7 @@
 // Default parameters
 #define RESET_CYCLES 10
 #define FST_FILENAME "logs/waves.fst"
-#define TRACE_FILENAME "logs/trace.log" // DO NOT CHANGE before changing in `tb_bare.sv` as well
+#define TRACE_FILENAME "logs/sim-trace.log" // Must match TRACE_FILE in tb_bare.sv
 #define MAX_SIM_TIME 1e9
 
 // Logger
@@ -88,14 +89,10 @@ int main(int argc, char *argv[]) {
                 logger.setLogLvl(optarg);
                 break;
             case 'w':
-                if (!strcmp(optarg, "true") || !strcmp(optarg, "1")) {
-                    dump_waves = true;
-                }
+                dump_waves = !strcmp(optarg, "true") || !strcmp(optarg, "1");
                 break;
             case 't':
-                if (!strcmp(optarg, "true") || !strcmp(optarg, "1")) {
-                    dump_trace = true;
-                }
+                dump_trace = !strcmp(optarg, "true") || !strcmp(optarg, "1");
                 break;
             case 'h':
                 printf("Usage: %s [OPTIONS]\n", argv[0]);
@@ -106,7 +103,7 @@ int main(int argc, char *argv[]) {
                 printf("  -t, --dump_trace <true|false>    Enable instruction trace dump\n");
                 printf("  -h, --help                       Show this help message\n");
 #ifdef LEN5_DIFF
-                printf("  --diff                         Enable Spike differential verification and FST\n");
+                printf("  --diff                         Enable Spike differential verification\n");
                 printf("  --diff-output <directory>      Reports and annotated waveform (logs/diff)\n");
                 printf("  --diff-recovery <cycles>       Frontend recovery timeout (10000)\n");
                 printf("  --diff-progress <cycles>       Commit progress timeout (10000)\n");
@@ -122,9 +119,6 @@ int main(int argc, char *argv[]) {
     }
 
     // Create simulation context
-#ifdef LEN5_DIFF
-    if (diff_enabled) dump_waves = true;
-#endif
     VerilatedContext *cntx = new VerilatedContext;
     cntx->commandArgs(argc, argv);
 
@@ -159,6 +153,8 @@ int main(int argc, char *argv[]) {
 #ifdef LEN5_DIFF
     std::unique_ptr<len5::diff::Monitor> differential;
     if (diff_enabled) {
+        diff_config.record_events = dump_waves;
+        if (!dump_waves) std::remove(FST_FILENAME);
         std::string firmware;
         for (int i = 1; i < argc; ++i) {
             const std::string arg = argv[i];
@@ -233,7 +229,8 @@ int main(int argc, char *argv[]) {
 #ifdef LEN5_DIFF
     if (differential) {
         try {
-            result = differential->finish(cntx->gotFinish(), {cntx->time() / 2, cntx->time()}, FST_FILENAME);
+            result = differential->finish(cntx->gotFinish(), {cntx->time() / 2, cntx->time()},
+                                          dump_waves ? FST_FILENAME : "");
         } catch (const std::exception& e) {
             fprintf(stderr, "Differential output failed: %s\n", e.what());
             result = 2;

@@ -23,8 +23,23 @@ SOFTWARE_DIR    ?= $(BUILD_DIR)
 FIRMWARE		?= $(BUILD_DIR)/main.hex
 MAX_CYCLES		?= 100000
 LOG_LEVEL		?= LOG_MEDIUM
-DUMP_TRACE		?= true
-DIFF            ?= 0
+VERIFICATION    ?= false
+
+# Verification is selected through the existing RTL build/run targets.
+VERIFICATION_BUILD_DIR ?= $(BUILD_DIR)/diff
+SPIKE_SRC       ?= $(abspath sw/vendor/riscv-isa-sim)
+SPIKE_BUILD     ?= $(BUILD_DIR)/spike-build
+VERILATOR       ?= verilator
+FUSESOC         ?= fusesoc
+JOBS            ?= 4
+VERIFICATION_ARGS ?=
+VERIFICATION_ENABLED := $(filter true 1 yes,$(VERIFICATION))
+SIM_RUN_DIR ?= $(abspath $(if $(filter $(abspath $(BUILD_DIR)),$(abspath $(SOFTWARE_DIR))),$(BUILD_DIR)/sim-common,$(SOFTWARE_DIR)))
+ifneq ($(VERIFICATION_ENABLED),)
+SIM_MODEL_DEP := .verification-build
+else
+SIM_MODEL_DEP := $(BUILD_DIR)/.verilator.lock
+endif
 
 #Waveform font size
 FONT_SIZE       ?= 14
@@ -75,12 +90,13 @@ lint: | .check-fusesoc
 # --------------
 # Build Verilator model
 # Re-run every time the necessary files (.core, RTL, CPP) change
-.PHONY: verilator-build
-ifeq ($(DIFF),1)
-verilator-build: diff-build
-else
-verilator-build: $(BUILD_DIR)/.verilator.lock
-endif
+.PHONY: verilator-build .verification-build
+verilator-build: $(SIM_MODEL_DEP)
+
+.verification-build:
+	python3 tb/verilator/diff/compile_model.py --spike-src "$(SPIKE_SRC)" --spike-build "$(SPIKE_BUILD)" \
+		--build-dir "$(VERIFICATION_BUILD_DIR)" --fusesoc "$(FUSESOC)" --verilator "$(VERILATOR)" \
+		--fusesoc-flags="$(FUSESOC_FLAGS)" -j $(JOBS)
 $(BUILD_DIR)/.verilator.lock: $(SIM_CORE_FILES) $(SIM_HDL_FILES) $(SIM_CPP_FILES) | .check-fusesoc $(BUILD_DIR)/
 	@echo "## Building simulation model with Verilator..."
 	fusesoc run --no-export --target sim --tool verilator $(FUSESOC_FLAGS) --build polito:len5:len5
@@ -88,37 +104,71 @@ $(BUILD_DIR)/.verilator.lock: $(SIM_CORE_FILES) $(SIM_HDL_FILES) $(SIM_CPP_FILES
 
 # Run Verilator simulation
 .PHONY: verilator-sim
-verilator-sim: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/main.hex | .check-fusesoc
+verilator-sim: DUMP_WAVES ?= true
+verilator-sim: DUMP_TRACE ?= true
+verilator-sim: $(SIM_MODEL_DEP) $(FIRMWARE) | .check-fusesoc
+ifneq ($(VERIFICATION_ENABLED),)
+	mkdir -p "$(SIM_RUN_DIR)"
+	cd "$(SIM_RUN_DIR)" && "$(abspath $(VERIFICATION_BUILD_DIR))/model/sim-verilator/Vtb_bare" --diff \
+		--log_level="$(LOG_LEVEL)" --max_cycles="$(MAX_CYCLES)" \
+		--dump_trace="$(DUMP_TRACE)" --dump_waves="$(DUMP_WAVES)" \
+		+firmware="$(abspath $(FIRMWARE))" $(VERIFICATION_ARGS) $(FUSESOC_ARGS)
+else
 	fusesoc run --no-export --target sim --tool verilator --run $(FUSESOC_FLAGS) polito:len5:len5 \
 		--log_level=$(LOG_LEVEL) \
-		--firmware=$(FIRMWARE) \
+		--firmware="$(abspath $(FIRMWARE))" \
 		--max_cycles=$(MAX_CYCLES) \
 		--dump_trace=$(DUMP_TRACE) \
+		--dump_waves=$(DUMP_WAVES) \
 		$(FUSESOC_ARGS)
+endif
 
 .PHONY: verilator-opt
-verilator-opt: $(BUILD_DIR)/.verilator.lock $(SOFTWARE_DIR)/main.hex | .check-fusesoc
+verilator-opt: DUMP_WAVES ?= false
+verilator-opt: DUMP_TRACE ?= false
+verilator-opt: $(SIM_MODEL_DEP) $(FIRMWARE) | .check-fusesoc
+ifneq ($(VERIFICATION_ENABLED),)
+	mkdir -p "$(SIM_RUN_DIR)"
+	cd "$(SIM_RUN_DIR)" && "$(abspath $(VERIFICATION_BUILD_DIR))/model/sim-verilator/Vtb_bare" --diff \
+		--log_level="$(LOG_LEVEL)" --max_cycles="$(MAX_CYCLES)" \
+		--dump_trace="$(DUMP_TRACE)" --dump_waves="$(DUMP_WAVES)" \
+		+firmware="$(abspath $(FIRMWARE))" $(VERIFICATION_ARGS) $(FUSESOC_ARGS)
+else
 	fusesoc run --no-export --target sim --tool verilator --run $(FUSESOC_FLAGS) polito:len5:len5 \
 		--log_level=$(LOG_LEVEL) \
-		--firmware=$(FIRMWARE) \
+		--firmware="$(abspath $(FIRMWARE))" \
 		--max_cycles=$(MAX_CYCLES) \
-		--dump_waves=false \
+		--dump_trace=$(DUMP_TRACE) \
+		--dump_waves=$(DUMP_WAVES) \
 		$(FUSESOC_ARGS)
+endif
 
-$(BUILD_DIR)/sim-common/sim-trace.log: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/main.hex
+$(BUILD_DIR)/sim-common/sim-trace.log: $(SIM_MODEL_DEP) $(FIRMWARE)
+ifneq ($(VERIFICATION_ENABLED),)
+	$(MAKE) verilator-sim DUMP_TRACE=true DUMP_WAVES=$(if $(DUMP_WAVES),$(DUMP_WAVES),true)
+	cp "$(SIM_RUN_DIR)/logs/sim-trace.log" "$@"
+else
 	@echo "## Running simulation with Verilator..."
 	fusesoc run --no-export --target sim --tool verilator --run $(FUSESOC_FLAGS) polito:len5:len5 \
 		--log_level=$(LOG_LEVEL) \
-		--firmware=$(FIRMWARE) \
+		--firmware="$(abspath $(FIRMWARE))" \
 		--max_cycles=$(MAX_CYCLES) \
 		--dump_trace=true \
 		--dump_waves=$(DUMP_WAVES) \
 		$(FUSESOC_ARGS)
+endif
 
 # Open dumped waveform with GTKWave
 .PHONY: verilator-waves
+ifneq ($(VERIFICATION_ENABLED),)
+verilator-waves: $(SIM_RUN_DIR)/logs/diff/annotated.gtkw | .check-gtkwave
+	gtkwave "$<" --rcvar 'fontname_signals Monospace $(FONT_SIZE)' --rcvar 'fontname_waves Monospace $(FONT_SIZE)'
+$(SIM_RUN_DIR)/logs/diff/annotated.gtkw:
+	$(MAKE) verilator-sim DUMP_WAVES=true
+else
 verilator-waves: $(BUILD_DIR)/sim-common/waves.fst | .check-gtkwave
 	gtkwave -a tb/misc/verilator-waves.gtkw $< --rcvar 'fontname_signals Monospace $(FONT_SIZE)' --rcvar 'fontname_waves Monospace $(FONT_SIZE)'
+endif
 
 # QuestaSim
 .PHONY: questasim-sim
@@ -129,23 +179,25 @@ questasim-sim: | app .check-fusesoc $(BUILD_DIR)/
 # Benchmarking targets
 # --------------------
 .PHONY: run-benchmarks
-run-benchmarks: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/$(SUITE)/logs/compiler/ $(BUILD_DIR)/$(SUITE)/logs/sim/ $(PARALLEL_JOBS)
+run-benchmarks: $(SIM_MODEL_DEP) $(BUILD_DIR)/$(SUITE)/logs/compiler/ $(BUILD_DIR)/$(SUITE)/logs/sim/ $(PARALLEL_JOBS)
 	@echo "## Getting the results from benchmarks"
 	python3 scripts/parse_benchmarks.py -s $(SUITE) -p $(BUILD_DIR)/$(SUITE)
 	@echo "$@ done."
 
-$(PARALLEL_JOBS): job_%: $(BUILD_DIR)/.verilator.lock $(BUILD_DIR)/$(SUITE)/logs/compiler/ $(BUILD_DIR)/$(SUITE)/logs/sim/
+$(PARALLEL_JOBS): job_%: $(SIM_MODEL_DEP) $(BUILD_DIR)/$(SUITE)/logs/compiler/ $(BUILD_DIR)/$(SUITE)/logs/sim/
 	@$(MAKE) run SOFTWARE_DIR=$(BUILD_DIR)/$(SUITE)/run/$*/ MAX_CYCLES=$(MAX_CYCLES)  BENCHMARK=$*
 
 .PHONY: run
-run: $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex
+run-benchmarks run $(PARALLEL_JOBS): MAX_CYCLES = 10000000
+run: SOFTWARE_DIR = $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)
+run: $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex | $(BUILD_DIR)/$(SUITE)/logs/sim/
 	@echo "## Starting the simulation of $(SUITE) benchmark $(BENCHMARK)"
-	@$(MAKE) verilator-opt FIRMWARE=$< MAX_CYCLES=10000000 > $(BUILD_DIR)/$(SUITE)/logs/sim/$(BENCHMARK).log 2>&1
+	@$(MAKE) verilator-opt SOFTWARE_DIR="$(SOFTWARE_DIR)" FIRMWARE="$<" MAX_CYCLES=$(MAX_CYCLES) > $(BUILD_DIR)/$(SUITE)/logs/sim/$(BENCHMARK).log 2>&1
 	@echo "## End of the simulation of $(SUITE) benchmark $(BENCHMARK)"
 
-$(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex:
+$(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex: | $(BUILD_DIR)/$(SUITE)/logs/compiler/
 	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
-	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(SOFTWARE_DIR) BENCHMARK=$(BENCHMARK) > $(BUILD_DIR)/$(SUITE)/logs/compiler/$(BENCHMARK).log 2>&1
+	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR="$(dir $@)" BENCHMARK=$(BENCHMARK) > $(BUILD_DIR)/$(SUITE)/logs/compiler/$(BENCHMARK).log 2>&1
 
 # Software
 # --------
@@ -217,7 +269,7 @@ spike-check: $(BUILD_DIR)/.verilator.lock | $(BUILD_DIR)/sim-common/ .check-fuse
 
 # Check that nothing is broken
 # ----------------------------
-.PHONE: check
+.PHONY: check
 check: | check-alu .check-fusesoc
 	@echo "### Executing regression tests..."
 	@echo " ## Checking RTL..."
@@ -282,6 +334,11 @@ charts: w/benchmarks/embench/output/benchmarks.csv scripts/xheep_resultsO2.csv
 .PHONY: clean
 clean: clean-app clean-sim clean-run
 
+# Remove simulation, application and report outputs, retaining compiled Spike.
+.PHONY: clean-keep-spike
+clean-keep-spike:
+	python3 util/clean-build.py --build-dir "$(BUILD_DIR)" --keep "$(SPIKE_BUILD)"
+
 .PHONY: clean-run
 clean-run:
 	@rm -rf $(BUILD_DIR)/$(SUITE)
@@ -306,36 +363,3 @@ export BUILD_DIR
 export PROJECT
 export LINKER
 export COPT
-
-# Optional direct-Spike differential verification (ordinary sim is unchanged).
-DIFF_BUILD_DIR ?= $(BUILD_DIR)/diff
-SPIKE_SRC ?= $(abspath sw/vendor/riscv-isa-sim)
-SPIKE_BUILD ?= $(DIFF_BUILD_DIR)/spike-build
-VERILATOR ?= verilator
-FUSESOC ?= fusesoc
-JOBS ?= 4
-DIFF_ARGS ?=
-RISCV_EXE_PREFIX ?= riscv64-unknown-elf
-
-.PHONY: diff-spike diff-build diff-run diff-test diff-unit
-
-diff-spike:
-	python3 tb/verilator/diff/bootstrap_spike.py --source "$(SPIKE_SRC)" --build "$(SPIKE_BUILD)" -j $(JOBS)
-
-diff-build:
-	python3 tb/verilator/diff/compile_model.py --spike-src "$(SPIKE_SRC)" --spike-build "$(SPIKE_BUILD)" \
-		--build-dir "$(DIFF_BUILD_DIR)" --fusesoc "$(FUSESOC)" --verilator "$(VERILATOR)" -j $(JOBS)
-
-diff-run: diff-build
-	mkdir -p "$(DIFF_BUILD_DIR)/run"
-	cd "$(DIFF_BUILD_DIR)/run" && ../model/sim-verilator/Vtb_bare --diff \
-		--max_cycles "$(MAX_CYCLES)" --log_level "$(LOG_LEVEL)" \
-		+firmware="$(abspath $(FIRMWARE))" $(DIFF_ARGS)
-
-diff-unit:
-	python3 tests/diff/build_test.py
-	$(MAKE) -f tests/diff/Makefile test
-
-diff-test: diff-unit diff-build
-	python3 tests/diff/run.py --simulator "$(DIFF_BUILD_DIR)/model/sim-verilator/Vtb_bare" \
-		--output "$(DIFF_BUILD_DIR)/tests" --riscv-prefix "$(RISCV_EXE_PREFIX)"

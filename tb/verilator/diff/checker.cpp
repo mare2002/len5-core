@@ -103,9 +103,14 @@ Decode decode(uint32_t i) {
 Checker::Checker(Reference &s, const std::string &dir, Config c)
     : spike_(s), config_(c), directory_(dir) {
     std::filesystem::create_directories(dir);
-    journal_.open(dir + "/events.bin", std::ios::binary);
-    if (!journal_)
-        throw std::runtime_error("cannot open differential event journal");
+    // A reused run directory must not present annotations from an earlier run.
+    for (const auto *file : {"events.bin", "annotated.fst", "annotated.gtkw", "fields.json"})
+        std::filesystem::remove(std::filesystem::path(dir) / file);
+    if (config_.record_events) {
+        journal_.open(dir + "/events.bin", std::ios::binary);
+        if (!journal_)
+            throw std::runtime_error("cannot open differential event journal");
+    }
 }
 std::shared_ptr<ReferenceRecord> Checker::reference(uint64_t order) {
     while (next_reference_ <= order) {
@@ -137,9 +142,11 @@ void Checker::event(const Ptr &p, Stage stage, Field field, uint64_t e, uint64_t
     }
     if (p && p->reference)
         v.architectural_order = p->reference->order;
-    journal_.write(reinterpret_cast<const char *>(&v), sizeof v);
-    if (!journal_)
-        throw std::runtime_error("differential journal write failed");
+    if (config_.record_events) {
+        journal_.write(reinterpret_cast<const char *>(&v), sizeof v);
+        if (!journal_)
+            throw std::runtime_error("differential journal write failed");
+    }
     if (mismatch) {
         if (p)
             p->discrepancies.push_back(discrepancies_.size());

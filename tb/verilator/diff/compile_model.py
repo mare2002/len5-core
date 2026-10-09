@@ -43,6 +43,7 @@ def build_model(args):
         'verilator': [shutil.which(args.verilator), version],
         'fusesoc': [shutil.which(args.fusesoc), subprocess.check_output(
             [args.fusesoc, '--version'], text=True).strip()],
+        'fusesoc_flags': args.fusesoc_flags,
         'compilers': compiler_identity(env),
         'environment': {key: env.get(key, '') for key in
                         ('CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS')},
@@ -61,7 +62,8 @@ def build_model(args):
             return
         subprocess.run([args.fusesoc, 'run', '--no-export', '--target', 'sim',
                         '--tool', 'verilator', '--setup', '--build-root',
-                        str(args.build_dir / 'model'), 'polito:len5:len5'], cwd=ROOT, check=True)
+                        str(args.build_dir / 'model'), *shlex.split(args.fusesoc_flags),
+                        'polito:len5:len5'], cwd=ROOT, check=True)
         vc = next(model.glob('*.vc'))
         config = (model / 'config.mk').read_text()
         options = shlex.split(next(line.split(':=', 1)[1] for line in config.splitlines()
@@ -94,9 +96,10 @@ def build_model(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--spike-src', type=Path, default=ROOT / 'sw/vendor/riscv-isa-sim')
-    parser.add_argument('--spike-build', type=Path, default=ROOT / 'build/diff/spike-build')
+    parser.add_argument('--spike-build', type=Path, default=ROOT / 'build/spike-build')
     parser.add_argument('--build-dir', type=Path, default=ROOT / 'build/diff')
     parser.add_argument('--fusesoc', default='fusesoc')
+    parser.add_argument('--fusesoc-flags', default='')
     parser.add_argument('--verilator', default='verilator')
     parser.add_argument('-j', type=int, default=4)
     args = parser.parse_args()

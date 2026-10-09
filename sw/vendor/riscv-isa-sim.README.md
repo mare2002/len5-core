@@ -8,10 +8,11 @@
 The source directory is ignored by Git; the adjacent metadata remains tracked.
 On a fresh checkout, run `make vendor-update-spike` once to import the sources.
 Normal builds then use these local sources without network access. The optional
-RTL checker (`make verilator-build DIFF=1` or `make diff-build`) builds its static
-reference libraries under `build/diff/spike-build` only when necessary. An ordinary
+RTL checker (`make verilator-build VERIFICATION=true`) builds its static
+reference libraries under `build/spike-build` only when necessary. An ordinary
 `make verilator-build` keeps verification disabled and has no Spike dependency.
-`make diff-spike` builds just the libraries, not the standalone Spike executable.
+The build produces reference libraries, not the standalone Spike executable.
+`make clean-keep-spike` removes the remaining build outputs and retains this cache.
 
 Use `make vendor-update-spike` only to explicitly reimport the pinned upstream
 revision. Changing the pin requires adapting and validating the C++ integration.

@@ -113,6 +113,7 @@ struct Discrepancy {
 };
 struct Config {
     uint64_t recovery_cycles = 10000, progress_cycles = 10000;
+    bool record_events = true;
 };
 class Checker {
   public:
