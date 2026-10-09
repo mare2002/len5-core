@@ -24,6 +24,7 @@ FIRMWARE		?= $(BUILD_DIR)/main.hex
 MAX_CYCLES		?= 100000
 LOG_LEVEL		?= LOG_MEDIUM
 DUMP_TRACE		?= true
+DIFF            ?= 0
 
 #Waveform font size
 FONT_SIZE       ?= 14
@@ -75,7 +76,11 @@ lint: | .check-fusesoc
 # Build Verilator model
 # Re-run every time the necessary files (.core, RTL, CPP) change
 .PHONY: verilator-build
+ifeq ($(DIFF),1)
+verilator-build: diff-build
+else
 verilator-build: $(BUILD_DIR)/.verilator.lock
+endif
 $(BUILD_DIR)/.verilator.lock: $(SIM_CORE_FILES) $(SIM_HDL_FILES) $(SIM_CPP_FILES) | .check-fusesoc $(BUILD_DIR)/
 	@echo "## Building simulation model with Verilator..."
 	fusesoc run --no-export --target sim --tool verilator $(FUSESOC_FLAGS) --build polito:len5:len5
@@ -242,6 +247,11 @@ vendor-update:
 	@echo "Updating vendored IPs..."
 	find rtl/vendor -type f -name "*.vendor.hjson" -exec ./util/vendor.py -vU {} \;
 
+# Explicit maintenance operation; ordinary builds never access the network.
+.PHONY: vendor-update-spike
+vendor-update-spike:
+	python3 util/vendor.py -vU sw/vendor/riscv-isa-sim.vendor.hjson
+
 # Utilities
 # ---------
 # Check if fusesoc is available
@@ -299,7 +309,7 @@ export COPT
 
 # Optional direct-Spike differential verification (ordinary sim is unchanged).
 DIFF_BUILD_DIR ?= $(BUILD_DIR)/diff
-SPIKE_SRC ?= $(DIFF_BUILD_DIR)/spike-src
+SPIKE_SRC ?= $(abspath sw/vendor/riscv-isa-sim)
 SPIKE_BUILD ?= $(DIFF_BUILD_DIR)/spike-build
 VERILATOR ?= verilator
 FUSESOC ?= fusesoc
@@ -316,15 +326,16 @@ diff-build:
 	python3 tb/verilator/diff/compile_model.py --spike-src "$(SPIKE_SRC)" --spike-build "$(SPIKE_BUILD)" \
 		--build-dir "$(DIFF_BUILD_DIR)" --fusesoc "$(FUSESOC)" --verilator "$(VERILATOR)" -j $(JOBS)
 
-diff-run:
+diff-run: diff-build
 	mkdir -p "$(DIFF_BUILD_DIR)/run"
 	cd "$(DIFF_BUILD_DIR)/run" && ../model/sim-verilator/Vtb_bare --diff \
 		--max_cycles "$(MAX_CYCLES)" --log_level "$(LOG_LEVEL)" \
 		+firmware="$(abspath $(FIRMWARE))" $(DIFF_ARGS)
 
 diff-unit:
+	python3 tests/diff/build_test.py
 	$(MAKE) -f tests/diff/Makefile test
 
-diff-test: diff-unit
+diff-test: diff-unit diff-build
 	python3 tests/diff/run.py --simulator "$(DIFF_BUILD_DIR)/model/sim-verilator/Vtb_bare" \
 		--output "$(DIFF_BUILD_DIR)/tests" --riscv-prefix "$(RISCV_EXE_PREFIX)"

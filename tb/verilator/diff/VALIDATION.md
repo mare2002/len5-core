@@ -4,6 +4,25 @@
 
 Validation on the supplied tree used Spike v1.1.0, Verilator 5.040 and GCC 16.
 
+The vendored-dependency integration was validated again with the local RISC-V
+GCC 15.2.0 toolchain loaded through `private/init.sh`:
+
+* Pinned Spike libraries built successfully from `sw/vendor/riscv-isa-sim` into
+  `build/diff/spike-build`, without changing upstream sources or installing a CLI.
+* `make verilator-build DIFF=1` automatically ensured the reference libraries and
+  rebuilt the actual RTL checker with their new local paths.
+* A repeated identical build completed in approximately 0.32 seconds, reported
+  both libraries and simulator up to date, and changed no archive or executable
+  modification timestamps. This run required no network access.
+* `make diff-test` passed all **10 dependency-build tests, 27 tracker tests and
+  13 actual LEN5/Spike integration cases**. Expected injected failures and
+  unsupported cases remain distinct from matching programs.
+* The new dependency tests cover initial build, unchanged reuse, missing archives,
+  backdated header edits, changed compiler flags/configuration, missing commit
+  logging, failed-build recovery, wrong pins and missing-source rejection.
+
+This dependency change adds no FP or privileged-state verification coverage.
+
 * `make diff-unit`: **27 passed**, including multi-event timestamps, repeated
   PCs, ROB reuse after commit/flush, wrong-path execution, out-of-order and
   incomplete checkpoints, WAW corruption, delayed memory writes/responses,

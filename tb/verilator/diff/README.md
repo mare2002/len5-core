@@ -19,21 +19,27 @@ Verilator **5.040**, and a RISC-V cross compiler for the tests. GTKWave's
 bundled with Verilator and needs no conversion program.
 
 Spike is pinned to v1.1.0, commit
-`530af85d83781a3dae31a4ace84a573ec255fefa`. Installed Spike executables alone are
-insufficient: the adapter needs matching source headers and static libraries
-built with `--enable-commitlog`. The build rejects another revision. Verilator
+`530af85d83781a3dae31a4ace84a573ec255fefa`. Its sources are imported locally into
+`sw/vendor/riscv-isa-sim` and ignored by Git, with the same `.vendor.hjson` / `.lock.hjson` convention
+as `riscv-opcodes`; the vendoring lock identifies the imported revision. Installed
+Spike executables alone are insufficient: the adapter links matching static
+libraries with `--enable-commitlog`. Normal builds never download source. Verilator
 5.046 removed the XML interface used to derive field layouts, so the optional
 build currently requires 5.040 explicitly.
 
 From the repository root:
 
 ```sh
-# Build isolated reference libraries (downloads the pinned source on first use).
-make diff-spike JOBS=4
+# On a fresh checkout, import the pinned Spike sources once.
+make vendor-update-spike
 
+# Build the RTL checker; automatically build local Spike libraries if needed.
 # Set these paths if the corresponding tools are not on PATH.
 make diff-build VERILATOR=/path/to/verilator-5.040/bin/verilator \
     FUSESOC=/path/to/fusesoc JOBS=4
+
+# Equivalent entry through the ordinary RTL build target:
+make verilator-build DIFF=1
 
 # Run all tracker and real hardware integration tests.
 make diff-test RISCV_EXE_PREFIX=/path/to/bin/riscv64-unknown-elf
@@ -43,19 +49,54 @@ make diff-run FIRMWARE=build/diff/tests/memory_branch.hex MAX_CYCLES=20000
 gtkwave build/diff/run/logs/diff/annotated.gtkw
 ```
 
-`diff-build` and `diff-spike` are explicit setup steps; `diff-run` and `diff-test`
-use the existing build. `SPIKE_SRC`, `SPIKE_BUILD` and `DIFF_BUILD_DIR` select
-other locations. On the tested workstation the existing tool paths are
+`diff-build`, `diff-run` and `diff-test` automatically ensure their build dependencies.
+`diff-spike` remains available to build just the reference libraries. The defaults
+are `SPIKE_SRC=sw/vendor/riscv-isa-sim`, `SPIKE_BUILD=build/diff/spike-build` and
+`DIFF_BUILD_DIR=build/diff`. These variables select other locations; an external
+Spike Git checkout must have the pinned HEAD, while a copied vendor directory
+needs its adjacent lock file. On the tested workstation the tool paths are
 `../tool/verilator/5.040/bin/verilator` and
-`/home/markospremic/miniconda3/envs/core-len5/bin/fusesoc`. The validation used
-`SPIKE_SRC=/tmp/len5-spike-src SPIKE_BUILD=/tmp/len5-spike-build`.
+`/home/markospremic/miniconda3/envs/core-len5/bin/fusesoc`; source `private/init.sh`
+in a shell with Conda initialized to add the local tools to PATH.
+
+Successful builds save content fingerprints, compiler/configuration identity and
+output timestamps. An unchanged invocation skips configure, Make, FuseSoC and
+Verilator. Missing libraries are rebuilt; changed source contents, compiler flags
+or configuration invalidate the cache, including backdated edits. Build locks
+serialize concurrent invocations. Outputs stay under `build/`, outside the source
+tree; deleting that build directory requires a new compile, never a new download.
+
+Vendoring is an explicit maintenance operation, separate from building:
+
+```sh
+make vendor-update-spike
+# Equivalent: python3 util/vendor.py -U sw/vendor/riscv-isa-sim.vendor.hjson
+```
+
+This operation accesses upstream. The descriptor remains pinned to v1.1.0;
+changing that revision also requires updating and testing the C++ adapter.
 
 The bootstrap builds libraries only. If `dtc` is absent, it deliberately disables
 the unused device-tree generator with `DTC=false`; this does **not** produce a
 working Spike CLI/DTB environment. It also supplies `-include cstdint` for old
 Spike headers with recent GCC. Ordinary `make verilator-build` has none of these
-dependencies. `make diff-unit` tests the tracker and FST writer without Spike,
+dependencies. `make diff-unit` tests dependency caching, the tracker and FST writer without Spike,
 FuseSoC or an RTL build (`VERILATOR_ROOT` defaults to `/usr/share/verilator`).
+
+The Python scripts support builds and tests; instruction execution, comparison
+and FST annotation remain C++:
+
+* `bootstrap_spike.py`: validate local pinned sources, configure only when needed,
+  and cache the four Spike reference libraries. It does not clone or download.
+* `compile_model.py`: ensure Spike is built, reuse FuseSoC's RTL manifest, invoke
+  signal-layout generation, and link the C++ checker into the Verilator simulator.
+  It skips the entire model build when its inputs and executable are unchanged.
+* `layout.py`: generate `diff_layout.hh` from Verilator XML, including packed-field
+  offsets, widths, enum encodings and configuration constants for read-only VPI.
+* `tests/diff/build_test.py`: exercise initial build, cache reuse, missing outputs,
+  backdated edits, flag/configuration changes, failed builds and pin validation.
+* `tests/diff/run.py`: compile firmware, run real LEN5/Spike checks and injected
+  faults, and independently validate annotated FST contents and GTKWave markers.
 
 The built simulator also accepts:
 

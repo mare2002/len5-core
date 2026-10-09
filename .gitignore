@@ -6,6 +6,9 @@
 private/
 build/
 
+# Local Spike source import; keep adjacent vendoring metadata tracked.
+/sw/vendor/riscv-isa-sim/
+
 ## Synthesis report ##
 syn/reports/
 
@@ -56,6 +59,7 @@ scripts/*.log
 reports
 results.txt
 build*
+!tests/diff/build_test.py
 *.png
 *.jpg
 *.pdf

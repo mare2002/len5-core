@@ -1,0 +1,13 @@
+{
+  name: "riscv-isa-sim",
+  target_dir: "riscv-isa-sim",
+
+  upstream: {
+    url: "https://github.com/riscv-software-src/riscv-isa-sim.git",
+    rev: "530af85d83781a3dae31a4ace84a573ec255fefa", // Spike v1.1.0
+  },
+
+  exclude_from_upstream: [
+    ".github",
+  ]
+}
