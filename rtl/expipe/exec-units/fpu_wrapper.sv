@@ -119,11 +119,23 @@ module fpu_wrapper #(
   );
 
   assign fpu_rm          = roundmode_e'(in_reg_data_out.rm);
-  assign fpu_operands[0] = in_reg_data_out.rs1_value;
-  assign fpu_operands[1] = in_reg_data_out.rs2_value;
-  assign fpu_operands[2] = in_reg_data_out.rs3_value;
   assign fpu_tag         = in_reg_data_out.rob_idx;
   //assign fpu_op_mod = in_reg_data_out.clt[0];   //check whether always true
+
+  // FPnew ADD uses slots 1 and 2; slot 0 is replaced internally with 1.0.
+  // Fused operations use all three slots in architectural source order.
+  always_comb begin : fpnew_operands
+    fpu_operands[0] = in_reg_data_out.rs1_value;
+    fpu_operands[1] = in_reg_data_out.rs2_value;
+    fpu_operands[2] = in_reg_data_out.rs3_value;
+    case (in_reg_data_out.ctl)
+      FPU_ADD_S, FPU_ADD_D, FPU_SUB_S, FPU_SUB_D: begin
+        fpu_operands[1] = in_reg_data_out.rs1_value;
+        fpu_operands[2] = in_reg_data_out.rs2_value;
+      end
+      default: ;
+    endcase
+  end
 
   // -------------------
   // FLOATING-POINT UNIT
@@ -212,11 +224,15 @@ module fpu_wrapper #(
         fpu_op_mod = 1'b1;
       end
       FPU_L2D: begin
-        fpu_op = F2I;
+        fpu_op      = I2F;
+        fpu_int_fmt = INT64;
+        fpu_dst_fmt = FP64;
       end
       FPU_L2D_U: begin
-        fpu_op     = F2I;
-        fpu_op_mod = 1'b1;
+        fpu_op      = I2F;
+        fpu_op_mod  = 1'b1;
+        fpu_int_fmt = INT64;
+        fpu_dst_fmt = FP64;
       end
       FPU_CMP_D: begin
         fpu_op = CMP;
