@@ -3,7 +3,7 @@
 Verilator 5.040 XML is required; unsupported types fail when requested by the monitor.
 """
 import re
-import sys
+import argparse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -126,4 +126,11 @@ def generate(source, target):
     return (max_width + 31)//32 + 1
 
 if __name__ == '__main__':
-    generate(*sys.argv[1:])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('source')
+    parser.add_argument('target')
+    parser.add_argument('--words-output', type=Path)
+    args = parser.parse_args()
+    words = generate(args.source, args.target)
+    if args.words_output:
+        args.words_output.write_text(str(words) + '\n')

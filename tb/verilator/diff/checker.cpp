@@ -86,7 +86,9 @@ Decode decode(uint32_t i) {
         d.csr = true;
         auto csr = i >> 20;
         auto f = (i >> 12) & 7;
-        d.supported = f && (csr == 0x305 || (csr >= 0x340 && csr <= 0x343));
+        d.supported = (f == 1 || f == 2 || f == 3 || f == 5 || f == 6 || f == 7) &&
+                      (csr == 0x300 || csr == 0x305 || (csr >= 1 && csr <= 3) ||
+                       (csr >= 0x340 && csr <= 0x343));
         d.use_rs1 = f && f < 4;
         d.write = f;
         break;
@@ -113,10 +115,17 @@ Checker::Checker(Reference &s, const std::string &dir, Config c)
     }
 }
 std::shared_ptr<ReferenceRecord> Checker::reference(uint64_t order) {
+    // Keep checking older instructions while an unsupported reference instruction
+    // is only in the frontend. In particular, crt0's exit store must reach the
+    // testbench before the following WFI can terminate verification.
+    if (reference_boundary_ && order > *reference_boundary_)
+        return {};
     while (next_reference_ <= order) {
         auto r = std::make_shared<ReferenceRecord>(spike_.step());
         r->order = next_reference_;
         references_[next_reference_++] = r;
+        if (!r->unsupported.empty())
+            reference_boundary_ = r->order;
     }
     return references_.at(order);
 }
@@ -159,7 +168,8 @@ void Checker::compare(const Ptr &p, Stage s, Field f, uint64_t e, uint64_t a, St
 }
 void Checker::source_at_dispatch(uint32_t rob, uint64_t value, Stamp t) {
     auto p = active(rob, t, Stage::dispatch);
-    if (p && p->reference && p->reference->decoded.use_rs1)
+    if (p && p->reference && p->reference->unsupported.empty() &&
+        p->reference->decoded.use_rs1)
         compare(p, Stage::dispatch, Field::rs1_value, p->reference->rs1_value, value, t);
 }
 Checker::Ptr Checker::active(uint32_t rob, Stamp t, Stage s) {
@@ -179,6 +189,10 @@ uint64_t Checker::fetch(uint64_t pc, uint32_t insn, Stamp t) {
     instructions_[p->instruction_id] = p;
     frontend_.push_back(p);
     auto r = reference(fetch_order_);
+    if (!r) {
+        p->beyond_reference_boundary = true;
+        return p->instruction_id; // beyond the reference boundary; lifecycle only
+    }
     if (!diverged_ && pc == r->pc) {
         p->reference = r;
         architectural_[fetch_order_++] = p;
@@ -218,7 +232,7 @@ void Checker::dispatch(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rs1, ui
         return;
     }
     active_rob_[rob] = p;
-    if (auto r = p->reference) {
+    if (auto r = p->reference; r && r->unsupported.empty()) {
         if (r->decoded.use_rs1)
             compare(p, Stage::dispatch, Field::rs1, r->decoded.rs1, rs1, t);
         if (r->decoded.use_rs2)
@@ -255,7 +269,7 @@ void Checker::execute(uint32_t rob, uint64_t rs1, uint64_t rs2, uint64_t result,
     p->except_raised = exception;
     p->mispredicted = mispredicted;
     event(p, Stage::execution, Field::completion, 1, 1, t, false, false);
-    if (auto r = p->reference) {
+    if (auto r = p->reference; r && r->unsupported.empty()) {
         if (r->decoded.use_rs1)
             compare(p, Stage::execution, Field::rs1_value, r->rs1_value, rs1, t);
         if (r->decoded.use_rs2)
@@ -281,7 +295,7 @@ void Checker::memory(uint32_t index, bool store, uint64_t addr, uint8_t size, ui
         return;
     }
     auto p = it->second;
-    if (auto r = p->reference) {
+    if (auto r = p->reference; r && r->unsupported.empty()) {
         compare(p, Stage::memory, Field::address, r->address, addr, t);
         compare(p, Stage::memory, Field::size, r->decoded.size, size, t);
         compare(p, Stage::memory, Field::mask, r->byte_mask, mask, t);
@@ -298,6 +312,11 @@ void Checker::authorize(uint32_t index, uint32_t rob, Stamp t) {
     }
     auto p = it->second;
     compare(p, Stage::memory, Field::identity, p->rob_idx, rob, t, true);
+    if ((p->reference && !p->reference->unsupported.empty()) || p->beyond_reference_boundary) {
+        stop(p->reference ? p->reference->unsupported :
+             references_.at(*reference_boundary_)->unsupported, t, true);
+        return;
+    }
     bool safe = p->reference && !p->squashed;
     // Clearance may precede store commit, but never unresolved control flow or faults.
     for (const auto &[id, older] : instructions_) {
@@ -325,7 +344,7 @@ void Checker::external_store(uint32_t index, uint64_t addr, uint8_t mask, uint64
     compare(p, Stage::memory, Field::unauthorized_store, 1,
             p->authorized && !p->squashed && !p->external_write, t, true);
     p->external_write = true;
-    if (auto r = p->reference) {
+    if (auto r = p->reference; r && r->unsupported.empty()) {
         // Overlapping stores must become externally visible in architectural
         // order even when their commit notifications arrive out of order.
         for (const auto &[id, older] : instructions_) {
@@ -366,7 +385,7 @@ void Checker::load_request(uint32_t index, uint64_t addr, uint8_t mask, Stamp t)
         return;
     }
     auto p = it->second;
-    if (p->reference) {
+    if (p->reference && p->reference->unsupported.empty()) {
         compare(p, Stage::memory, Field::address, p->reference->address, addr, t);
         compare(p, Stage::memory, Field::mask, p->reference->byte_mask, mask, t);
     }
@@ -387,7 +406,7 @@ void Checker::load_response(uint32_t index, uint64_t data, bool exception, Stamp
     // tombstones until the response, independently of reuse of the LQ index.
     if (p->squashed)
         return;
-    if (auto r = p->reference) {
+    if (auto r = p->reference; r && r->unsupported.empty()) {
         compare(p, Stage::memory, Field::raw_data, r->raw_data, data & data_mask(r->decoded.size),
                 t);
         compare(p, Stage::memory, Field::exception, r->trap, exception, t);
@@ -413,8 +432,11 @@ void Checker::commit(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rd, bool 
     ++committed_count_;
     last_progress_ = t;
     event(p, Stage::commit, Field::completion, 1, 1, t, false, true);
-    confirm(p, t);
     if (!p->reference) {
+        if (p->beyond_reference_boundary && reference_boundary_) {
+            stop(references_.at(*reference_boundary_)->unsupported, t, true);
+            return;
+        }
         compare(p, Stage::commit, Field::speculative_divergence, 0, 1, t, true);
         return;
     }
@@ -423,6 +445,7 @@ void Checker::commit(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rd, bool 
         stop(r->unsupported, t, true);
         return;
     }
+    confirm(p, t);
     if (r->order != prefix_)
         ++out_of_order_commits_;
     compare(p, Stage::commit, Field::pc, r->pc, pc, t, true);

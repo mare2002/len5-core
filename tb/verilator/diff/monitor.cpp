@@ -12,7 +12,8 @@ const std::string top = "TOP.tb_bare.", backend = top + "u_datapath.u_backend.",
                   lsu = backend + "u_exec_stage.u_load_store_unit.", lb = lsu + "u_load_buffer.",
                   sb = lsu + "u_store_buffer.";
 const std::map<uint32_t, std::string> csr_signals = {
-    {0x305, "mtvec"}, {0x340, "mscratch"}, {0x341, "mepc"}, {0x342, "mcause"}, {0x343, "mtval"}};
+    {0x003, "fcsr"}, {0x300, "mstatus"}, {0x305, "mtvec"}, {0x340, "mscratch"},
+    {0x341, "mepc"}, {0x342, "mcause"}, {0x343, "mtval"}};
 class Signals {
     std::map<std::pair<std::string, int>, vpiHandle> handles_;
 
@@ -99,8 +100,12 @@ struct Monitor::Impl {
     }
     std::map<uint32_t, uint64_t> csr_state() {
         std::map<uint32_t, uint64_t> values;
-        for (const auto &[addr, sig] : csr_signals)
+        for (const auto &[addr, sig] : csr_signals) {
+            if (addr == 3 && !constants.at("len5_config_pkg.LEN5_F_EN") &&
+                !constants.at("len5_config_pkg.LEN5_D_EN"))
+                continue;
             values[addr] = signals.get(backend + "u_csrs." + sig);
+        }
         return values;
     }
     Impl(const std::string &image, const std::string &output, Config cfg, const std::string &f)

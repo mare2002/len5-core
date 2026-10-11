@@ -51,8 +51,16 @@ struct SpikeReference::Impl final : simif_t {
         cpu = std::make_unique<processor_t>(isa.c_str(), "M", "vlen:128,elen:64", this, 0, false,
                                             sink, std::cerr);
         cpu->get_state()->pc = pc;
-        for (auto [addr, value] : csrs)
-            cpu->set_csr(addr, value);
+        for (auto [addr, value] : csrs) {
+            // Spike's FP CSR write hook requires FS enabled, even for debugger
+            // writes. Both machines reset fcsr to zero; check it without writing
+            // or enabling FS behind the program's back.
+            if (addr == 0x003) {
+                if (cpu->get_csr(addr) != value)
+                    throw std::runtime_error("initial fcsr differs from Spike reset state");
+            } else
+                cpu->set_csr(addr, value);
+        }
         // Logging records are populated by the compiled hooks even with printing disabled.
         // No HTIF boot ROM, CLINT, host syscalls, or speculative RTL state enters this model.
     }
@@ -139,8 +147,12 @@ ReferenceRecord SpikeReference::step() {
     for (const auto &[reg, val] : s->log_reg_write)
         if ((reg & 15) == 4)
             r.csr_changes[reg >> 4] = val.v[0];
-    for (auto addr : {0x305u, 0x340u, 0x341u, 0x342u, 0x343u})
+    // get_csr(address) is Spike's side-effect-free debugger peek, so snapshots
+    // may observe fcsr while FS=Off without executing an illegal CSR access.
+    for (auto addr : {0x300u, 0x305u, 0x340u, 0x341u, 0x342u, 0x343u})
         r.csrs[addr] = m.cpu->get_csr(addr);
+    if (m.cpu->extension_enabled('F'))
+        r.csrs[0x003] = m.cpu->get_csr(0x003);
     const auto &log = r.decoded.store ? s->log_mem_write : s->log_mem_read;
     if (r.decoded.load || r.decoded.store) {
         if (log.size() == 1) {
@@ -161,8 +173,13 @@ ReferenceRecord SpikeReference::step() {
     }
     if (!r.decoded.supported || r.length != 4)
         r.unsupported = "unsupported instruction class: supports RV64IM and "
-                        "mtvec/mscratch/mepc/mcause/mtval CSR operations; FP, other CSRs, fences, "
+                        "mstatus/fcsr/frm/fflags/mtvec/mscratch/mepc/mcause/mtval CSR operations; "
+                        "FP instructions, other CSRs, fences, "
                         "compressed and atomic instructions are unsupported";
+    const auto fs = (r.csrs.at(0x300) >> 13) & 3;
+    if (fs == 1 || fs == 2)
+        r.unsupported = "mstatus.FS=Initial/Clean is unsupported by the Off/Dirty-only RTL; "
+                        "write FS=0 or FS=3";
     if (r.trap)
         r.unsupported = "Spike trap boundary (cause=" + std::to_string(r.cause) +
                         ", tval=" + std::to_string(r.tval) +

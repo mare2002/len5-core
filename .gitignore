@@ -59,6 +59,7 @@ scripts/*.log
 reports
 results.txt
 build*
+!/scripts/sim/build-verilator.sh
 *.png
 *.jpg
 *.pdf

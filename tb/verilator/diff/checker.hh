@@ -92,6 +92,7 @@ struct TrackedInstruction {
     bool fetched = true, dispatched = false, executed = false, committed = false, squashed = false;
     bool authorized = false, external_write = false, store_done = false, next_pc_checked = false;
     bool checkpoint_checked = false, except_raised = false, mispredicted = false;
+    bool beyond_reference_boundary = false;
     Stamp fetch_stamp, dispatch_stamp, execution_stamp, commit_stamp, authorization_stamp;
     std::shared_ptr<ReferenceRecord> reference;
     std::vector<size_t> discrepancies;
@@ -161,6 +162,7 @@ class Checker {
     std::string directory_, stop_reason_;
     bool unsupported_ = false, finished_ = false, diverged_ = false;
     std::optional<Stamp> divergence_start_;
+    std::optional<uint64_t> reference_boundary_;
     Stamp last_progress_{};
     uint64_t next_id_ = 1, next_reference_ = 0, fetch_order_ = 0, prefix_ = 0, newest_commit_ = 0;
     uint64_t serial_ = 0, committed_count_ = 0, checkpoint_count_ = 0, last_checkpoint_ = 0;

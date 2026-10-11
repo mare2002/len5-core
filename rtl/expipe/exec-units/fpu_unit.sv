@@ -107,7 +107,7 @@ module fpu_unit #(
   );
 
   // Rounding mode multiplexer
-  assign fpu_rm = (csr_frm_i == '1) ? rs_fpu_rm : csr_frm_i;
+  assign fpu_rm = (rs_fpu_rm == '1) ? csr_frm_i : rs_fpu_rm;
 
   // FPU wrapper
   fpu_wrapper #(

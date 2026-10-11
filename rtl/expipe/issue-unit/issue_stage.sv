@@ -100,7 +100,8 @@ module issue_stage (
   input logic [len5_pkg::XLEN-1:0] comm_rs3_value_i,
 
   // CSRs
-  input csr_pkg::csr_priv_t csr_priv_mode_i  // current privilege mode
+  input csr_pkg::csr_priv_t csr_priv_mode_i,  // current privilege mode
+  input logic csr_fp_enabled_i
 );
 
   import len5_config_pkg::*;
@@ -232,6 +233,7 @@ module issue_stage (
   issue_decoder u_issue_decoder (
     .instruction_i(iq_data_out.instruction),
     .priv_mode_i  (csr_priv_mode_i),
+    .fp_enabled_i (csr_fp_enabled_i),
     .issue_type_o (id_cu_issue_type),
     .except_code_o(id_except_code),
     .skip_eu_o    (id_skip_eu),

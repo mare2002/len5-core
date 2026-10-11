@@ -45,6 +45,18 @@ filesets:
     - tb/verilator/len5_tb.cpp
     file_type: cppSource
 
+  spike-checker:
+    files:
+    - tb/verilator/diff/checker.cpp
+    - tb/verilator/diff/spike_adapter.cpp
+    - tb/verilator/diff/monitor.cpp
+    - tb/verilator/diff/annotate.cpp
+    - tb/verilator/diff/checker.hh: {is_include_file: true}
+    - tb/verilator/diff/monitor.hh: {is_include_file: true}
+    - tb/verilator/diff/spike_adapter.hh: {is_include_file: true}
+    - tb/verilator/diff/signals.vlt: {file_type: vlt}
+    file_type: cppSource
+
   questasim-bare-tb:
     files:
     - tb/len5_tb.sv
@@ -56,6 +68,18 @@ filesets:
     file_type: vlt
 
 scripts:
+  prepare_verilator:
+    cmd:
+    - bash
+    - -c
+    - 'rm -f Vtb_bare.mk'
+
+  prepare_diff:
+    cmd:
+    - bash
+    - -c
+    - 'exec bash "$FILES_ROOT/scripts/sim/prepare-diff.sh"'
+
   # Create log directory
   prepare_dirs:
     cmd:
@@ -67,8 +91,8 @@ scripts:
   copy_logs:
     cmd:
     - bash
-    - ../../../scripts/sim/copy-logs.sh
-    - logs/waves.fst
+    - -c
+    - 'exec bash "$FILES_ROOT/scripts/sim/copy-logs.sh" logs/waves.fst'
 
   # Post synthesis copy of reports
   syn-copy-results:
@@ -87,7 +111,7 @@ targets:
     toplevel: datapath
 
   # RTL simulation
-  sim:
+  sim: &sim
     <<: *default
     default_tool: modelsim
     filesets_append:
@@ -104,6 +128,8 @@ targets:
     - tool_verilator ? (dump_waves)
     - tool_verilator ? (dump_trace)
     hooks:
+      pre_build:
+      - tool_verilator ? (prepare_verilator)
       pre_run:
       - prepare_dirs
       post_run:
@@ -119,7 +145,7 @@ targets:
         - -svinputport=compat
         - -hazards
         - -vmake
-      verilator:
+      verilator: &sim_verilator
         mode: cc
         verilator_options:
         - '--cc'
@@ -134,10 +160,39 @@ targets:
         - '-GBOOT_PC=65920' # 0x10180
         - '-GSERIAL_ADDR=536870912' # 0x20000000
         - '-GEXIT_ADDR=536871168' # 0x20000100
-        - '--exe'
-        - 'len5_tb.cpp'
         - '-Wall'
         - '-Wpedantic'
+
+  # FuseSoC owns compilation, linking and execution of the checked model.
+  sim-diff:
+    <<: *sim
+    default_tool: verilator
+    filesets_append:
+    - rtl-bare-tb
+    - verilator-bare-tb
+    - spike-checker
+    parameters_append:
+    - run_dir
+    - diff_output
+    - diff_recovery
+    - diff_progress
+    - diff_fault
+    hooks:
+      pre_build:
+      - prepare_diff
+      pre_run:
+      - prepare_dirs
+    tools:
+      verilator:
+        <<: *sim_verilator
+        verilator_options_append:
+        - '--vpi'
+        - '-Wno-DEPRECATED'
+        - '-f diff-options.vc'
+        make_options:
+        - '-B'
+        run_options:
+        - '--diff'
 
   # Format HDL with Verible
   format:
@@ -181,6 +236,26 @@ targets:
 
 # Parameters
 parameters:
+  run_dir:
+    datatype: str
+    description: Directory for this simulation's logs and waveforms.
+    paramtype: cmdlinearg
+  diff_output:
+    datatype: str
+    description: Directory for checker reports, relative to run_dir unless absolute.
+    paramtype: cmdlinearg
+  diff_recovery:
+    datatype: int
+    description: Maximum cycles waiting for frontend recovery.
+    paramtype: cmdlinearg
+  diff_progress:
+    datatype: int
+    description: Maximum cycles without an architectural commit.
+    paramtype: cmdlinearg
+  diff_fault:
+    datatype: str
+    description: Inject an observation fault for checker validation.
+    paramtype: cmdlinearg
   log_level:
     datatype: str
     description: |

@@ -68,10 +68,11 @@ links Spike directly, supports the modified out-of-order commit path, and
 produces an annotated FST with expected/actual values and an automatic GTKWave
 error marker. Spike sources are imported locally in `sw/vendor/riscv-isa-sim`,
 which is ignored by Git. Run `make vendor-update-spike` once on a fresh checkout.
-`make verilator-build VERIFICATION=true` automatically builds its
+`make verilator-build-debug` automatically builds its
 reference libraries when needed and reuses unchanged builds without downloads.
-Use the existing `verilator-sim`, `verilator-opt`, `run` or `run-benchmarks`
-targets with `VERIFICATION=true` to enable checking. Set `DUMP_WAVES=true` for
+Use `verilator-sim-debug`, `verilator-opt-debug`, `run-debug` or
+`run-benchmarks-debug` to enable checking. The original targets run ordinary
+simulations. Models are built under `build/normal` and `build/debug`. Set `DUMP_WAVES=true` for
 annotated waveforms or `DUMP_WAVES=false` for checking with only a JSON report.
 Simulation defaults to waves; optimized and benchmark runs default to no waves.
 The original program checks remain available through `make check`; the added

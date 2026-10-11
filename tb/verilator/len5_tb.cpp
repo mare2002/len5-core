@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <getopt.h>
+#include <unistd.h>
 #include <verilated.h>
 #include <verilated_fst_c.h>
 
@@ -53,11 +54,16 @@ int main(int argc, char *argv[]) {
         {"log_level",   required_argument, NULL, 'l'},
         {"help",        no_argument,       NULL, 'h'},
 #ifdef LEN5_DIFF
+        {"run_dir", required_argument, NULL, 1005},
         {"diff", no_argument, NULL, 1000},
         {"diff-output", required_argument, NULL, 1001},
+        {"diff_output", required_argument, NULL, 1001},
         {"diff-recovery", required_argument, NULL, 1002},
+        {"diff_recovery", required_argument, NULL, 1002},
         {"diff-progress", required_argument, NULL, 1003},
+        {"diff_progress", required_argument, NULL, 1003},
         {"diff-fault", required_argument, NULL, 1004},
+        {"diff_fault", required_argument, NULL, 1004},
 #endif
         {NULL, 0, NULL, 0}
     };
@@ -68,6 +74,7 @@ int main(int argc, char *argv[]) {
     bool              dump_trace = false;
 #ifdef LEN5_DIFF
     bool diff_enabled = false;
+    const char *run_dir = nullptr;
     std::string diff_output = "logs/diff", diff_fault;
     len5::diff::Config diff_config;
 #endif
@@ -81,6 +88,7 @@ int main(int argc, char *argv[]) {
             case 1002: diff_config.recovery_cycles = std::stoull(optarg); break;
             case 1003: diff_config.progress_cycles = std::stoull(optarg); break;
             case 1004: diff_fault = optarg; break;
+            case 1005: run_dir = optarg; break;
 #endif
             case 'c':
                 max_cycles = strtoul(optarg, NULL, 0);
@@ -104,6 +112,7 @@ int main(int argc, char *argv[]) {
                 printf("  -h, --help                       Show this help message\n");
 #ifdef LEN5_DIFF
                 printf("  --diff                         Enable Spike differential verification\n");
+                printf("  --run_dir <directory>          Directory for simulation logs and waveforms\n");
                 printf("  --diff-output <directory>      Reports and annotated waveform (logs/diff)\n");
                 printf("  --diff-recovery <cycles>       Frontend recovery timeout (10000)\n");
                 printf("  --diff-progress <cycles>       Commit progress timeout (10000)\n");
@@ -117,6 +126,13 @@ int main(int argc, char *argv[]) {
                 exit(EXIT_FAILURE);
         }
     }
+
+#ifdef LEN5_DIFF
+    if (run_dir && chdir(run_dir) != 0) {
+        perror("Cannot enter simulation output directory");
+        return EXIT_FAILURE;
+    }
+#endif
 
     // Create simulation context
     VerilatedContext *cntx = new VerilatedContext;

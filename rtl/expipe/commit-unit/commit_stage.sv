@@ -332,7 +332,8 @@ module commit_stage (
     .valid_i           (inreg_cu_valid),
     .ready_o           (cu_inreg_ready),
     .res_ready_i       (inreg_data_out.data.res_ready),
-    .except_code_i     (inreg_data_out.data.except_code),
+    // Exception recovery continues after the input spill cell has been flushed.
+    .except_code_i     (comm_reg_data.data.except_code),
     .int_rs_valid_o    (int_rs_valid_o),
     .int_rf_valid_o    (int_rf_valid_o),
     .fp_rs_valid_o     (fp_rs_valid_o),

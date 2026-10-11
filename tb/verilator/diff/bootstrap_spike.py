@@ -76,7 +76,7 @@ def validate_source(source):
         raise RuntimeError('Unsupported Spike revision ' + str(revision) + '; requires ' + PIN)
 
 
-def ensure_spike(source, build, jobs=4):
+def ensure_spike(source, build, jobs=4, progress=False):
     source, build = Path(source).resolve(), Path(build).resolve()
     validate_source(source)
     if source == build or source in build.parents:
@@ -111,6 +111,8 @@ def ensure_spike(source, build, jobs=4):
                 previous.get('outputs') == outputs:
             print('Spike libraries up to date: ' + str(build), flush=True)
             return
+        if progress:
+            print('__LEN5_SPIKE_BUILD_STARTED__', flush=True)
         reconfigure = not configured or previous.get('inputs', {}).get('configuration') != configuration
         if reconfigure:
             print('Configuring local Spike reference libraries: ' + str(build), flush=True)
@@ -129,6 +131,8 @@ def ensure_spike(source, build, jobs=4):
             raise RuntimeError('Spike build did not produce all reference libraries')
         write_state(stamp, {'inputs': inputs,
                            'outputs': {p.name: file_signature(p) for p in products}})
+        if progress:
+            print('__LEN5_SPIKE_BUILD_FINISHED__', flush=True)
         print('Spike reference libraries ready: ' + str(build), flush=True)
 
 
@@ -137,9 +141,11 @@ def main():
     parser.add_argument('--source', type=Path, default=ROOT / 'sw/vendor/riscv-isa-sim')
     parser.add_argument('--build', type=Path, default=ROOT / 'build/spike-build')
     parser.add_argument('-j', type=int, default=4)
+    parser.add_argument('--progress', action='store_true',
+                        help='Emit build status markers for the shell progress reporter')
     args = parser.parse_args()
     try:
-        ensure_spike(args.source, args.build, args.j)
+        ensure_spike(args.source, args.build, args.j, args.progress)
     except (RuntimeError, subprocess.CalledProcessError, OSError) as error:
         parser.exit(1, str(error) + '\n')
 

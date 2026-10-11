@@ -4,9 +4,11 @@
 
 ## Files and outputs
 
-* `compile_model.py`, `layout.py`, `signals.vlt`: reuse FuseSoC's simulation
-  manifest in an isolated build, expose selected modules read-only, derive
-  packed offsets, enum values and configuration from elaborated XML. Missing
+* `len5.core`'s `sim-diff` target builds and runs the checked model through
+  FuseSoC/Edalize. Its `prepare-diff.sh` pre-build hook prepares cached Spike
+  libraries and invokes Edalize's XML target. `layout.py` only derives packed
+  offsets, enum values and configuration from that XML; `signals.vlt` exposes
+  selected modules read-only. Missing
   signals/types or changed widths fail explicitly. VPI's wide-vector buffer is
   sized from the generated schema, including the packed ROB array.
 * `spike_adapter.cpp`: direct `processor_t`, `state_t`, `simif_t` integration.
@@ -33,8 +35,8 @@ The checker output directory contains `report.json`,
 is a local C++ event spool, not a portable/versioned interchange format.
 With `DUMP_WAVES=false`, only `report.json` is written by the checker; binary
 event journaling and FST post-processing are disabled, while discrepancy
-timestamps and all comparisons remain available. Existing Make simulation and
-benchmark targets enable checking with `VERIFICATION=true`. Verified benchmarks
+timestamps and all comparisons remain available. Make simulation and
+benchmark targets ending in `-debug` enable checking. Verified benchmarks
 have independent working directories, including their trace and report files.
 
 The annotated FST copies the original hierarchy, aliases, widths, time scale and
@@ -74,7 +76,7 @@ A future superscalar backend needs corresponding monitor lane bindings.
 | Load | Actual LB `push`/`tail_idx`; address-adder answer; retained completion fields; external request/response tag | Address, size, byte mask, raw data, sign/zero-extended CDB result and base operand. Tag-associated response tombstones survive flush/reuse; forwarded loads need no external request. |
 | Store | SB allocation/address/data; transition into `STORE_S_MEM_REQ`; external tag/address/mask/data and response | Authorization, overlapping-store visibility order, no unknown/duplicate/unauthorized external write. Identity survives active-ROB removal. |
 | Commit | `csr_comm_insn_o != COMM_CSR_INSTR_TYPE_NONE`, **old** `comm_reg_data`, `int_rf_valid_o`, `rd_idx_o`, `rd_value_o` | PC, encoding, integer rd/write/result and exception indication. Trap transitions are explicitly unsupported. |
-| Checkpoint | **Post-edge** `int_rf.rf_data[1:31]` plus implicit x0 and the five selected CSR registers | All 32 integer registers and selected CSRs, only at a complete architectural prefix with no younger unmatched visible commit. No duplicate shadow register file. |
+| Checkpoint | **Post-edge** `int_rf.rf_data[1:31]` plus implicit x0 and mstatus, fcsr and the five previously selected CSR registers | All 32 integer registers and selected CSRs, only at a complete architectural prefix with no younger unmatched visible commit. No duplicate shadow register file. |
 
 The inspected implementation is in `rtl/expipe/{issue-unit,exec-units,
 load-store-unit,commit-unit,register-file}`. `rob.fifo_pop` transfers an entry
@@ -124,10 +126,12 @@ on a flush alone. A separate commit-progress timer detects stalls/deadlock.
   requires an explicit replay observation and invalidation of superseded
   tentative comparisons. Other memory systems, caches and external bus
   protocols need their own write-acceptance/transaction bindings.
-* FP registers, fflags/rounding and privilege/trap transitions are not verified.
-  The current RTL hardwires `mstatus.fs=0`, whereas Spike requires FP state
-  enablement; an agreed architectural reset/privilege contract and FP operand,
-  commit and checkpoint bindings are needed before claiming F/D support.
+* FP register operands/results and privilege/trap transitions are not verified.
+  FS Off/Dirty and explicit fcsr/frm/fflags instructions are supported; mstatus
+  and fcsr are compared at complete checkpoints. FP operand, commit and register
+  checkpoint bindings are still needed before claiming F/D verification.
+  FS Initial/Clean writes are explicit unsupported boundaries: RTL maps them
+  to Dirty, while the pinned Spike implements all four states.
 * Interrupts are not driven by this testbench. Counter/time CSRs, other
   nondeterministic sources and MMIO reads are rejected. RAM is modeled below
   `0x20000000`; only output stores at serial `0x20000000` and exit `0x20000100`

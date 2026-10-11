@@ -35,6 +35,7 @@ module csrs (
 
   // Data to the FPU
   output logic [csr_pkg::FCSR_FRM_LEN-1:0] fpu_frm_o,  // dynamic rounding mode
+  output logic fp_enabled_o,  // FS after any CSR write accepted on this edge
 
   // Data to the load/store unit
   output csr_pkg::csr_priv_t priv_mode_o  // current privilege mode
@@ -91,6 +92,7 @@ module csrs (
   csr_mhartid_t                  mhartid;
   // MSTATUS
   csr_mstatus_t                  mstatus;
+  logic                          mstatus_fs_dirty;
   logic               [     1:0] mstatus_mpp;
   logic                          mstatus_mpie;
   logic                          mstatus_mie;
@@ -139,6 +141,12 @@ module csrs (
       end
       default: ;  // use default values
     endcase
+    // FP retirement accrues flags even when the instruction's rs1 field is f0.
+    // It is not a software CSRRS, whose rs1=x0 suppresses the write.
+    if (comm_insn_i == COMM_CSR_INSTR_TYPE_FP) begin
+      csr_rd_en = valid_i;
+      csr_wr_en = valid_i & mstatus_fs_dirty;
+    end
   end
 
   // CSR write value MUX
@@ -171,7 +179,7 @@ module csrs (
   assign mhartid            = CSR_MHARTID_VALUE;
 
   // MSTATUS
-  assign mstatus.sd         = 1'b0;
+  assign mstatus.sd         = mstatus_fs_dirty;
   assign mstatus.not_used_4 = 'h0;
   assign mstatus.sxl        = 'h0;
   assign mstatus.uxl        = 'h0;
@@ -183,7 +191,8 @@ module csrs (
   assign mstatus.sum        = 1'b0;
   assign mstatus.mprv       = 1'b0;
   assign mstatus.xs         = 'h0;
-  assign mstatus.fs         = 'h0;
+  // Only Off and Dirty are implemented. Nonzero WARL writes select Dirty.
+  assign mstatus.fs         = {2{mstatus_fs_dirty}};
   assign mstatus.mpp        = mstatus_mpp;
   assign mstatus.not_used_2 = 'h0;
   assign mstatus.spp        = 'h0;  // S-mode not supported
@@ -199,9 +208,6 @@ module csrs (
   // MCOUNTEREN
   // NOTE: all counters accessible (even if not implemented)
   assign mcounteren         = {32{1'b1}};
-
-  // FCSR
-  assign fcsr               = 'h0;
 
   // MCOUNTINHIBIT
   // NOTE: only mcycle, minstret, and hpmcounter3/4 are enabled
@@ -328,6 +334,7 @@ module csrs (
       mstatus_mpp  <= PRIV_MODE_M;  // change to U-mode when supported
       mstatus_mpie <= 1'b0;
       mstatus_mie  <= 1'b0;
+      mstatus_fs_dirty <= 1'b0;
       // mtvec
       mtvec.base   <= CSR_MTVEC_BASE;
       mtvec.mode   <= CSR_MTVEC_MODE;
@@ -352,6 +359,7 @@ module csrs (
             mstatus_mpp  <= csr_wr_val[12:11];
             mstatus_mpie <= csr_wr_val[7];
             mstatus_mie  <= csr_wr_val[3];
+            mstatus_fs_dirty <= (LEN5_F_EN || LEN5_D_EN) && (|csr_wr_val[14:13]);
           end
         end
         // mtvec
@@ -376,13 +384,13 @@ module csrs (
         end
         // floating point csr
         CSR_FCSR: begin
-          if (priv_mode >= PRIV_MODE_M) fcsr <= csr_wr_val[FCSR_LEN-1:0];
+          if (mstatus_fs_dirty) fcsr <= csr_wr_val[FCSR_LEN-1:0];
         end
         CSR_FFLAGS: begin
-          if (priv_mode >= PRIV_MODE_M) fcsr.fflags <= csr_wr_val[FCSR_FFLAGS_LEN-1:0];
+          if (mstatus_fs_dirty) fcsr.fflags <= csr_wr_val[FCSR_FFLAGS_LEN-1:0];
         end
         CSR_FRM: begin
-          if (priv_mode >= PRIV_MODE_M) fcsr.frm <= csr_wr_val[FCSR_FRM_LEN-1:0];
+          if (mstatus_fs_dirty) fcsr.frm <= csr_wr_val[FCSR_FRM_LEN-1:0];
         end
         default: ;  // do not modify CSRs
       endcase
@@ -455,6 +463,9 @@ module csrs (
 
   // Data to FPU
   assign fpu_frm_o   = fcsr.frm;
+  // Issue resumes on the CSR commit edge, so decode must see the new FS then.
+  assign fp_enabled_o = (csr_wr_en && addr_i == CSR_MSTATUS && priv_mode >= PRIV_MODE_M) ?
+      ((LEN5_F_EN || LEN5_D_EN) && (|csr_wr_val[14:13])) : mstatus_fs_dirty;
   assign priv_mode_o = priv_mode;
 
   // CSR access exception

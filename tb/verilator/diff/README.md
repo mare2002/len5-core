@@ -2,11 +2,12 @@
 
 This optional C++ checker runs the real LEN5 Verilator model against Spike,
 tracks accepted instructions through the pipeline, and optionally writes an annotated FST.
-No processor RTL is changed. Normal simulation and the existing execution trace
-remain available without linking Spike.
+Normal simulation and the existing execution trace remain available without linking
+Spike. The FS/fcsr support described below is implemented in the processor RTL
+and therefore also applies to ordinary simulation.
 
-The tested instruction scope is **RV64IM and CSR operations on mtvec, mscratch,
-mepc, mcause and mtval**, in machine mode with the bare memory emulator. This is
+The tested instruction scope is **RV64IM and CSR operations on mstatus, fcsr,
+frm, fflags, mtvec, mscratch, mepc, mcause and mtval**, in machine mode with the bare memory emulator. This is
 not yet full RV64IMFD verification: floating point, traps/interrupts, other CSRs,
 fences, atomics, compressed instructions, MMIO reads and self-modifying code
 terminate with an explicit unsupported result. See the limitations below.
@@ -34,57 +35,69 @@ make vendor-update-spike
 
 # Build the RTL checker; automatically build local Spike libraries if needed.
 # Set these paths if the corresponding tools are not on PATH.
-make verilator-build VERIFICATION=true VERILATOR=/path/to/verilator-5.040/bin/verilator \
+make verilator-build-debug VERILATOR=/path/to/verilator-5.040/bin/verilator \
     FUSESOC=/path/to/fusesoc JOBS=4
 
 # Build your existing application, using the normal software build flow.
 make app PROJECT=load_store
 
 # Run it with checking and no waveforms.
-make verilator-sim VERIFICATION=true DUMP_WAVES=false \
+make verilator-sim-debug DUMP_WAVES=false \
     FIRMWARE=build/main.hex MAX_CYCLES=20000
 
 # Enable annotated waveforms for the same run.
-make verilator-sim VERIFICATION=true DUMP_WAVES=true \
+make verilator-sim-debug DUMP_WAVES=true \
     FIRMWARE=build/main.hex MAX_CYCLES=20000
-make verilator-waves VERIFICATION=true
+make verilator-waves-debug
 
-# The existing benchmark entry points also accept these switches.
-make run BENCHMARK=crc32 VERIFICATION=true DUMP_WAVES=false
-make run-benchmarks VERIFICATION=true DUMP_WAVES=true -j4
+# Debug counterparts of the existing benchmark entry points.
+make run-debug BENCHMARK=crc32 DUMP_WAVES=false CDEFS=-DSPIKE_CHECK
+make run-benchmarks-debug DUMP_WAVES=true CDEFS=-DSPIKE_CHECK -j4
 
 # Remove all other build outputs, retaining the compiled Spike libraries.
 make clean-keep-spike
 ```
 
-`VERIFICATION=false` is the default and preserves ordinary simulation. Setting
-`VERIFICATION=true` on `verilator-build`, `verilator-sim`, `verilator-opt`, `run`,
-`run-benchmarks` automatically ensures the checker and Spike libraries.
-The added verification test suite has been removed. `make check` keeps its
-original program/RTL checks; it does not generate separate verification fixtures.
-The former `diff-*` Make targets and `DIFF=1` switch have been removed.
-`verilator-sim` defaults to `DUMP_WAVES=true`; `verilator-opt`, `run` and
-`run-benchmarks` default to `DUMP_WAVES=false`. Explicit `DUMP_WAVES` settings
-override these defaults. The defaults
-are `SPIKE_SRC=sw/vendor/riscv-isa-sim`, `SPIKE_BUILD=build/spike-build` and
-`VERIFICATION_BUILD_DIR=build/diff`. These variables select other locations; an external
+The original `verilator-build`, `verilator-sim`, `verilator-opt`, `run` and
+`run-benchmarks` targets run ordinary simulation. Their `-debug` counterparts
+ensure the checker and Spike libraries and run differential verification.
+`verilator-waves-debug` opens the annotated waveform. `VERIFICATION` is no longer
+used to select the model. `make check` keeps its original program/RTL checks.
+Both `verilator-sim` variants default to `DUMP_WAVES=true` and `DUMP_TRACE=true`;
+optimized and benchmark runs default to both disabled. Explicit settings override
+these defaults. Normal models live in `BUILD_DIR/normal`; debug models live in
+`DEBUG_BUILD_DIR`, which defaults to `BUILD_DIR/debug`. The other defaults are
+`SPIKE_SRC=sw/vendor/riscv-isa-sim` and `SPIKE_BUILD=BUILD_DIR/spike-build`.
+These variables select other locations; an external
 Spike Git checkout must have the pinned HEAD, while a copied vendor directory
 needs its adjacent lock file. On the tested workstation the tool paths are
 `../tool/verilator/5.040/bin/verilator` and
 `/home/markospremic/miniconda3/envs/core-len5/bin/fusesoc`; source `private/init.sh`
 in a shell with Conda initialized to add the local tools to PATH.
 
-Successful builds save content fingerprints, compiler/configuration identity and
-output timestamps. An unchanged invocation skips configure, Make, FuseSoC and
-Verilator. Missing libraries are rebuilt; changed source contents, compiler flags
-or configuration invalidate the cache, including backdated edits. Build locks
-serialize concurrent invocations. Outputs stay under `build/`, outside the source
+FuseSoC builds and runs both the ordinary `sim` target and the checked `sim-diff`
+target in `len5.core`. The shell build helper fingerprints RTL/checker sources,
+tool paths, flags and compiler configuration; unchanged invocations reuse the
+model. Spike retains its separate content and compiler fingerprint cache, including
+backdated source changes. Missing libraries or an executable are rebuilt. Build
+locks serialize concurrent invocations. Outputs stay under `build/`, outside the source
 tree; deleting that build directory requires a new compile, never a new download.
 `make clean-keep-spike` removes its other contents, including hidden build stamps,
 RTL executables, firmware, logs and waveforms. It retains the entire `SPIKE_BUILD`
 directory, including archives, object files and the cache/configuration metadata.
 The next verification run rebuilds the RTL model and reuses the Spike libraries.
 `make clean` and `make clean-sim` retain their full-clean behavior.
+
+Verilator builds show `Building RTL with Verilator...` when rebuilding starts
+and `RTL build complete.` after a successful build. Repeated cache checks are
+quiet. Spike builds likewise show `Building Spike reference libraries...` and
+`Spike reference library build complete.` only when compilation is required.
+Spike compiler diagnostics stay in `SPIKE_BUILD/bootstrap.log`.
+FuseSoC diagnostics are saved to `DEBUG_BUILD_DIR/build.log` for debug
+builds and `BUILD_DIR/normal/build.log` for ordinary builds. A failed build prints
+its last 60 output lines and the log path, and still returns a failing status. Set `VERBOSE=true` to enable
+FuseSoC's verbose output. `DUMP_WAVES` controls waveform files and
+`LOG_LEVEL` controls simulation logging independently.
 
 Vendoring is an explicit maintenance operation, separate from building:
 
@@ -102,34 +115,39 @@ working Spike CLI/DTB environment. It also supplies `-include cstdint` for old
 Spike headers with recent GCC. Ordinary `make verilator-build` has none of these
 dependencies.
 
-The Python scripts support builds; instruction execution, comparison
-and FST annotation remain C++:
+Python compiles only Spike; the remaining Python helper generates metadata.
+RTL elaboration, C++ compilation, linking and simulation are owned by FuseSoC:
 
 * `bootstrap_spike.py`: validate local pinned sources, configure only when needed,
   and cache the four Spike reference libraries. It does not clone or download.
-* `compile_model.py`: ensure Spike is built, reuse FuseSoC's RTL manifest, invoke
-  signal-layout generation, and link the C++ checker into the Verilator simulator.
-  It skips the entire model build when its inputs and executable are unchanged.
+* `scripts/sim/build-verilator.sh`: serialize builds, check the source/configuration
+  cache, and print build progress while FuseSoC compiles the model.
+* `scripts/sim/prepare-diff.sh`: FuseSoC pre-build hook that supplies Spike include
+  paths/libraries and generates the checker metadata before Edalize builds the model.
 * `layout.py`: generate `diff_layout.hh` from Verilator XML, including packed-field
   offsets, widths, enum encodings and configuration constants for read-only VPI.
 * `util/clean-build.py`: remove build outputs while preserving the configured
   Spike cache, including custom nested cache paths. Directory symlinks are
   removed without deleting their external targets.
 
-The built simulator also accepts:
+Additional checker settings can be passed through the existing Make target:
 
 ```sh
-build/diff/model/sim-verilator/Vtb_bare --diff --dump_waves true --max_cycles 20000 \
-    --diff-recovery 10000 --diff-progress 10000 \
-    --diff-output logs/diff +firmware=/absolute/path/program.hex
+make verilator-sim-debug DUMP_WAVES=true MAX_CYCLES=20000 \
+    FIRMWARE=/absolute/path/program.hex \
+    DEBUG_ARGS="--diff-recovery=10000 --diff-progress=10000 --diff-output=logs/diff"
 ```
 
-`--diff` enables checking independently of `--dump_waves`. Omitting it preserves ordinary simulation.
+FuseSoC's `sim-diff` target supplies `--diff` independently of `DUMP_WAVES`.
+The original targets select ordinary simulation. `run_dir` directs each checked
+simulation's artifacts to its own directory while sharing the compiled model.
 `--diff-fault operand|cdb|register|store` corrupts one **checker observation** for
 testing; it does not modify RTL state. Status 0 means checked execution reached
 the existing testbench's normal exit; 1 means a confirmed discrepancy/timeout;
 2 means unsupported configuration, reference behavior or output failure. The
-checker API reserves 3 for an unfinished check. A checker pass is not a separate
+checker API reserves 3 for an unfinished check. FuseSoC reports any nonzero simulator
+status as a failed run; the precise checker result remains in `report.json`.
+A checker pass is not a separate
 interpretation of the program's exit byte.
 
 ## Architecture and verification coverage
@@ -151,10 +169,12 @@ is produced by the checker; comparison journaling and FST merging are skipped.
 Stale waveform artifacts are removed when reusing a directory without waves.
 
 Application verification outputs live under `build/sim-common/logs/`. Verified
-benchmark outputs live under `build/<suite>/run/<benchmark>/logs/`, separately
-for each parallel run; their existing console logs remain under
-`build/<suite>/logs/sim/<benchmark>.log`. `SIM_RUN_DIR` overrides the working
-directory for a direct simulation. `VERIFICATION_ARGS` supplies additional
+benchmark outputs live under `build/<suite>-debug/run/<benchmark>/logs/`, separately
+for each parallel run; their console logs live under
+`build/<suite>-debug/logs/sim/<benchmark>.log`. `SIM_RUN_DIR` overrides the working
+directory for a direct simulation. `DEBUG_SUITE_DIR` overrides the debug suite
+output root. Debug benchmarks reuse firmware in `build/<suite>/run/<benchmark>/`.
+`DEBUG_ARGS` supplies additional
 checker options, such as `--diff-recovery 20000` or `--diff-fault cdb`.
 
 `DUMP_TRACE=true` enables the existing committed-instruction text log, independently
@@ -163,15 +183,56 @@ instruction PC and encoding, followed by a line containing the destination-regis
 value when a register is written. The existing logger buffers commit notifications
 by ROB order; its timestamp is the time the buffered entry is printed.
 For verified applications the file is `build/sim-common/logs/sim-trace.log`;
-for verified benchmarks it is `build/<suite>/run/<benchmark>/logs/sim-trace.log`.
+for verified benchmarks it is `build/<suite>-debug/run/<benchmark>/logs/sim-trace.log`.
 Ordinary FuseSoC runs retain the `build/sim-common/sim-trace.log` link.
 `verilator-sim` defaults to tracing enabled, while optimized/benchmark runs default
 to tracing disabled. An explicit `DUMP_TRACE=true/false` overrides either default.
 
-This switch does not change firmware compilation or relax checker coverage.
-Programs using the default floating-point startup still hit unsupported FS/CSR
-or FP boundaries, and the known CSR operand bug is still reported. Verification
-failures and unsupported exits propagate as failing Make targets.
+Verification failures and unsupported exits propagate as failing Make targets.
+
+## FS and fcsr
+
+`mstatus.FS` resets to Off (`00`). Software can enable it with `csrs mstatus,t0`
+where `t0=0x6000`, as the existing `__riscv_flen` startup already does. The RTL
+stores only Off and Dirty (`11`); writes of Initial/Clean map to Dirty, as allowed
+by the [privileged specification](https://docs.riscv.org/reference/isa/v20260120/priv/machine.html).
+`mstatus.SD` reflects Dirty. There is no instruction-driven FS state machine.
+The checker currently accepts software using Off/Dirty; writing Initial/Clean
+returns unsupported because the pinned Spike retains those states.
+
+`fcsr` is writable state with `frm` and `fflags` aliases. Committed FP exception
+flags accumulate even for instructions with source f0. Static instruction rounding
+modes override `frm`; dynamic rounding uses `frm`. FS=Off rejects FP arithmetic,
+moves, loads/stores and FP CSR accesses through the illegal-instruction path.
+The CSR source-register decode and the ready indication for decoded exceptions
+have also been corrected. These are functional RTL fixes requested with FS support.
+
+The checker compares actual `mstatus` and `fcsr` at complete architectural
+checkpoints, alongside integer registers and the previously supported CSRs.
+It does not mask FS or SD differences and does not force Spike's FS to Dirty.
+Both models execute the firmware's initialization sequence. The initial `fcsr`
+value is checked without writing it through Spike's FS-sensitive write hook.
+Reference lookahead stops at an unsupported instruction while older instructions
+continue to be checked; this permits the normal exit store before the trailing WFI.
+
+**F/D instruction and floating-register verification is still unsupported.** These
+CSR changes enable the standard startup of integer applications compiled with
+`rv64imfd_zicsr`; they do not imply full floating-point differential coverage.
+Trap/interrupt synchronization and timing-dependent counter reads remain unsupported.
+
+For Embench use its existing `CDEFS=-DSPIKE_CHECK` option to omit `mcycle`/`minstret`
+measurements. If a benchmark image is already built without this option, rebuild
+it explicitly before running (Make does not fingerprint software compiler options):
+
+```sh
+make -BC sw benchmark SUITE=embench BENCHMARK=crc32 CDEFS=-DSPIKE_CHECK \
+    BUILD_DIR="$PWD/build/embench/run/crc32" LINKER="$PWD/sw/linker/len5-sim.ld"
+make run-debug BENCHMARK=crc32 DUMP_WAVES=false CDEFS=-DSPIKE_CHECK
+```
+
+This option leaves the standard FS/fcsr startup enabled and preserves the benchmark's
+result check. It omits software timing output; the RTL testbench still prints its
+execution statistics.
 
 ## Validation
 
@@ -179,8 +240,6 @@ The prior validation results are recorded in `VALIDATION.md`; the separate
 verification test programs and runners have since been removed. Existing
 applications and benchmark runs continue to use the same C++ checker.
 
-The checker exposes an existing register-source CSR bug: LEN5 supplies zero for
-`csrw mscratch,t0` when Spike expects 256; the existing `hello_world` startup
-similarly fails its mtvec write. RTL remains unchanged. The existing ALU target
-is blocked by width warnings. See [actual results and known failures](VALIDATION.md)
-for details; unsupported FP/trap behavior is not counted as verified execution.
+See [actual results and known failures](VALIDATION.md) for the latest FS/fcsr
+validation and historical results. Unsupported FP/trap behavior is not counted
+as verified execution.

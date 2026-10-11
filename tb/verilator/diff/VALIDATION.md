@@ -4,7 +4,107 @@
 
 Validation on the supplied tree used Spike v1.1.0, Verilator 5.040 and GCC 16.
 
-## Cache cleanup and current program flow
+## Explicit debug targets (2026-10-11)
+
+The Makefile follows the layout of `feat-multiple-issues`. The original targets
+run ordinary simulations; their `-debug` counterparts enable the checker.
+`VERIFICATION` is no longer used. Normal models are under `build/normal`, debug
+models under `build/debug`. Bash handles build locks, caching and progress output;
+FuseSoC owns model compilation and execution.
+
+| Check | Actual result |
+| --- | --- |
+| `make verilator-build verilator-build-debug JOBS=4 -j2` | Both models built; start/completion messages only |
+| Repeated model builds | Passed silently, without recompilation |
+| Ordinary `verilator-sim` with `DUMP_TRACE=true`, waves off | Passed; common trace link points into `build/normal/sim-verilator/logs/` |
+| `make run-benchmarks` with `crc32` and `aha-mont64`, `-j4` | SUCCESS, 2/2 |
+| Equivalent `make run-benchmarks-debug`, waves off | SUCCESS, 2/2; isolated reports; 25,904 and 10,102 checkpoints |
+| `verilator-opt-debug DEBUG_ARGS=--diff-fault=register DUMP_WAVES=true` | Expected failure propagated through FuseSoC and Make; original/annotated FST and GTKWave save file present |
+| Invalid FuseSoC build option in a separate build directory | Failed; diagnostics and build-log path printed; no completion message |
+| Shell syntax and `git diff --check` | Passed |
+
+Benchmark tests reused the existing SPIKE_CHECK firmware in an isolated
+`build/target-validation` suite tree. Normal and debug console logs and summaries
+are separate; checked reports live in `build/target-validation-debug/run/`.
+No full benchmark sweep was run. Sections below retain historical commands and
+results; use the current [guide](README.md) for target names and options.
+
+## FuseSoC build/run flow (2026-10-11)
+
+RTL and checker compilation/linking and simulation now run through FuseSoC's
+`sim` and `sim-diff` targets. The Python model compiler and quiet-build wrapper
+were removed. Python compiles cached Spike libraries and generates the checker
+layout header from the XML produced by Edalize's XML target.
+
+| Run | Actual result |
+| --- | --- |
+| Ordinary `crc32` through `make verilator-opt VERIFICATION=false` | FuseSoC build and run passed; program exit 0x00 |
+| Checked `crc32` through FuseSoC | Passed: 29,432 commits, 25,904 checkpoints, no discrepancies |
+| Parallel checked `crc32` and `aha-mont64` through `make run-benchmarks ... -j4` | SUCCESS, 2/2; separate report directories; aha-mont64 had 11,916 commits and 10,102 checkpoints |
+| Register observation fault through `VERIFICATION_ARGS=--diff-fault=register`, waves enabled | Confirmed result mismatch; checker status 1; FuseSoC and Make returned failure; original and annotated FSTs and GTKWave save file generated |
+| Repeated ordinary and checked `verilator-build` | Both returned success with no terminal output or model rebuild |
+
+Artifacts are under `build/fusesoc-validation/`. The parallel run used an isolated
+benchmark output tree containing the existing SPIKE_CHECK firmware images, so
+older suite failures did not enter its summary. No full benchmark sweep was run.
+
+## FS/fcsr implementation (2026-10-09)
+
+Both the ordinary and `VERIFICATION=true` Verilator builds passed using the cached
+Spike v1.1.0 libraries. No vendored Spike source was changed or downloaded.
+The old startup/CSR-operand limitations described in the historical sections below
+are fixed by this change.
+
+| Run | Actual result |
+| --- | --- |
+| Existing `load_store`, default hard-float startup, ordinary simulation | Program exit 0x00 |
+| Same image, `VERIFICATION=true`, waves off | Passed: 2,716 commits, 1,013 checkpoints, no discrepancies |
+| Existing Embench `crc32`, `CDEFS=-DSPIKE_CHECK`, ordinary simulation | Benchmark result check passed, exit 0x00 |
+| Same benchmark through `make run ... VERIFICATION=true`, waves off | Passed: 29,432 commits, 25,904 checkpoints, no discrepancies |
+| `make run-benchmarks PARALLEL_TESTS=crc32 VERIFICATION=true DUMP_WAVES=false CDEFS=-DSPIKE_CHECK` | SUCCESS, 1/1 benchmarks, summary generated |
+| Temporary CSR probe, waves on | Passed: 99 commits, 97 checkpoints; FS/SD and fcsr/frm/fflags read/write/set/clear, retained state across Off/Dirty |
+| Register-observation fault in the CSR probe | Simulator status 1 / Make status 2; instruction 1, PC 0x10180, commit result expected 0x1800, actual 0x1801, cycle 19 / FST tick 39 |
+| Five temporary FS-Off probes: FP CSR read/write, FP move/load/store | Each passed independently in RTL and Spike: illegal-instruction cause 2, correct mepc and mtval, handler exit 0x00 |
+| Temporary FP arithmetic probe with operands loaded from memory | Passed independently in RTL and Spike: dynamic RTZ/RUP, static rounding override, NX/DZ/NV accumulation, f0 source, flags preserved by an exact operation |
+| FS Initial/Clean writes | RTL maps both to Dirty and passes readback checks; checker status 2 with explicit unsupported explanation |
+| F/D instruction or trap-entry boundary with verification enabled | Explicit status 2; full F/D/trap synchronization is still unsupported |
+
+Temporary probes and a small standalone C++ Spike driver were used for directed
+validation; they are not an automatically run or installed test suite. Artifacts
+are under `build/fs-validation/`; regular benchmark evidence is under
+`build/embench/run/crc32/logs/diff/report.json` and `build/embench/logs/sim/crc32.log`.
+Both program exit bytes and checker reports were inspected: the existing ordinary
+simulator returns process status zero even on program failure or timeout, so that
+status alone was not used as evidence of success.
+
+The CSR probe produced original and annotated FSTs. `fst2vcd` parsed the annotated
+fault waveform successfully; expected/actual values and the failure signal were
+checked against `report.json`. The generated GTKWave marker is at tick 39,
+matching the recorded event. No GTKWave GUI was required.
+
+The FP probe initially using `fmv.d.x` exposed a separate existing FP move problem:
+that instruction is decoded as `FPU_L2D`, and its observed result did not preserve
+the input bits. That mapping is unchanged. The rounding/flag probe uses `fld` to
+isolate the FS/fcsr behavior; its pass is not a claim that all F/D instructions work.
+
+Reproduce the existing-program checks from the repository root after sourcing
+`private/init.sh` (initialize Conda in noninteractive shells first):
+
+```sh
+make app PROJECT=load_store
+make verilator-sim VERIFICATION=true DUMP_WAVES=false DUMP_TRACE=true MAX_CYCLES=20000
+make -BC sw benchmark SUITE=embench BENCHMARK=crc32 CDEFS=-DSPIKE_CHECK \
+    BUILD_DIR="$PWD/build/embench/run/crc32" LINKER="$PWD/sw/linker/len5-sim.ld"
+make run BENCHMARK=crc32 VERIFICATION=true DUMP_WAVES=false CDEFS=-DSPIKE_CHECK
+```
+
+`SPIKE_CHECK` is the existing benchmark option that omits timing-dependent counter
+reads. It does not disable FS startup or change the benchmark's correctness check.
+Without it, counter reads remain unsupported. Ordinary runs of both images were
+also checked with `VERIFICATION=false`. No full benchmark sweep was performed.
+
+## Historical cache cleanup and program flow
+
 
 The separate `tests/diff` test programs/runners have been removed at the user's
 request. `make check` has its original application/RTL checks again; it no longer
@@ -27,7 +127,7 @@ entry points and the `VERIFICATION`/`DUMP_WAVES` switches remain available.
   PROJECT=load_store` and passed ordinary `verilator-sim`, exiting with 0x00.
   Its commit trace was generated and the existing common-directory link worked.
   With verification enabled, default FP/CSR startup still returned unsupported,
-  and Make propagated the failure; that coverage limitation is unchanged.
+  and Make propagated the failure. This was before the FS/fcsr changes above.
 
 ## Historical results before test-suite removal
 

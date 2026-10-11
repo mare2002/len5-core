@@ -247,9 +247,11 @@ module issue_cu (
       end
       S_ISSUE_EXCEPT: begin
         comm_valid_o = 1'b1;
+        issue_res_ready_o = 1'b1;  // no execution unit will complete this instruction
       end
       S_FETCH_EXCEPT: begin
         comm_valid_o = 1'b1;
+        issue_res_ready_o = 1'b1;
       end
       S_FLUSH: begin
         mis_flush_o = 1'b1;

@@ -170,6 +170,7 @@ module backend (
   // Issue stage <--> CSRs
   // ---------------------
   csr_priv_t                            csr_il_priv_mode;
+  logic                                 csr_il_fp_enabled;
 
   // Execution stage <--> CDB
   // ------------------------
@@ -309,7 +310,8 @@ module backend (
     .comm_rs3_value_i  (comm_issue_rs3_value),
 
 
-    .csr_priv_mode_i(csr_il_priv_mode)
+    .csr_priv_mode_i(csr_il_priv_mode),
+    .csr_fp_enabled_i(csr_il_fp_enabled)
   );
 
   // --------------------------------------------
@@ -575,6 +577,7 @@ module backend (
     .mtvec_o    (csr_comm_mtvec),
     .csr_exc_o  (),                    // TODO: handle illegal CSR access exceptions
     .fpu_frm_o  (csr_ex_frm),
+    .fp_enabled_o(csr_il_fp_enabled),
     .priv_mode_o(csr_il_priv_mode)
   );
 

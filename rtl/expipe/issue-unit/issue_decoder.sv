@@ -16,6 +16,7 @@ module issue_decoder (
   // Instruction from the issue logic
   input len5_pkg::instr_t   instruction_i,  // the issuing instruction
   input csr_pkg::csr_priv_t priv_mode_i,    // current privilege mode
+  input logic fp_enabled_i,                // mstatus.FS is nonzero
 
   // Issue decoder <--> issue CU
   output expipe_pkg::issue_type_t issue_type_o,  // issue operation type
@@ -707,7 +708,7 @@ module issue_decoder (
         issue_type = ISSUE_TYPE_CSR;
         skip_eu    = 1'b1;
         order_crit = 1'b1;
-        rs2_sel    = RS2_SEL_INT;
+        rs1_sel    = RS1_SEL_INT;
       end
       CSRRWI: begin
         issue_type = ISSUE_TYPE_CSR;
@@ -719,7 +720,7 @@ module issue_decoder (
         issue_type = ISSUE_TYPE_CSR;
         skip_eu    = 1'b1;
         order_crit = 1'b1;
-        rs2_sel    = RS2_SEL_INT;
+        rs1_sel    = RS1_SEL_INT;
       end
       CSRRSI: begin
         issue_type = ISSUE_TYPE_CSR;
@@ -731,7 +732,7 @@ module issue_decoder (
         issue_type = ISSUE_TYPE_CSR;
         skip_eu    = 1'b1;
         order_crit = 1'b1;
-        rs2_sel    = RS2_SEL_INT;
+        rs1_sel    = RS1_SEL_INT;
       end
       CSRRCI: begin
         issue_type = ISSUE_TYPE_CSR;
@@ -1620,6 +1621,21 @@ module issue_decoder (
         opcode_except = 1'b1;
       end
     endcase
+    // FS=Off forbids all FP register accesses (including loads/stores and moves)
+    // and explicit accesses to fflags/frm/fcsr. CSR instructions serialize issue,
+    // and fp_enabled_i includes the committing mstatus write on the resume edge.
+    if (!fp_enabled_i &&
+        (assigned_eu == EU_FPU || rs1_sel == RS1_SEL_FP || rs2_sel == RS2_SEL_FP ||
+         rs3_sel == RS3_SEL_FP || issue_type == ISSUE_TYPE_FP ||
+         (issue_type == ISSUE_TYPE_CSR &&
+          (instruction_i.raw[31:20] == CSR_FFLAGS ||
+           instruction_i.raw[31:20] == CSR_FRM || instruction_i.raw[31:20] == CSR_FCSR)))) begin
+      opcode_except = 1'b1;
+      except_code = E_ILLEGAL_INSTRUCTION;
+      rd_upd = 1'b0;
+      mem_crit = 1'b1;
+      order_crit = 1'b1;
+    end
   end
 
   assign issue_type_o  = (opcode_except) ? ISSUE_TYPE_EXCEPT : issue_type;
