@@ -235,9 +235,16 @@ struct Monitor::Impl {
                         access_size(get(p + "data", p == sb ? "store_type" : "load_type", idx));
                     checker.memory(idx, p == sb, get(p + "adder_ans_i", "result"), size,
                                    (1u << size) - 1,
-                                   p == sb ? get(p + "data", "rs2_value", idx) : 0, p == sb, t);
+                                   p == sb ? get(p + "data", "rs2_value", idx) : 0, p == sb, t,
+                                   get(p + "adder_ans_i", "except_raised"));
                 }
             }
+            // Forwarded loads capture a value without an external response.
+            // Observe that capture before any store can write on the falling edge.
+            const auto lb_layout = layouts.at(lb + "lb_op");
+            for (int idx = lb_layout.low; idx <= lb_layout.high; ++idx)
+                if (get(lb + "lb_op", "", idx) == enum_values.at("LOAD_OP_SAVE_CACHED"))
+                    checker.load_capture(idx, get(lb + "l0_value_i"), false, t);
             auto sb_layout = layouts.at(sb + "curr_state");
             for (int idx = sb_layout.low; idx <= sb_layout.high; ++idx)
                 if (get(sb + "curr_state", "", idx) != enum_values.at("STORE_S_MEM_REQ") &&

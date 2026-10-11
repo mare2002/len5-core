@@ -98,6 +98,9 @@ struct TrackedInstruction {
     bool fetched = true, dispatched = false, executed = false, committed = false, squashed = false;
     bool authorized = false, external_write = false, store_done = false, next_pc_checked = false;
     bool checkpoint_checked = false, except_raised = false, mispredicted = false;
+    uint64_t memory_address = 0;
+    uint8_t memory_mask = 0;
+    bool memory_address_known = false, load_value_captured = false, memory_exception = false;
     bool beyond_reference_boundary = false;
     Stamp fetch_stamp, dispatch_stamp, execution_stamp, commit_stamp, authorization_stamp;
     std::shared_ptr<ReferenceRecord> reference;
@@ -132,12 +135,13 @@ class Checker {
     void execute(uint32_t rob, uint64_t rs1, uint64_t rs2, uint64_t result, bool exception,
                  bool mispredicted, Stamp, uint64_t rs3 = 0);
     void memory(uint32_t index, bool store, uint64_t address, uint8_t size, uint8_t mask,
-                uint64_t raw, bool has_data, Stamp);
+                uint64_t raw, bool has_data, Stamp, bool exception = false);
     void authorize(uint32_t index, uint32_t rob, Stamp);
     void external_store(uint32_t index, uint64_t address, uint8_t mask, uint64_t data, Stamp);
     void store_response(uint32_t index, bool exception, Stamp);
     void load_request(uint32_t index, uint64_t address, uint8_t mask, Stamp);
     void load_response(uint32_t index, uint64_t data, bool exception, Stamp);
+    void load_capture(uint32_t index, uint64_t data, bool exception, Stamp);
     void commit(uint32_t rob, uint64_t pc, uint32_t instruction, uint8_t rd, bool write,
                 uint64_t result, bool exception, Stamp, bool fp_write = false);
     void checkpoint(const std::array<uint64_t, 32> &registers, Stamp,
@@ -193,6 +197,8 @@ class Checker {
     void event(const Ptr &, Stage, Field, uint64_t expected, uint64_t actual, Stamp, bool mismatch,
                bool confirmed, uint32_t index = no_index);
     void confirm(const Ptr &, Stamp);
+    bool store_control_safe(const Ptr &) const;
+    void capture_load(const Ptr &, uint64_t data, bool exception, Stamp);
     void squash(const Ptr &, Stamp);
     void reset_cursor();
     void prune();

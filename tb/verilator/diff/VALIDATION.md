@@ -255,3 +255,30 @@ at `0x101bc` (expected 65537, actual 0). This is reported at the operand's
 original dispatch timestamp and confirmed at commit. Processor RTL remains
 unchanged; fix that separately before expecting these application startups to
 pass differential verification.
+
+## Store ordering in the checker queue (2026-10-11)
+
+Only the differential checker and its monitor were changed. Memory ordering is
+validated at the observed external store write using CPU-observed addresses,
+byte masks and load-capture events. ROB clearance does not require older loads
+to deliver their results on the CDB. Unknown older addresses, overlapping pending
+loads, and overlapping unwritten stores still fail verification. Branch and
+fault protection remains active.
+
+The debug simulator rebuilt successfully with Verilator 5.040. Short benchmark
+validation used existing SPIKE_CHECK firmware, disabled waves/traces, isolated
+outputs under `/tmp/len5-memory-order-validation`, and a 100,000-cycle limit:
+
+| Benchmark | Result | Checked commits |
+| --- | --- | ---: |
+| crc32 | Passed, program exit 0 | 29,432 |
+| nettle-sha256 | Passed, program exit 0 | 18,701 |
+| slre | Passed, program exit 0 | 48,480 |
+| ud | Passed, program exit 0 | 17,704 |
+| cubic | Stopped at cycle limit; no value/order discrepancy before timeout | 62,616 |
+| edn | Stopped at cycle limit; no value/order discrepancy before timeout | 91,169 |
+| st | Existing FDIV.D one-ULP mismatch at PC 0x10338 retained | 7,696 |
+
+`nbody` and other longer benchmarks were not run. The combined Make target
+returns an error for `st` and the intentionally capped runs; those outcomes are
+not complete benchmark passes.

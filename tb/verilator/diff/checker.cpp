@@ -341,6 +341,10 @@ void Checker::execute(uint32_t rob, uint64_t rs1, uint64_t rs2, uint64_t result,
     p->rd_value = result;
     p->except_raised = exception;
     p->mispredicted = mispredicted;
+    if (decode(p->instruction).load) {
+        p->load_value_captured = true;
+        p->memory_exception |= exception;
+    }
     event(p, Stage::execution, Field::completion, 1, 1, t, false, false);
     if (auto r = p->reference; r && r->unsupported.empty()) {
         if (r->decoded.use_rs1)
@@ -362,7 +366,7 @@ void Checker::execute(uint32_t rob, uint64_t rs1, uint64_t rs2, uint64_t result,
         stores_.erase(p->store_idx);
 }
 void Checker::memory(uint32_t index, bool store, uint64_t addr, uint8_t size, uint8_t mask,
-                     uint64_t raw, bool has_data, Stamp t) {
+                     uint64_t raw, bool has_data, Stamp t, bool exception) {
     auto &q = store ? stores_ : loads_;
     auto it = q.find(index);
     if (it == q.end()) {
@@ -370,6 +374,12 @@ void Checker::memory(uint32_t index, bool store, uint64_t addr, uint8_t size, ui
         return;
     }
     auto p = it->second;
+    p->memory_address = addr;
+    p->memory_mask = mask;
+    p->memory_address_known = true;
+    p->memory_exception |= exception;
+    if (!store && has_data)
+        p->load_value_captured = true;
     if (auto r = p->reference; r && r->unsupported.empty()) {
         compare(p, Stage::memory, Field::address, r->address, addr, t);
         compare(p, Stage::memory, Field::size, r->decoded.size, size, t);
@@ -378,6 +388,22 @@ void Checker::memory(uint32_t index, bool store, uint64_t addr, uint8_t size, ui
             compare(p, Stage::memory, Field::raw_data, r->raw_data,
                     raw & data_mask(r->decoded.size), t);
     }
+}
+bool Checker::store_control_safe(const Ptr &p) const {
+    if (!p->reference || p->squashed)
+        return false;
+    for (const auto &[id, older] : instructions_) {
+        if (id >= p->instruction_id)
+            break;
+        if (older->squashed || older->committed || !older->dispatched)
+            continue;
+        const auto d = decode(older->instruction);
+        if (older->except_raised || older->memory_exception || older->mispredicted ||
+            (older->reference && older->reference->trap) ||
+            ((d.branch || d.jump || d.csr || !d.supported) && !older->executed))
+            return false;
+    }
+    return true;
 }
 void Checker::authorize(uint32_t index, uint32_t rob, Stamp t) {
     auto it = stores_.find(index);
@@ -392,18 +418,9 @@ void Checker::authorize(uint32_t index, uint32_t rob, Stamp t) {
              references_.at(*reference_boundary_)->unsupported, t, true);
         return;
     }
-    bool safe = p->reference && !p->squashed;
-    // Clearance may precede store commit, but never unresolved control flow or faults.
-    for (const auto &[id, older] : instructions_) {
-        if (id >= p->instruction_id)
-            break;
-        if (older->squashed || older->committed || !older->dispatched)
-            continue;
-        auto d = decode(older->instruction);
-        if ((d.branch || d.jump || d.load || d.csr || !d.supported) &&
-            (!older->executed || older->except_raised || older->mispredicted))
-            safe = false;
-    }
+    // ROB clearance is separate from the actual write. Memory dependencies are
+    // checked against the observed checker queue at the external write boundary.
+    const bool safe = store_control_safe(p);
     compare(p, Stage::memory, Field::unauthorized_store, 1, safe, t, true);
     p->authorized = safe;
     p->authorization_stamp = t;
@@ -417,21 +434,31 @@ void Checker::external_store(uint32_t index, uint64_t addr, uint8_t mask, uint64
     }
     auto p = it->second;
     compare(p, Stage::memory, Field::unauthorized_store, 1,
-            p->authorized && !p->squashed && !p->external_write, t, true);
+            p->authorized && store_control_safe(p) && !p->external_write &&
+                !p->memory_exception, t, true);
+    // Scan program order, not numerical ROB/LQ/SQ indices. Use CPU-observed
+    // addresses and byte masks, never Spike's future addresses to infer safety.
+    for (const auto &[id, older] : instructions_) {
+        if (id >= p->instruction_id)
+            break;
+        if (older->squashed || !older->dispatched)
+            continue;
+        const auto d = decode(older->instruction);
+        if (!((d.load && !older->load_value_captured) ||
+              (d.store && !older->external_write)))
+            continue;
+        bool disjoint = older->memory_address_known;
+        for (unsigned byte = 0; disjoint && byte < 8; ++byte) {
+            if (!(mask & (1u << byte)))
+                continue;
+            const uint64_t offset = addr + byte - older->memory_address;
+            if (offset < 8 && (older->memory_mask & (1u << offset)))
+                disjoint = false;
+        }
+        compare(p, Stage::memory, Field::store_order, 1, disjoint, t, true);
+    }
     p->external_write = true;
     if (auto r = p->reference; r && r->unsupported.empty()) {
-        // Overlapping stores must become externally visible in architectural
-        // order even when their commit notifications arrive out of order.
-        for (const auto &[id, older] : instructions_) {
-            auto before = older->reference;
-            if (older->squashed || older->external_write || !before || !before->decoded.store ||
-                before->order >= r->order)
-                continue;
-            const bool overlap = (r->address - before->address < before->decoded.size) ||
-                                 (before->address - r->address < r->decoded.size);
-            if (overlap)
-                compare(p, Stage::memory, Field::store_order, 1, 0, t, true);
-        }
         compare(p, Stage::memory, Field::address, r->address, addr, t, true);
         compare(p, Stage::memory, Field::mask, r->byte_mask, mask, t, true);
         compare(p, Stage::memory, Field::raw_data, r->raw_data, value & data_mask(r->decoded.size),
@@ -460,6 +487,13 @@ void Checker::load_request(uint32_t index, uint64_t addr, uint8_t mask, Stamp t)
         return;
     }
     auto p = it->second;
+    // Address-adder observations retain the logical access address even when
+    // the memory transport aligns a narrow load to a doubleword.
+    if (!p->memory_address_known) {
+        p->memory_address = addr;
+        p->memory_mask = mask;
+        p->memory_address_known = true;
+    }
     if (p->reference && p->reference->unsupported.empty()) {
         compare(p, Stage::memory, Field::address, p->reference->address, addr, t);
         compare(p, Stage::memory, Field::mask, p->reference->byte_mask, mask, t);
@@ -481,6 +515,19 @@ void Checker::load_response(uint32_t index, uint64_t data, bool exception, Stamp
     // tombstones until the response, independently of reuse of the LQ index.
     if (p->squashed)
         return;
+    capture_load(p, data, exception, t);
+}
+void Checker::load_capture(uint32_t index, uint64_t data, bool exception, Stamp t) {
+    auto it = loads_.find(index);
+    if (it == loads_.end()) {
+        compare({}, Stage::memory, Field::identity, 1, 0, t, true);
+        return;
+    }
+    capture_load(it->second, data, exception, t);
+}
+void Checker::capture_load(const Ptr &p, uint64_t data, bool exception, Stamp t) {
+    p->load_value_captured = true;
+    p->memory_exception |= exception;
     if (auto r = p->reference; r && r->unsupported.empty()) {
         compare(p, Stage::memory, Field::raw_data, r->raw_data, data & data_mask(r->decoded.size),
                 t);

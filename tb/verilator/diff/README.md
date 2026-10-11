@@ -160,6 +160,12 @@ the actual LEN5 integer register file. Stores have separate authorization and
 external-completion lifetimes. Tentative errors become confirmed at commit or an
 irreversible write; FST annotations retain both timestamps.
 
+Store ordering is checked in the checker's program-order queue at the actual
+external write, using observed CPU addresses and byte masks. Disjoint older
+loads/stores do not block it. Unknown older addresses block the write; overlapping
+loads must have captured their values and overlapping stores must have written.
+ROB clearance alone does not require older loads to finish on the CDB.
+
 See [the signal map and architecture](ARCHITECTURE.md) for exact handshakes,
 out-of-order commit semantics, per-stage verified fields, waveform layout and
 unsupported interfaces. The generated artifacts are `logs/diff/report.json`,

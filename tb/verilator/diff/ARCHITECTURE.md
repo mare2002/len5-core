@@ -103,9 +103,17 @@ ROB `mem_clear`/`sb_mem_clear_o` permits the store buffer to enter MEM_REQ **bef
 its CDB result and commit notification**. Older memory-critical instructions
 must be resolved without exception/misprediction. The checker observes that
 transition and independently rejects clearance past an unresolved older
-branch/jump/load/CSR or unsupported instruction. This is the design's intended
-point at which a store is no longer squashable. Squashing an externally written
-store is an immediate failure. The bare emulator's irreversible write occurs
+branch/jump/CSR, unsupported instruction or known fault. Pending loads do not
+prevent ROB clearance. At the external write, the checker scans its own queue in
+program order using CPU-observed addresses and byte masks. An older pending
+load/store with an unknown address blocks the write; overlapping older loads
+must have captured their values and overlapping older stores must have written.
+Disjoint accesses may proceed independently. Load capture is observed from an
+accepted memory response, forwarded-value capture, or CDB completion, without
+waiting for commit. Flushed-response tombstones cannot complete a reused load
+slot. Fault/control-flow checks are repeated at the write boundary.
+Squashing an externally written store is an immediate failure.
+The bare emulator's irreversible write occurs
 on **negedge `data_store_valid_i && data_store_we_i`**, irrespective of ready;
 the monitor samples exactly that boundary. Load requests are captured on
 posedge valid, also irrespective of ready, including a coincident flush.
