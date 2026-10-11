@@ -22,7 +22,7 @@
   active ROB/LSQ associations, outstanding memory transactions, deferred commit
   checks and actual register-file checkpoints. Reference records contain order,
   PC/encoding/length, next PC, decoded sources/destination and pre-execution
-  operands, result, raw memory access, XPR snapshot, selected CSR snapshots and
+  operands, result, raw memory access, XPR/FPR snapshots, selected CSR snapshots and
   CSR changes, privilege and trap cause/tval when a boundary is reached.
 * `monitor.cpp`: the inspected RTL-to-checker mapping and edge sampling.
 * `annotate.cpp`: streaming FST reader/writer merge, JSON field legend and GTKWave
@@ -45,7 +45,8 @@ time zero, then adds `verification.<stage>.laneN`. Lanes represent simultaneous
 instruction also get separate lanes. Read `event_valid`, `field`,
 `expected_value`, `actual_value`, `architectural_order`, `instruction_id` and the
 ROB/LSQ indices together. Named `expected_result`, `actual_address`, etc. are
-provided as well. `register_index` identifies an XPR or CSR at checkpoints.
+provided as well. `register_index` identifies a register or CSR at checkpoints;
+`fp_register_value` identifies FPRs.
 An unavailable tag/order is all ones.
 
 Execution discrepancies are tentative until commit or an irreversible store
@@ -75,8 +76,8 @@ A future superscalar backend needs corresponding monitor lane bindings.
 | Branch | Accepted branch resolution (`rs_bu_valid`, `bu_rs_ready`, `cu_res_reg_en`), resolved target/taken/link, misprediction and ROB tag | Conditional-branch CDB data is link PC, not the architectural successor; next PC is checked at resolution and deferred commit. |
 | Load | Actual LB `push`/`tail_idx`; address-adder answer; retained completion fields; external request/response tag | Address, size, byte mask, raw data, sign/zero-extended CDB result and base operand. Tag-associated response tombstones survive flush/reuse; forwarded loads need no external request. |
 | Store | SB allocation/address/data; transition into `STORE_S_MEM_REQ`; external tag/address/mask/data and response | Authorization, overlapping-store visibility order, no unknown/duplicate/unauthorized external write. Identity survives active-ROB removal. |
-| Commit | `csr_comm_insn_o != COMM_CSR_INSTR_TYPE_NONE`, **old** `comm_reg_data`, `int_rf_valid_o`, `rd_idx_o`, `rd_value_o` | PC, encoding, integer rd/write/result and exception indication. Trap transitions are explicitly unsupported. |
-| Checkpoint | **Post-edge** `int_rf.rf_data[1:31]` plus implicit x0 and mstatus, fcsr and the five previously selected CSR registers | All 32 integer registers and selected CSRs, only at a complete architectural prefix with no younger unmatched visible commit. No duplicate shadow register file. |
+| Commit | `csr_comm_insn_o != COMM_CSR_INSTR_TYPE_NONE`, **old** `comm_reg_data`, `int_rf_valid_o`, `fp_rf_valid_o`, `rd_idx_o`, `rd_value_o` | PC, encoding, integer/FP destination bank, rd/write/result and exception indication. Trap transitions are explicitly unsupported. |
+| Checkpoint | **Post-edge** `int_rf.rf_data[1:31]` plus implicit x0, `fp_rf.rf_data[0:31]` and mstatus, fcsr and the five previously selected CSR registers | All 32 integer and 32 FP registers and selected CSRs, only at a complete architectural prefix with no younger unmatched visible commit. No duplicate shadow register file. |
 
 The inspected implementation is in `rtl/expipe/{issue-unit,exec-units,
 load-store-unit,commit-unit,register-file}`. `rob.fifo_pop` transfers an entry
@@ -126,10 +127,11 @@ on a flush alone. A separate commit-progress timer detects stalls/deadlock.
   requires an explicit replay observation and invalidation of superseded
   tentative comparisons. Other memory systems, caches and external bus
   protocols need their own write-acceptance/transaction bindings.
-* FP register operands/results and privilege/trap transitions are not verified.
-  FS Off/Dirty and explicit fcsr/frm/fflags instructions are supported; mstatus
-  and fcsr are compared at complete checkpoints. FP operand, commit and register
-  checkpoint bindings are still needed before claiming F/D verification.
+* F/D operands (including fused rs3), results, commit destination banks and FPR
+  checkpoints are verified. Single-precision values retain their NaN-boxing bits;
+  stores compare only the access-width payload. FS Off/Dirty and explicit
+  fcsr/frm/fflags instructions are supported; mstatus and fcsr are compared at
+  complete checkpoints. Privilege/trap transitions remain unsupported.
   FS Initial/Clean writes are explicit unsupported boundaries: RTL maps them
   to Dirty, while the pinned Spike implements all four states.
 * Interrupts are not driven by this testbench. Counter/time CSRs, other

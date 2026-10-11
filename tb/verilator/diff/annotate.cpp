@@ -244,9 +244,9 @@ void annotate(const std::string &original, const Checker &checker) {
         throw std::runtime_error("FST seek/write failure");
     std::ofstream legend(dir / "fields.json");
     legend << "{\n";
-    for (unsigned i = 0; i <= unsigned(Field::store_order); ++i)
+    for (unsigned i = 0; i <= unsigned(Field::fp_register_value); ++i)
         legend << "  \"" << i << "\": \"" << name(Field(i)) << "\""
-               << (i == unsigned(Field::store_order) ? "\n" : ",\n");
+               << (i == unsigned(Field::fp_register_value) ? "\n" : ",\n");
     legend << "}\n";
 }
 } // namespace len5::diff

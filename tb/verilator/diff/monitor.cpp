@@ -150,11 +150,13 @@ struct Monitor::Impl {
             auto insn = get(comm + "comm_reg_data", "data.instruction.raw");
             auto rd = get(comm + "comm_reg_data", "data.rd_idx");
             auto value = get(comm + "rd_value_o");
-            if (rd && get(comm + "int_rf_valid_o") && inject("register"))
+            if (((rd && get(comm + "int_rf_valid_o")) || get(comm + "fp_rf_valid_o")) &&
+                inject("register"))
                 value ^= 1;
             checker.commit(get(comm + "comm_reg_data", "rob_idx"), pc, insn, rd,
                            get(comm + "int_rf_valid_o"), value,
-                           get(comm + "comm_reg_data", "data.except_raised"), t);
+                           get(comm + "comm_reg_data", "data.except_raised"), t,
+                           get(comm + "fp_rf_valid_o"));
         }
         const bool back_flush = get(comm + "cu_mis_flush"), front_flush = get(issue + "iq_flush");
         // The emulator also captures requests on a flush edge. Save identity
@@ -180,7 +182,8 @@ struct Monitor::Impl {
                 get(issue + "ex_rob_idx_o"), get(issue + "comm_data_o", "instr_pc"),
                 get(issue + "comm_data_o", "instruction.raw"),
                 get(issue + "ireg_data_out", "rs1_idx"), get(issue + "ireg_data_out", "rs2_idx"),
-                get(issue + "comm_data_o", "rd_idx"), get(issue + "comm_data_o", "rd_upd"), t);
+                get(issue + "comm_data_o", "rd_idx"), get(issue + "comm_data_o", "rd_upd"), t,
+                get(issue + "ireg_data_out", "rs3_idx"));
             if (decode(get(issue + "comm_data_o", "instruction.raw")).csr)
                 checker.source_at_dispatch(get(issue + "ex_rob_idx_o"),
                                            get(issue + "comm_data_o", "res_value"), t);
@@ -204,6 +207,8 @@ struct Monitor::Impl {
                     auto rs2 = layouts.at(p + "data").fields.count("rs2_value")
                                    ? get(p + "data", "rs2_value", idx)
                                    : 0;
+                    auto rs3 = layouts.at(p + "data").fields.count("rs3_value")
+                                   ? get(p + "data", "rs3_value", idx) : 0;
                     auto value = get(p + "cdb_data_o", "res_value");
                     // Observation faults deliberately affect checker inputs only; RTL is untouched.
                     if (p.find("u_arith_rs.") != std::string::npos) {
@@ -221,7 +226,7 @@ struct Monitor::Impl {
                                     get(p + "cdb_data_o", "except_raised"),
                                     get(p + "cdb_data_o", "except_code") ==
                                         enum_values.at("E_MISPREDICTION"),
-                                    t);
+                                    t, rs3);
                 }
             for (auto p : {lb, sb}) {
                 if (get(p + "save_addr")) {
@@ -268,7 +273,13 @@ void Monitor::after_rising(Stamp t) {
         std::array<uint64_t, 32> regs{};
         for (unsigned r = 1; r < 32; ++r)
             regs[r] = impl_->get(backend + "u_int_rf.rf_data", "", r);
-        impl_->checker.checkpoint(regs, t, impl_->csr_state());
+        std::array<uint64_t, 32> fp_regs{};
+        const bool has_fp = constants.at("len5_config_pkg.LEN5_F_EN") ||
+                            constants.at("len5_config_pkg.LEN5_D_EN");
+        if (has_fp)
+            for (unsigned r = 0; r < 32; ++r)
+                fp_regs[r] = impl_->get(backend + "gen_fp_rf.u_fp_rf.rf_data", "", r);
+        impl_->checker.checkpoint(regs, t, impl_->csr_state(), has_fp ? &fp_regs : nullptr);
     } catch (const std::exception &e) {
         impl_->checker.stop(e.what(), t, true);
     }

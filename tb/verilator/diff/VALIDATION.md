@@ -4,6 +4,47 @@
 
 Validation on the supplied tree used Spike v1.1.0, Verilator 5.040 and GCC 16.
 
+## F/D checker extension (2026-10-11)
+
+Changes are confined to `tb/verilator/diff`; no processor RTL, firmware startup,
+build targets or Spike vendor sources were changed. The reference now decodes
+integer/FP source and destination banks and snapshots FPRs. The monitor observes
+fused rs3, FP write enable and the actual FP register file. Comparisons retain raw
+NaN-boxing bits and the existing architectural-prefix and squash rules.
+
+* The standalone `test_fd.cpp` regression passed with `-Wall -Wextra -Werror`.
+  It checks f0 versus x0, conversion register banks, fused rs3 faults, boxing
+  faults, wrong commit banks, FP checkpoint faults, fcsr faults, out-of-order
+  checkpoints and squashed FP discrepancies.
+* The Verilator 5.040 differential model built against the cached Spike v1.1.0.
+* Existing `crc32` firmware passed with 29,432 commits, 25,904 checkpoints,
+  3,528 out-of-order commits and no discrepancies.
+* 66 isolated F/D instruction probes ran against the real RTL and Spike:
+  49 passed and 17 reported confirmed mismatches; none stopped as unsupported.
+  Coverage included single/double arithmetic and fused operations, conversions,
+  comparisons, classification, moves and FP memory operations. Single-precision
+  arithmetic operands were loaded as boxed 64-bit values to independently test
+  arithmetic despite the FLW issue.
+* Confirmed mismatches included FLW missing NaN boxing, FADD results, swapped
+  negative fused-operation results, FP moves and FCVT.D.L/LU results. For example,
+  FLW of 1.0 produced `0x000000003f800000` instead of `0xffffffff3f800000`, and
+  FADD.D of 1.0 and 2.0 produced 2.0 instead of 3.0. These are reported as
+  verification failures, not suppressed or treated as unsupported instructions.
+  The existing RTL routes FMV through conversion controls and FCVT.D.L/LU
+  through F2I in `fpu_wrapper.sv`; those paths were left unchanged.
+
+* Seven additional rounding/exception probes produced five passes (dynamic RTZ,
+  divide-by-zero, invalid operation, overflow and underflow, including fflags
+  readback) and two confirmed rounding-result mismatches (dynamic RUP and a
+  static RDN override). No checker boundaries were encountered.
+* Waves-on runs of FMADD.S (passed) and FLW (confirmed failure) generated original
+  and annotated FSTs, GTKWave saves and field legends including rs3, register bank
+  and FP checkpoint values. The failing process returned checker status 1.
+
+Temporary integration sources, logs and reports are under `build/fd-validation/`.
+These directed probes are not a full ISA compliance suite. Historical unsupported
+F/D results below describe the checker before this extension.
+
 ## Explicit debug targets (2026-10-11)
 
 The Makefile follows the layout of `feat-multiple-issues`. The original targets

@@ -41,7 +41,11 @@ const char *name(Field s) {
                                   "csr",
                                   "unsupported",
                                   "completion",
-                                  "store_order"};
+                                  "store_order",
+                                  "rs3",
+                                  "rs3_value",
+                                  "register_bank",
+                                  "fp_register_value"};
     return names[static_cast<unsigned>(s)];
 }
 uint64_t data_mask(unsigned size) {
@@ -52,6 +56,7 @@ Decode decode(uint32_t i) {
     d.rs1 = (i >> 15) & 31;
     d.rs2 = (i >> 20) & 31;
     d.rd = (i >> 7) & 31;
+    d.rs3 = i >> 27;
     switch (i & 127) {
     case 0x37:
     case 0x17:
@@ -73,6 +78,71 @@ Decode decode(uint32_t i) {
         d.use_rs1 = d.use_rs2 = d.store = true;
         d.size = 1u << ((i >> 12) & 3);
         break;
+    case 0x07: // FLW / FLD: integer base, floating-point destination
+    case 0x27: // FSW / FSD: integer base, floating-point data
+        d.supported = ((i >> 12) & 7) == 2 || ((i >> 12) & 7) == 3;
+        d.use_rs1 = true;
+        d.load = (i & 127) == 0x07;
+        d.store = !d.load;
+        d.write = d.fp_rd = d.load;
+        d.use_rs2 = d.fp_rs2 = d.store;
+        d.size = 1u << ((i >> 12) & 3);
+        break;
+    case 0x43: // FMADD
+    case 0x47: // FMSUB
+    case 0x4b: // FNMSUB
+    case 0x4f: // FNMADD
+        d.supported = ((i >> 25) & 3) <= 1 &&
+                      (((i >> 12) & 7) <= 4 || ((i >> 12) & 7) == 7);
+        d.use_rs1 = d.use_rs2 = d.use_rs3 = d.write = true;
+        d.fp_rs1 = d.fp_rs2 = d.fp_rd = true;
+        break;
+    case 0x53: {
+        const auto fmt = (i >> 25) & 3, op = i >> 27, f = (i >> 12) & 7;
+        const bool rounding = f <= 4 || f == 7;
+        d.supported = fmt <= 1;
+        d.use_rs1 = d.fp_rs1 = d.write = d.fp_rd = true;
+        switch (op) {
+        case 0: case 1: case 2: case 3: // add, subtract, multiply, divide
+            d.use_rs2 = d.fp_rs2 = true;
+            d.supported &= rounding;
+            break;
+        case 4: case 5: // sign injection, min/max
+            d.use_rs2 = d.fp_rs2 = true;
+            d.supported &= f <= (op == 4 ? 2u : 1u);
+            break;
+        case 8: // FCVT.S.D / FCVT.D.S
+            d.supported &= d.rs2 == (fmt ^ 1) && rounding;
+            break;
+        case 11: // square root
+            d.supported &= d.rs2 == 0 && rounding;
+            break;
+        case 20: // comparison: FP sources, integer destination
+            d.use_rs2 = d.fp_rs2 = true;
+            d.fp_rd = false;
+            d.supported &= f <= 2;
+            break;
+        case 24: // FP to integer conversion (rs2 encodes integer type)
+            d.fp_rd = false;
+            d.supported &= d.rs2 <= 3 && rounding;
+            break;
+        case 26: // integer to FP conversion
+            d.fp_rs1 = false;
+            d.supported &= d.rs2 <= 3 && rounding;
+            break;
+        case 28: // FMV.X.W/D or FCLASS.S/D
+            d.fp_rd = false;
+            d.supported &= d.rs2 == 0 && f <= 1;
+            break;
+        case 30: // FMV.W/D.X
+            d.fp_rs1 = false;
+            d.supported &= d.rs2 == 0 && f == 0;
+            break;
+        default:
+            d.supported = false;
+        }
+        break;
+    }
     case 0x63:
         d.use_rs1 = d.use_rs2 = d.branch = true;
         break;
@@ -99,7 +169,7 @@ Decode decode(uint32_t i) {
     default:
         d.supported = false;
     }
-    d.write &= d.rd != 0;
+    d.write &= d.fp_rd || d.rd != 0;
     return d;
 }
 Checker::Checker(Reference &s, const std::string &dir, Config c)
@@ -212,7 +282,7 @@ uint64_t Checker::fetch(uint64_t pc, uint32_t insn, Stamp t) {
     return p->instruction_id;
 }
 void Checker::dispatch(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rs1, uint8_t rs2,
-                       uint8_t rd, bool write, Stamp t) {
+                       uint8_t rd, bool write, Stamp t, uint8_t rs3) {
     if (frontend_.empty()) {
         compare({}, Stage::dispatch, Field::identity, 1, 0, t, true);
         return;
@@ -237,7 +307,10 @@ void Checker::dispatch(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rs1, ui
             compare(p, Stage::dispatch, Field::rs1, r->decoded.rs1, rs1, t);
         if (r->decoded.use_rs2)
             compare(p, Stage::dispatch, Field::rs2, r->decoded.rs2, rs2, t);
-        compare(p, Stage::dispatch, Field::write_enable, r->decoded.write, write && rd != 0, t);
+        if (r->decoded.use_rs3)
+            compare(p, Stage::dispatch, Field::rs3, r->decoded.rs3, rs3, t);
+        compare(p, Stage::dispatch, Field::write_enable, r->decoded.write,
+                write && (r->decoded.fp_rd || rd != 0), t);
         if (r->decoded.write)
             compare(p, Stage::dispatch, Field::rd, r->decoded.rd, rd, t);
     }
@@ -257,7 +330,7 @@ void Checker::allocate(uint32_t rob, uint32_t index, bool store, Stamp t) {
           false);
 }
 void Checker::execute(uint32_t rob, uint64_t rs1, uint64_t rs2, uint64_t result, bool exception,
-                      bool mispredicted, Stamp t) {
+                      bool mispredicted, Stamp t, uint64_t rs3) {
     auto p = active(rob, t, Stage::execution);
     if (!p)
         return;
@@ -274,6 +347,8 @@ void Checker::execute(uint32_t rob, uint64_t rs1, uint64_t rs2, uint64_t result,
             compare(p, Stage::execution, Field::rs1_value, r->rs1_value, rs1, t);
         if (r->decoded.use_rs2)
             compare(p, Stage::execution, Field::rs2_value, r->rs2_value, rs2, t);
+        if (r->decoded.use_rs3)
+            compare(p, Stage::execution, Field::rs3_value, r->rs3_value, rs3, t);
         if (r->decoded.write)
             compare(p, Stage::execution, Field::result, r->result, result, t);
         if (r->decoded.store)
@@ -422,7 +497,7 @@ void Checker::confirm(const Ptr &p, Stamp t) {
     }
 }
 void Checker::commit(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rd, bool write,
-                     uint64_t value, bool exception, Stamp t) {
+                     uint64_t value, bool exception, Stamp t, bool fp_write) {
     auto p = active(rob, t, Stage::commit);
     if (!p)
         return;
@@ -450,7 +525,12 @@ void Checker::commit(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rd, bool 
         ++out_of_order_commits_;
     compare(p, Stage::commit, Field::pc, r->pc, pc, t, true);
     compare(p, Stage::commit, Field::instruction, r->instruction, insn, t, true);
-    compare(p, Stage::commit, Field::write_enable, r->decoded.write, write && rd != 0, t, true);
+    compare(p, Stage::commit, Field::write_enable, r->decoded.write,
+            fp_write || (write && rd != 0), t, true);
+    compare(p, Stage::commit, Field::register_bank, r->decoded.write && r->decoded.fp_rd,
+            fp_write, t, true);
+    if (fp_write && write)
+        compare(p, Stage::commit, Field::write_enable, 0, 1, t, true);
     if (r->decoded.write) {
         compare(p, Stage::commit, Field::rd, r->decoded.rd, rd, t, true);
         compare(p, Stage::commit, Field::result, r->result, value, t, true);
@@ -471,13 +551,22 @@ void Checker::commit(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rd, bool 
     }
 }
 void Checker::checkpoint(const std::array<uint64_t, 32> &regs, Stamp t,
-                         const std::map<uint32_t, uint64_t> &csrs) {
+                         const std::map<uint32_t, uint64_t> &csrs,
+                         const std::array<uint64_t, 32> *fp_regs) {
     if (prefix_ == 0 || prefix_ != newest_commit_ || prefix_ == last_checkpoint_)
         return;
     auto p = architectural_.at(prefix_ - 1);
     for (unsigned i = 0; i < 32; ++i) {
         compare(p, Stage::checkpoint, Field::register_value, p->reference->registers[i], regs[i], t,
                 true, i);
+    }
+    if (p->reference->has_fp) {
+        if (!fp_regs)
+            stop("missing observed FP register file at architectural checkpoint", t, true);
+        else
+            for (unsigned i = 0; i < 32; ++i)
+                compare(p, Stage::checkpoint, Field::fp_register_value,
+                        p->reference->fp_registers[i], (*fp_regs)[i], t, true, i);
     }
     for (const auto &[addr, value] : p->reference->csrs) {
         auto it = csrs.find(addr);

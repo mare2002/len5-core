@@ -54,12 +54,17 @@ enum class Field : uint32_t {
     csr,
     unsupported,
     completion,
-    store_order
+    store_order,
+    rs3,
+    rs3_value,
+    register_bank,
+    fp_register_value
 };
 const char *name(Stage);
 const char *name(Field);
 struct Decode {
-    uint8_t rs1 = 0, rs2 = 0, rd = 0, size = 0;
+    uint8_t rs1 = 0, rs2 = 0, rs3 = 0, rd = 0, size = 0;
+    bool fp_rs1 = false, fp_rs2 = false, fp_rd = false, use_rs3 = false;
     bool use_rs1 = false, use_rs2 = false, write = false, load = false, store = false,
          branch = false, jump = false, csr = false, supported = true;
 };
@@ -70,11 +75,12 @@ struct ReferenceRecord {
     uint32_t instruction = 0;
     uint8_t length = 4, privilege = 3;
     Decode decoded;
-    uint64_t rs1_value = 0, rs2_value = 0, result = 0, address = 0, raw_data = 0;
+    uint64_t rs1_value = 0, rs2_value = 0, rs3_value = 0, result = 0, address = 0, raw_data = 0;
     uint8_t byte_mask = 0;
     bool trap = false;
     uint64_t cause = 0, tval = 0;
-    std::array<uint64_t, 32> registers{};
+    std::array<uint64_t, 32> registers{}, fp_registers{};
+    bool has_fp = false;
     std::map<uint32_t, uint64_t> csr_changes;
     std::map<uint32_t, uint64_t> csrs;
     std::string unsupported;
@@ -121,10 +127,10 @@ class Checker {
     Checker(Reference &, const std::string &directory, Config = {});
     uint64_t fetch(uint64_t pc, uint32_t instruction, Stamp);
     void dispatch(uint32_t rob, uint64_t pc, uint32_t instruction, uint8_t rs1, uint8_t rs2,
-                  uint8_t rd, bool write, Stamp);
+                  uint8_t rd, bool write, Stamp, uint8_t rs3 = 0);
     void allocate(uint32_t rob, uint32_t index, bool store, Stamp);
     void execute(uint32_t rob, uint64_t rs1, uint64_t rs2, uint64_t result, bool exception,
-                 bool mispredicted, Stamp);
+                 bool mispredicted, Stamp, uint64_t rs3 = 0);
     void memory(uint32_t index, bool store, uint64_t address, uint8_t size, uint8_t mask,
                 uint64_t raw, bool has_data, Stamp);
     void authorize(uint32_t index, uint32_t rob, Stamp);
@@ -133,9 +139,10 @@ class Checker {
     void load_request(uint32_t index, uint64_t address, uint8_t mask, Stamp);
     void load_response(uint32_t index, uint64_t data, bool exception, Stamp);
     void commit(uint32_t rob, uint64_t pc, uint32_t instruction, uint8_t rd, bool write,
-                uint64_t result, bool exception, Stamp);
+                uint64_t result, bool exception, Stamp, bool fp_write = false);
     void checkpoint(const std::array<uint64_t, 32> &registers, Stamp,
-                    const std::map<uint32_t, uint64_t> &csrs = {});
+                    const std::map<uint32_t, uint64_t> &csrs = {},
+                    const std::array<uint64_t, 32> *fp_registers = nullptr);
     void source_at_dispatch(uint32_t rob, uint64_t value, Stamp);
     void flush_frontend(Stamp);
     void flush_backend(Stamp);

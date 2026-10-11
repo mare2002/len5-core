@@ -69,7 +69,7 @@ def generate(source, target):
            'struct BitField { unsigned offset, width; };',
            'struct Layout { unsigned width, stride; int low, high; bool unpacked; std::map<std::string,BitField> fields; };',
            'inline const std::map<std::string,Layout> layouts = {']
-    selected = {'tb_bare','issue_stage','issue_queue','commit_stage','rob','int_rf','csrs',
+    selected = {'tb_bare','issue_stage','issue_queue','commit_stage','rob','int_rf','fp_rf','csrs',
                 'arith_rs','arith_rs_serial','arith_rs_fpu','branch_rs','load_buffer','store_buffer','branch_unit'}
     max_width = 0
     for cell in root.findall('cells//cell'):

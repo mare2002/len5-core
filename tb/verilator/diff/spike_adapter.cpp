@@ -131,8 +131,13 @@ ReferenceRecord SpikeReference::step() {
     }
     r.length = (r.instruction & 3) == 3 ? 4 : 2;
     r.decoded = decode(r.instruction);
-    r.rs1_value = s->XPR[r.decoded.rs1];
-    r.rs2_value = s->XPR[r.decoded.rs2];
+    r.has_fp = m.cpu->extension_enabled('F');
+    const uint64_t fp_mask = m.cpu->extension_enabled('D') ? ~uint64_t{0} : 0xffffffff;
+    // Compare raw register bits, including NaN boxing, without host FP conversions.
+    auto fp = [&](unsigned reg) { return s->FPR[reg].v[0] & fp_mask; };
+    r.rs1_value = r.decoded.fp_rs1 ? fp(r.decoded.rs1) : s->XPR[r.decoded.rs1];
+    r.rs2_value = r.decoded.fp_rs2 ? fp(r.decoded.rs2) : s->XPR[r.decoded.rs2];
+    r.rs3_value = fp(r.decoded.rs3);
     auto retired = s->minstret->read();
     m.cpu->step(1);
     r.next_pc = s->pc;
@@ -143,7 +148,9 @@ ReferenceRecord SpikeReference::step() {
     }
     for (unsigned i = 0; i < 32; ++i)
         r.registers[i] = s->XPR[i];
-    r.result = s->XPR[r.decoded.rd];
+    for (unsigned i = 0; i < 32; ++i)
+        r.fp_registers[i] = fp(i);
+    r.result = r.decoded.fp_rd ? fp(r.decoded.rd) : s->XPR[r.decoded.rd];
     for (const auto &[reg, val] : s->log_reg_write)
         if ((reg & 15) == 4)
             r.csr_changes[reg >> 4] = val.v[0];
@@ -172,9 +179,9 @@ ReferenceRecord SpikeReference::step() {
             r.unsupported = "unexpected Spike memory log cardinality";
     }
     if (!r.decoded.supported || r.length != 4)
-        r.unsupported = "unsupported instruction class: supports RV64IM and "
+        r.unsupported = "unsupported instruction class: supports RV64IMFD and "
                         "mstatus/fcsr/frm/fflags/mtvec/mscratch/mepc/mcause/mtval CSR operations; "
-                        "FP instructions, other CSRs, fences, "
+                        "other CSRs, fences, "
                         "compressed and atomic instructions are unsupported";
     const auto fs = (r.csrs.at(0x300) >> 13) & 3;
     if (fs == 1 || fs == 2)

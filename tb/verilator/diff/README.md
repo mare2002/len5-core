@@ -6,9 +6,9 @@ Normal simulation and the existing execution trace remain available without link
 Spike. The FS/fcsr support described below is implemented in the processor RTL
 and therefore also applies to ordinary simulation.
 
-The tested instruction scope is **RV64IM and CSR operations on mstatus, fcsr,
+The supported instruction scope is **RV64IMFD and CSR operations on mstatus, fcsr,
 frm, fflags, mtvec, mscratch, mepc, mcause and mtval**, in machine mode with the bare memory emulator. This is
-not yet full RV64IMFD verification: floating point, traps/interrupts, other CSRs,
+limited to ordinary instruction execution: traps/interrupts, other CSRs,
 fences, atomics, compressed instructions, MMIO reads and self-modifying code
 terminate with an explicit unsupported result. See the limitations below.
 
@@ -208,17 +208,20 @@ The CSR source-register decode and the ready indication for decoded exceptions
 have also been corrected. These are functional RTL fixes requested with FS support.
 
 The checker compares actual `mstatus` and `fcsr` at complete architectural
-checkpoints, alongside integer registers and the previously supported CSRs.
+checkpoints, alongside integer and floating-point registers and the previously supported CSRs.
 It does not mask FS or SD differences and does not force Spike's FS to Dirty.
 Both models execute the firmware's initialization sequence. The initial `fcsr`
 value is checked without writing it through Spike's FS-sensitive write hook.
 Reference lookahead stops at an unsupported instruction while older instructions
 continue to be checked; this permits the normal exit store before the trailing WFI.
 
-**F/D instruction and floating-register verification is still unsupported.** These
-CSR changes enable the standard startup of integer applications compiled with
-`rv64imfd_zicsr`; they do not imply full floating-point differential coverage.
-Trap/interrupt synchronization and timing-dependent counter reads remain unsupported.
+F/D checking includes arithmetic, fused operations (all three operands), conversions,
+comparisons, classification, moves and loads/stores. Source and destination register
+banks are decoded independently; f0 is writable. Results and all 32 floating-point
+registers are compared as raw bits, including NaN boxing. Existing fcsr checkpoints
+check accrued exception flags and rounding-mode state. The checker reports RTL
+mismatches without normalizing them to Spike's results. In particular, the current
+RTL's FLW zero extension differs from the NaN boxing required with D enabled.
 
 For Embench use its existing `CDEFS=-DSPIKE_CHECK` option to omit `mcycle`/`minstret`
 measurements. If a benchmark image is already built without this option, rebuild
@@ -236,10 +239,16 @@ execution statistics.
 
 ## Validation
 
-The prior validation results are recorded in `VALIDATION.md`; the separate
-verification test programs and runners have since been removed. Existing
-applications and benchmark runs continue to use the same C++ checker.
+Validation results are recorded in `VALIDATION.md`. Existing applications and
+benchmark runs continue to use the same C++ checker. The standalone F/D checker
+regression exercises writable f0, mixed register banks, fused rs3, NaN-boxing
+mismatches, fcsr checks, out-of-order checkpoints and squash handling:
+
+```sh
+c++ -std=c++17 tb/verilator/diff/checker.cpp tb/verilator/diff/test_fd.cpp -o /tmp/test_fd
+/tmp/test_fd /tmp/len5-fd-tests
+```
 
 See [actual results and known failures](VALIDATION.md) for the latest FS/fcsr
-validation and historical results. Unsupported FP/trap behavior is not counted
+validation and historical results. Unsupported trap behavior is not counted
 as verified execution.
