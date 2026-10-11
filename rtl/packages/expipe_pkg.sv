@@ -216,7 +216,11 @@ package expipe_pkg;
     FPU_S2L,       //1010 0 0
     FPU_D2L,       //1010 0 1
     FPU_S2L_U,     //1010 1 1
-    FPU_D2L_U      //1010 1 1
+    FPU_D2L_U,     //1010 1 1
+    FPU_MV_X_W,    // raw FP32 bits to integer, sign-extended
+    FPU_MV_W_X,    // raw integer bits to FP32, NaN-boxed
+    FPU_MV_X_D,    // raw FP64 bits to integer
+    FPU_MV_D_X     // raw integer bits to FP64
   } fpu_ctl_t;
 
   // Branch unit control

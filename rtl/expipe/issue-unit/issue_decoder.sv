@@ -1094,7 +1094,7 @@ module issue_decoder (
         if (LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
-          eu_ctl.fpu  = FPU_S2I;  // TODO: check
+          eu_ctl.fpu  = FPU_MV_X_W;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_FP;
         end else begin
@@ -1107,7 +1107,7 @@ module issue_decoder (
         if (LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
-          eu_ctl.fpu  = FPU_I2S;  // TODO: check
+          eu_ctl.fpu  = FPU_MV_W_X;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
         end else begin
@@ -1536,7 +1536,7 @@ module issue_decoder (
         if (LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
-          eu_ctl.fpu  = FPU_D2L;  // TODO: check
+          eu_ctl.fpu  = FPU_MV_X_D;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_FP;
         end else begin
@@ -1549,7 +1549,7 @@ module issue_decoder (
         if (LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
-          eu_ctl.fpu  = FPU_L2D;  // TODO: check
+          eu_ctl.fpu  = FPU_MV_D_X;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
         end else begin

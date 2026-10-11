@@ -118,12 +118,9 @@ module fpu_wrapper #(
     .data_o (in_reg_data_out)
   );
 
-  assign fpu_rm          = roundmode_e'(in_reg_data_out.rm);
   assign fpu_tag         = in_reg_data_out.rob_idx;
   //assign fpu_op_mod = in_reg_data_out.clt[0];   //check whether always true
 
-  // FPnew ADD uses slots 1 and 2; slot 0 is replaced internally with 1.0.
-  // Fused operations use all three slots in architectural source order.
   always_comb begin : fpnew_operands
     fpu_operands[0] = in_reg_data_out.rs1_value;
     fpu_operands[1] = in_reg_data_out.rs2_value;
@@ -142,6 +139,7 @@ module fpu_wrapper #(
   // -------------------
   // Control decoder for FPnew
   always_comb begin : fpnew_op
+    fpu_rm      = roundmode_e'(in_reg_data_out.rm);
     fpu_op      = ADD;
     fpu_op_mod  = 1'b0;
     fpu_src_fmt = FP64;
@@ -158,11 +156,11 @@ module fpu_wrapper #(
       end
       FPU_NMADD_D: begin
         fpu_op     = FNMSUB;
-        fpu_op_mod = 1'b0;
+        fpu_op_mod = 1'b1;  // -(rs1 * rs2) - rs3
       end
       FPU_NMSUB_D: begin
         fpu_op     = FNMSUB;
-        fpu_op_mod = 1'b1;
+        fpu_op_mod = 1'b0;  // -(rs1 * rs2) + rs3
       end
       FPU_ADD_D: begin
         fpu_op     = ADD;
@@ -234,6 +232,34 @@ module fpu_wrapper #(
         fpu_int_fmt = INT64;
         fpu_dst_fmt = FP64;
       end
+      FPU_MV_X_W: begin
+        fpu_op      = SGNJ;
+        fpu_rm      = RUP;
+        fpu_op_mod  = 1'b1;          
+		fpu_src_fmt = FP32;
+        fpu_dst_fmt = FP32;
+      end
+      FPU_MV_W_X: begin
+        fpu_op      = SGNJ;
+        fpu_rm      = RUP;
+        fpu_op_mod  = 1'b0; 
+        fpu_src_fmt = FP32;
+        fpu_dst_fmt = FP32;
+      end
+      FPU_MV_X_D: begin
+        fpu_op      = SGNJ;
+        fpu_rm      = RUP;
+        fpu_op_mod  = 1'b1;
+        fpu_src_fmt = FP64;
+        fpu_dst_fmt = FP64;
+      end
+      FPU_MV_D_X: begin
+        fpu_op      = SGNJ;
+        fpu_rm      = RUP;
+        fpu_op_mod  = 1'b0;
+        fpu_src_fmt = FP64;
+        fpu_dst_fmt = FP64;
+      end
       FPU_CMP_D: begin
         fpu_op = CMP;
       end
@@ -254,12 +280,13 @@ module fpu_wrapper #(
       end
       FPU_NMADD_S: begin
         fpu_op      = FNMSUB;
+        fpu_op_mod  = 1'b1;  
         fpu_src_fmt = FP32;
         fpu_dst_fmt = FP32;  //todo: check, what should be the dest?
       end
       FPU_NMSUB_S: begin
         fpu_op      = FNMSUB;
-        fpu_op_mod  = 1'b1;
+        fpu_op_mod  = 1'b0; 
         fpu_src_fmt = FP32;
         fpu_dst_fmt = FP32;  //todo: check, what should be the dest?
       end
