@@ -51,8 +51,8 @@ make verilator-sim-debug DUMP_WAVES=true \
 make verilator-waves-debug
 
 # Debug counterparts of the existing benchmark entry points.
-make run-debug BENCHMARK=crc32 DUMP_WAVES=false CDEFS=-DSPIKE_CHECK
-make run-benchmarks-debug DUMP_WAVES=true CDEFS=-DSPIKE_CHECK -j4
+make run-debug BENCHMARK=crc32 DUMP_WAVES=false
+make run-benchmarks-debug DUMP_WAVES=true -j4
 
 # Remove all other build outputs, retaining the compiled Spike libraries.
 make clean-keep-spike
@@ -175,11 +175,14 @@ is produced by the checker; comparison journaling and FST merging are skipped.
 Stale waveform artifacts are removed when reusing a directory without waves.
 
 Application verification outputs live under `build/sim-common/logs/`. Verified
-benchmark outputs live under `build/<suite>-debug/run/<benchmark>/logs/`, separately
+benchmark outputs live under `build/<suite>_debug/run/<benchmark>/logs/`, separately
 for each parallel run; their console logs live under
-`build/<suite>-debug/logs/sim/<benchmark>.log`. `SIM_RUN_DIR` overrides the working
+`build/<suite>_debug/logs/sim/<benchmark>.log`. `SIM_RUN_DIR` overrides the working
 directory for a direct simulation. `DEBUG_SUITE_DIR` overrides the debug suite
-output root. Debug benchmarks reuse firmware in `build/<suite>/run/<benchmark>/`.
+output root for both firmware and simulation artifacts. Debug benchmarks build
+their own firmware under `build/<suite>_debug/run/<benchmark>/` (for Embench,
+`build/embench_debug/run/<benchmark>/`) with `-DSPIKE_CHECK` automatically appended
+to any supplied `CDEFS`.
 `DEBUG_ARGS` supplies additional
 checker options, such as `--diff-recovery 20000` or `--diff-fault cdb`.
 
@@ -189,7 +192,7 @@ instruction PC and encoding, followed by a line containing the destination-regis
 value when a register is written. The existing logger buffers commit notifications
 by ROB order; its timestamp is the time the buffered entry is printed.
 For verified applications the file is `build/sim-common/logs/sim-trace.log`;
-for verified benchmarks it is `build/<suite>-debug/run/<benchmark>/logs/sim-trace.log`.
+for verified benchmarks it is `build/<suite>_debug/run/<benchmark>/logs/sim-trace.log`.
 Ordinary FuseSoC runs retain the `build/sim-common/sim-trace.log` link.
 `verilator-sim` defaults to tracing enabled, while optimized/benchmark runs default
 to tracing disabled. An explicit `DUMP_TRACE=true/false` overrides either default.
@@ -229,14 +232,12 @@ check accrued exception flags and rounding-mode state. The checker reports RTL
 mismatches without normalizing them to Spike's results. In particular, the current
 RTL's FLW zero extension differs from the NaN boxing required with D enabled.
 
-For Embench use its existing `CDEFS=-DSPIKE_CHECK` option to omit `mcycle`/`minstret`
-measurements. If a benchmark image is already built without this option, rebuild
-it explicitly before running (Make does not fingerprint software compiler options):
+For Embench, `run-debug` and `run-benchmarks-debug` automatically append
+`-DSPIKE_CHECK` to omit `mcycle`/`minstret` measurements and keep their firmware
+separate from ordinary benchmarks. No explicit `CDEFS` setting is needed:
 
 ```sh
-make -BC sw benchmark SUITE=embench BENCHMARK=crc32 CDEFS=-DSPIKE_CHECK \
-    BUILD_DIR="$PWD/build/embench/run/crc32" LINKER="$PWD/sw/linker/len5-sim.ld"
-make run-debug BENCHMARK=crc32 DUMP_WAVES=false CDEFS=-DSPIKE_CHECK
+make run-debug BENCHMARK=crc32 DUMP_WAVES=false
 ```
 
 This option leaves the standard FS/fcsr startup enabled and preserves the benchmark's

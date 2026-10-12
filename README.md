@@ -74,6 +74,8 @@ Use `verilator-sim-debug`, `verilator-opt-debug`, `run-debug` or
 `run-benchmarks-debug` to enable checking. The original targets run ordinary
 simulations. Models are built under `build/normal` and `build/debug`. Set `DUMP_WAVES=true` for
 annotated waveforms or `DUMP_WAVES=false` for checking with only a JSON report.
+Debug benchmark targets add `-DSPIKE_CHECK` automatically and build firmware under
+`build/embench_debug/run/<benchmark>/` for Embench.
 Simulation defaults to waves; optimized and benchmark runs default to no waves.
 The original program checks remain available through `make check`; the added
 verification test suite has been removed. Compiled Spike libraries live in

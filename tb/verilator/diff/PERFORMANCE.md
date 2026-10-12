@@ -260,13 +260,14 @@ performed before removal.
 ## Reproduce
 
 Build once using the normal checked target, then time the executable independently
-of FuseSoC startup/build-cache checks:
+of FuseSoC startup/build-cache checks. Use firmware produced by
+`make run-debug BENCHMARK=st`, which automatically adds `-DSPIKE_CHECK`:
 
 ```sh
 make verilator-build-debug VERILATOR=/path/to/verilator-5.040/bin/verilator \
     FUSESOC=/path/to/fusesoc JOBS=4
 python3 scripts/sim/benchmark-diff.py \
-    build/debug/sim-diff-verilator/Vtb_bare build/embench/run/st/main.hex \
+    build/debug/sim-diff-verilator/Vtb_bare build/embench_debug/run/st/main.hex \
     build/performance/my-run --repeats 5
 # Add --reference <baseline>/summary.json to require identical verification results.
 # Add --waves and/or --trace to measure those modes explicitly.
@@ -280,7 +281,7 @@ options from Edalize's `config.mk`, so the objects must match that configuration
 ```sh
 python3 scripts/sim/profile-diff.py build/performance/profile
 python3 scripts/sim/benchmark-diff.py \
-    build/performance/profile/Vtb_bare build/embench/run/st/main.hex \
+    build/performance/profile/Vtb_bare build/embench_debug/run/st/main.hex \
     build/performance/profile/run --repeats 1
 # PROFILE lines appear in run/0/console.log, in seconds with invocation counts.
 ```

@@ -30,7 +30,7 @@ JOBS            ?= 4
 
 # Debug simulation (RTL checked against Spike)
 DEBUG_BUILD_DIR ?= $(BUILD_DIR)/debug
-DEBUG_SUITE_DIR ?= $(BUILD_DIR)/$(SUITE)-debug
+DEBUG_SUITE_DIR ?= $(BUILD_DIR)/$(SUITE)_debug
 DEBUG_ARGS      ?=
 SIM_RUN_DIR     ?= $(abspath $(BUILD_DIR)/sim-common)
 SPIKE_SRC       ?= $(abspath sw/vendor/riscv-isa-sim)
@@ -172,13 +172,13 @@ $(PARALLEL_DEBUG_JOBS): job_%-debug: verilator-build-debug
 run-benchmarks run $(PARALLEL_JOBS): MAX_CYCLES = 10000000
 run-benchmarks-debug run-debug $(PARALLEL_DEBUG_JOBS): MAX_CYCLES = 10000000
 run: SOFTWARE_DIR = $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)
-run-debug: SOFTWARE_DIR = $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)
+run-debug: SOFTWARE_DIR = $(DEBUG_SUITE_DIR)/run/$(BENCHMARK)
 run: $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex | verilator-build $(BUILD_DIR)/$(SUITE)/logs/sim/
 	@echo "## Starting the simulation of $(SUITE) benchmark $(BENCHMARK)"
 	@$(MAKE) --no-print-directory verilator-opt SOFTWARE_DIR="$(SOFTWARE_DIR)" FIRMWARE="$<" MAX_CYCLES=$(MAX_CYCLES) > "$(BUILD_DIR)/$(SUITE)/logs/sim/$(BENCHMARK).log" 2>&1
 	@echo "## End of the simulation of $(SUITE) benchmark $(BENCHMARK)"
 
-run-debug: $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex | verilator-build-debug $(DEBUG_SUITE_DIR)/logs/sim/
+run-debug: $(DEBUG_SUITE_DIR)/run/$(BENCHMARK)/main.hex | verilator-build-debug $(DEBUG_SUITE_DIR)/logs/sim/
 	@echo "## Starting the debug simulation of $(SUITE) benchmark $(BENCHMARK)"
 	@$(MAKE) --no-print-directory verilator-opt-debug SOFTWARE_DIR="$(SOFTWARE_DIR)" FIRMWARE="$<" MAX_CYCLES=$(MAX_CYCLES) SIM_RUN_DIR="$(DEBUG_SUITE_DIR)/run/$(BENCHMARK)" > "$(DEBUG_SUITE_DIR)/logs/sim/$(BENCHMARK).log" 2>&1
 	@echo "## End of the debug simulation of $(SUITE) benchmark $(BENCHMARK)"
@@ -186,6 +186,10 @@ run-debug: $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex | verilator-build-deb
 $(BUILD_DIR)/$(SUITE)/run/$(BENCHMARK)/main.hex: | $(BUILD_DIR)/$(SUITE)/logs/compiler/
 	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
 	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR="$(dir $@)" BENCHMARK=$(BENCHMARK) > "$(BUILD_DIR)/$(SUITE)/logs/compiler/$(BENCHMARK).log" 2>&1
+
+$(DEBUG_SUITE_DIR)/run/$(BENCHMARK)/main.hex: | $(DEBUG_SUITE_DIR)/logs/compiler/
+	@echo "## Building debug suite $(SUITE) benchmark $(BENCHMARK)"
+	@$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR="$(abspath $(dir $@))" BENCHMARK=$(BENCHMARK) CDEFS="$(CDEFS) -DSPIKE_CHECK" > "$(DEBUG_SUITE_DIR)/logs/compiler/$(BENCHMARK).log" 2>&1
 
 # Software
 # --------
