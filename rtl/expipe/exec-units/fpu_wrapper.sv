@@ -32,11 +32,11 @@ module fpu_wrapper #(
   input  logic                   [           EU_CTL_LEN-1:0] ctl_i,
   input  logic                   [csr_pkg::FCSR_FRM_LEN-1:0] rm_i,
   input  expipe_pkg::rob_idx_t                               rob_idx_i,
-  input  logic                   [       len5_pkg::FLEN-1:0] rs1_value_i,
-  input  logic                   [       len5_pkg::FLEN-1:0] rs2_value_i,
-  input  logic                   [       len5_pkg::FLEN-1:0] rs3_value_i,
+  input  logic                   [       len5_pkg::XLEN-1:0] rs1_value_i,
+  input  logic                   [       len5_pkg::XLEN-1:0] rs2_value_i,
+  input  logic                   [       len5_pkg::XLEN-1:0] rs3_value_i,
   output expipe_pkg::rob_idx_t                               rob_idx_o,
-  output logic                   [       len5_pkg::FLEN-1:0] result_o,
+  output logic                   [       len5_pkg::XLEN-1:0] result_o,
   output logic                                               except_raised_o,
   output len5_pkg::except_code_t                             except_code_o,
   output csr_pkg::fcsr_fflags_t                              fflags_o
@@ -58,7 +58,16 @@ module fpu_wrapper #(
       },
       PipeConfig: BEFORE
   };
-  localparam fpu_features_t FpuFeatures = (len5_config_pkg::LEN5_D_EN) ? RV64D : RV32F;
+  // Integer operands and results remain XLEN wide, including in RV64F mode.
+  // NaN boxing is checked only when the architectural FP registers are 64 bits.
+  localparam fpu_features_t FpuFeatures = '{
+      Width: XLEN,
+      EnableVectors: 1'b0,
+      EnableNanBox: len5_config_pkg::LEN5_D_EN,
+      FpFmtMask: len5_config_pkg::LEN5_D_EN ? RV64D.FpFmtMask : RV32F.FpFmtMask,
+      IntFmtMask: RV64D.IntFmtMask
+  };
+  localparam fp_format_e DefaultFpFormat = len5_config_pkg::LEN5_D_EN ? FP64 : FP32;
   // Use T-HEAD Divsqrt unit for FP32-only instances
   // NOTE: the T-HEAD implementation is smaller but slower than the PULP one.
   // We primarily included it for fair comparison agains X-HEEP. The PULP unit
@@ -72,19 +81,25 @@ module fpu_wrapper #(
   fp_format_e                              fpu_src_fmt;
   fp_format_e                              fpu_dst_fmt;
   int_format_e                             fpu_int_fmt;
-  logic        [FpuOperands-1:0][FLEN-1:0] fpu_operands;
-  rob_idx_t                                fpu_tag;
+  logic        [FpuOperands-1:0][XLEN-1:0] fpu_operands;
+  // Keep the result destination type aligned across FPnew's different pipelines.
+  typedef struct packed {
+    rob_idx_t rob_idx;
+    logic     is_int;
+  } fpu_tag_t;
+  fpu_tag_t                                fpu_tag, fpu_result_tag;
   // Output from FPU
   status_t                                 fpu_status;
+  logic [XLEN-1:0]                         fpu_result;
 
   // ----------------
   // INPUT SPILL CELL
   // ----------------
   // Interface data type
   typedef struct packed {
-    logic [FLEN-1:0]       rs1_value;  // first input operand
-    logic [FLEN-1:0]       rs2_value;  // second input operand
-    logic [FLEN-1:0]       rs3_value;  // second input operand
+    logic [XLEN-1:0]       rs1_value;  // first input operand
+    logic [XLEN-1:0]       rs2_value;  // second input operand
+    logic [XLEN-1:0]       rs3_value;  // second input operand
     logic [EU_CTL_LEN-1:0] ctl;        // control bits
     logic [FUNCT3_LEN-1:0] rm;         // rounding mode
     rob_idx_t              rob_idx;    // instr. index in the RS
@@ -118,7 +133,9 @@ module fpu_wrapper #(
     .data_o (in_reg_data_out)
   );
 
-  assign fpu_tag         = in_reg_data_out.rob_idx;
+  assign fpu_tag.rob_idx = in_reg_data_out.rob_idx;
+  assign fpu_tag.is_int  = (fpu_op inside {F2I, CMP, CLASSIFY}) ||
+                          (fpu_op == SGNJ && fpu_op_mod);
   //assign fpu_op_mod = in_reg_data_out.clt[0];   //check whether always true
 
   always_comb begin : fpnew_operands
@@ -142,8 +159,8 @@ module fpu_wrapper #(
     fpu_rm      = roundmode_e'(in_reg_data_out.rm);
     fpu_op      = ADD;
     fpu_op_mod  = 1'b0;
-    fpu_src_fmt = FP64;
-    fpu_dst_fmt = FP64;
+    fpu_src_fmt = DefaultFpFormat;
+    fpu_dst_fmt = DefaultFpFormat;
     fpu_int_fmt = INT64;
     case (in_reg_data_out.ctl)
       FPU_MADD_D: begin
@@ -369,16 +386,18 @@ module fpu_wrapper #(
       FPU_CMP_S: begin
         fpu_op      = CMP;
         fpu_src_fmt = FP32;
+        fpu_dst_fmt = FP32;
       end
       FPU_CLASS_S: begin
         fpu_op      = CLASSIFY;
         fpu_src_fmt = FP32;
+        fpu_dst_fmt = FP32;
       end
       default: begin
         fpu_op      = ADD;
         fpu_op_mod  = 1'b0;
-        fpu_src_fmt = FP64;
-        fpu_dst_fmt = FP64;
+        fpu_src_fmt = DefaultFpFormat;
+        fpu_dst_fmt = DefaultFpFormat;
         fpu_int_fmt = INT64;
       end
     endcase
@@ -390,7 +409,7 @@ module fpu_wrapper #(
     .Implementation(FpuImpl),
     // PulpDivSqrt = 0 enables T-head-based DivSqrt unit. Supported only for FP32-only instances of Fpnew
     .PulpDivsqrt   (FpuPulpDivsqrt),
-    .TagType       (rob_idx_t),
+    .TagType       (fpu_tag_t),
     .TrueSIMDClass (0),
     .EnableSIMDMask(0)
   ) u_fpu (
@@ -409,9 +428,9 @@ module fpu_wrapper #(
     .in_valid_i    (valid_fpu),     // from RS
     .in_ready_o    (ready_fpu),     // to RS
     .flush_i       (flush_i),
-    .result_o      (result_o),
+    .result_o      (fpu_result),
     .status_o      (fpu_status),
-    .tag_o         (rob_idx_o),
+    .tag_o         (fpu_result_tag),
     .out_valid_o   (valid_o),       // to downstream
     .out_ready_i   (ready_i),       // from downstream
     .busy_o        ()
@@ -420,6 +439,18 @@ module fpu_wrapper #(
   // --------------
   // OUTPUT NETWORK
   // --------------
+  assign rob_idx_o = fpu_result_tag.rob_idx;
+
+  // RV64F has 32-bit FP registers, but integer destinations need all 64 bits.
+  // Format the result here so direct forwarding and the CDB see the same value.
+  always_comb begin
+    if (len5_config_pkg::LEN5_D_EN || fpu_result_tag.is_int) begin
+      result_o = fpu_result;
+    end else begin
+      result_o = {{XLEN - FLEN{1'b0}}, fpu_result[FLEN-1:0]};
+    end
+  end
+
   // Exception flags decoder
   assign fflags_o = '{
           nv: fpu_status.NV,

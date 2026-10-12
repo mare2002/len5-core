@@ -1,0 +1,25 @@
+diff --git a/src/fpnew_opgroup_multifmt_slice.sv b/src/fpnew_opgroup_multifmt_slice.sv
+index 94ebdf8..a1f581d 100644
+--- a/src/fpnew_opgroup_multifmt_slice.sv
++++ b/src/fpnew_opgroup_multifmt_slice.sv
+@@ -161,6 +161,7 @@ or set Features.FpFmtMask to support only FP32");
+     localparam fpnew_pkg::fmt_logic_t ACTIVE_FORMATS =
+         fpnew_pkg::get_lane_formats(Width, FpFmtConfig, LANE);
+     localparam fpnew_pkg::ifmt_logic_t ACTIVE_INT_FORMATS =
++        (!EnableVectors && LANE == 0) ? IntFmtConfig :
+         fpnew_pkg::get_lane_int_formats(Width, FpFmtConfig, IntFmtConfig, LANE);
+     localparam int unsigned MAX_WIDTH = fpnew_pkg::max_fp_width(ACTIVE_FORMATS);
+ 
+@@ -168,8 +169,11 @@ or set Features.FpFmtMask to support only FP32");
+     localparam fpnew_pkg::fmt_logic_t CONV_FORMATS =
+         fpnew_pkg::get_conv_lane_formats(Width, FpFmtConfig, LANE);
+     localparam fpnew_pkg::ifmt_logic_t CONV_INT_FORMATS =
++        (!EnableVectors && LANE == 0) ? IntFmtConfig :
+         fpnew_pkg::get_conv_lane_int_formats(Width, FpFmtConfig, IntFmtConfig, LANE);
+-    localparam int unsigned CONV_WIDTH = fpnew_pkg::max_fp_width(CONV_FORMATS);
++    // Scalar integer conversions can be wider than the enabled FP formats (RV64F).
++    localparam int unsigned CONV_WIDTH = fpnew_pkg::maximum(
++        fpnew_pkg::max_fp_width(CONV_FORMATS), fpnew_pkg::max_int_width(CONV_INT_FORMATS));
+ 
+     // Lane parameters from Opgroup
+     localparam fpnew_pkg::fmt_logic_t LANE_FORMATS = (OpGroup == fpnew_pkg::CONV)

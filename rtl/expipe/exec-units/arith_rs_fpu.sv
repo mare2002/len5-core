@@ -47,15 +47,15 @@ module arith_rs_fpu #(
   output logic                                               eu_valid_o,
   output logic                                               eu_ready_o,
   input  expipe_pkg::rob_idx_t                               eu_rob_idx_i,
-  input  logic                   [       len5_pkg::FLEN-1:0] eu_result_i,
+  input  logic                   [       len5_pkg::XLEN-1:0] eu_result_i,
   input  logic                                               eu_except_raised_i,
   input  len5_pkg::except_code_t                             eu_except_code_i,
   input  csr_pkg::fcsr_fflags_t                              eu_fflags_i,
   output logic                   [           EU_CTL_LEN-1:0] eu_ctl_o,
   output logic                   [csr_pkg::FCSR_FRM_LEN-1:0] eu_frm_o,            //rounding mode
-  output logic                   [       len5_pkg::FLEN-1:0] eu_rs1_o,
-  output logic                   [       len5_pkg::FLEN-1:0] eu_rs2_o,
-  output logic                   [       len5_pkg::FLEN-1:0] eu_rs3_o,
+  output logic                   [       len5_pkg::XLEN-1:0] eu_rs1_o,
+  output logic                   [       len5_pkg::XLEN-1:0] eu_rs2_o,
+  output logic                   [       len5_pkg::XLEN-1:0] eu_rs3_o,
   output expipe_pkg::rob_idx_t                               eu_rob_idx_o
 );
 
@@ -70,13 +70,13 @@ module arith_rs_fpu #(
     logic [EU_CTL_LEN-1:0] eu_ctl;  // Control signals for the EU
     logic [csr_pkg::FCSR_FRM_LEN-1:0] frm_value;  // Rounding mode signal for the EU
     rob_idx_t rs1_rob_idx;  // The entry of the rob that will contain the required operand.
-    logic [FLEN-1:0] rs1_value;  // The value of the first operand
+    logic [XLEN-1:0] rs1_value;  // The value of the first operand
     rob_idx_t rs2_rob_idx;  // The entry of the rob that will contain the required operand.
-    logic [FLEN-1:0] rs2_value;  // The value of the third operand
+    logic [XLEN-1:0] rs2_value;  // The value of the third operand
     rob_idx_t rs3_rob_idx;  // The entry of the rob that will contain the required operand.
-    logic [FLEN-1:0] rs3_value;  // The value of the third operand
+    logic [XLEN-1:0] rs3_value;  // The value of the third operand
     rob_idx_t dest_rob_idx;  // The entry of the ROB where the result will be stored
-    logic [FLEN-1:0] res_value;
+    logic [XLEN-1:0] res_value;
     logic except_raised;
     except_code_t except_code;
     csr_pkg::fcsr_fflags_t fflags;
@@ -388,11 +388,11 @@ module arith_rs_fpu #(
             data[i].eu_ctl       <= issue_eu_ctl_i;
             data[i].frm_value    <= issue_frm_i;
             data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[FLEN-1:0];
+            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
             data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[FLEN-1:0];
+            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
             data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[FLEN-1:0];
+            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
             data[i].dest_rob_idx <= issue_dest_rob_idx_i;
           end
           ARITH_OP_INSERT_RS12: begin
@@ -403,7 +403,7 @@ module arith_rs_fpu #(
             data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
             data[i].rs2_value    <= eu_result_i;
             data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[FLEN-1:0];
+            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
             data[i].dest_rob_idx <= issue_dest_rob_idx_i;
           end
           ARITH_OP_INSERT_RS13: begin
@@ -412,7 +412,7 @@ module arith_rs_fpu #(
             data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
             data[i].rs1_value    <= eu_result_i;
             data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[FLEN-1:0];
+            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
             data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
             data[i].rs3_value    <= eu_result_i;
             data[i].dest_rob_idx <= issue_dest_rob_idx_i;
@@ -421,7 +421,7 @@ module arith_rs_fpu #(
             data[i].eu_ctl       <= issue_eu_ctl_i;
             data[i].frm_value    <= issue_frm_i;
             data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[FLEN-1:0];
+            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
             data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
             data[i].rs2_value    <= eu_result_i;
             data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
@@ -445,29 +445,29 @@ module arith_rs_fpu #(
             data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
             data[i].rs1_value    <= eu_result_i;
             data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[FLEN-1:0];
+            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
             data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[FLEN-1:0];
+            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
             data[i].dest_rob_idx <= issue_dest_rob_idx_i;
           end
           ARITH_OP_INSERT_RS2: begin
             data[i].eu_ctl       <= issue_eu_ctl_i;
             data[i].frm_value    <= issue_frm_i;
             data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[FLEN-1:0];
+            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
             data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
             data[i].rs2_value    <= eu_result_i;
             data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[FLEN-1:0];
+            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
             data[i].dest_rob_idx <= issue_dest_rob_idx_i;
           end
           ARITH_OP_INSERT_RS3: begin
             data[i].eu_ctl       <= issue_eu_ctl_i;
             data[i].frm_value    <= issue_frm_i;
             data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[FLEN-1:0];
+            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
             data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[FLEN-1:0];
+            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
             data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
             data[i].rs3_value    <= eu_result_i;
             data[i].dest_rob_idx <= issue_dest_rob_idx_i;
@@ -476,74 +476,74 @@ module arith_rs_fpu #(
             if (fwd_rs1_eu[i]) begin  // fetch rs1
               data[i].rs1_value <= eu_result_i;
             end else begin
-              data[i].rs1_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs1_value <= cdb_data_i.res_value[XLEN-1:0];
             end
             if (fwd_rs2_eu[i]) begin  // fetch rs2
               data[i].rs2_value <= eu_result_i;
             end else begin
-              data[i].rs2_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs2_value <= cdb_data_i.res_value[XLEN-1:0];
             end
             if (fwd_rs3_eu[i]) begin  // fetch rs3
               data[i].rs3_value <= eu_result_i;
             end else begin
-              data[i].rs3_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs3_value <= cdb_data_i.res_value[XLEN-1:0];
             end
           end
           ARITH_OP_SAVE_RS12: begin
             if (fwd_rs1_eu[i]) begin  // fetch rs1
               data[i].rs1_value <= eu_result_i;
             end else begin
-              data[i].rs1_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs1_value <= cdb_data_i.res_value[XLEN-1:0];
             end
             if (fwd_rs2_eu[i]) begin  // fetch rs2
               data[i].rs2_value <= eu_result_i;
             end else begin
-              data[i].rs2_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs2_value <= cdb_data_i.res_value[XLEN-1:0];
             end
           end
           ARITH_OP_SAVE_RS13: begin
             if (fwd_rs1_eu[i]) begin  // fetch rs1
               data[i].rs1_value <= eu_result_i;
             end else begin
-              data[i].rs1_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs1_value <= cdb_data_i.res_value[XLEN-1:0];
             end
             if (fwd_rs3_eu[i]) begin  // fetch rs3
               data[i].rs3_value <= eu_result_i;
             end else begin
-              data[i].rs3_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs3_value <= cdb_data_i.res_value[XLEN-1:0];
             end
           end
           ARITH_OP_SAVE_RS23: begin
             if (fwd_rs2_eu[i]) begin  // fetch rs2
               data[i].rs2_value <= eu_result_i;
             end else begin
-              data[i].rs2_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs2_value <= cdb_data_i.res_value[XLEN-1:0];
             end
             if (fwd_rs3_eu[i]) begin  // fetch rs3
               data[i].rs3_value <= eu_result_i;
             end else begin
-              data[i].rs3_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs3_value <= cdb_data_i.res_value[XLEN-1:0];
             end
           end
           ARITH_OP_SAVE_RS1: begin
             if (fwd_rs1_eu[i]) begin  // fetch rs1
               data[i].rs1_value <= eu_result_i;
             end else begin
-              data[i].rs1_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs1_value <= cdb_data_i.res_value[XLEN-1:0];
             end
           end
           ARITH_OP_SAVE_RS2: begin
             if (fwd_rs2_eu[i]) begin  // fetch rs2
               data[i].rs2_value <= eu_result_i;
             end else begin
-              data[i].rs2_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs2_value <= cdb_data_i.res_value[XLEN-1:0];
             end
           end
           ARITH_OP_SAVE_RS3: begin
             if (fwd_rs3_eu[i]) begin  // fetch rs3
               data[i].rs3_value <= eu_result_i;
             end else begin
-              data[i].rs3_value <= cdb_data_i.res_value[FLEN-1:0];
+              data[i].rs3_value <= cdb_data_i.res_value[XLEN-1:0];
             end
           end
           ARITH_OP_SAVE_RES: begin
@@ -567,7 +567,7 @@ module arith_rs_fpu #(
 
   // CDB
   assign cdb_data_o.rob_idx       = data[cdb_idx].dest_rob_idx;
-  assign cdb_data_o.res_value     = {{XLEN - FLEN{1'b0}}, data[cdb_idx].res_value};
+  assign cdb_data_o.res_value     = data[cdb_idx].res_value;
   assign cdb_data_o.except_raised = data[cdb_idx].except_raised;
   assign cdb_data_o.except_code   = data[cdb_idx].except_code;
   assign cdb_data_o.flags.fflags  = data[cdb_idx].fflags;

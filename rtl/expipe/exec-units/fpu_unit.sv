@@ -57,11 +57,11 @@ module fpu_unit #(
   logic                  [           EU_CTL_LEN-1:0] rs_fpu_ctl;
   logic                  [csr_pkg::FCSR_FRM_LEN-1:0] rs_fpu_rm;
   logic                  [csr_pkg::FCSR_FRM_LEN-1:0] fpu_rm;
-  logic                  [                 FLEN-1:0] rs_fpu_rs1_value;
-  logic                  [                 FLEN-1:0] rs_fpu_rs2_value;
-  logic                  [                 FLEN-1:0] rs_fpu_rs3_value;
+  logic                  [                 XLEN-1:0] rs_fpu_rs1_value;
+  logic                  [                 XLEN-1:0] rs_fpu_rs2_value;
+  logic                  [                 XLEN-1:0] rs_fpu_rs3_value;
   rob_idx_t                                          fpu_rs_rob_idx;
-  logic                  [                 FLEN-1:0] fpu_rs_result;
+  logic                  [                 XLEN-1:0] fpu_rs_result;
   logic                                              fpu_rs_except_raised;
   except_code_t                                      fpu_rs_except_code;
   csr_pkg::fcsr_fflags_t                             fpu_rs_flags;

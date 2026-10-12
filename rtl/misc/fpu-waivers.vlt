@@ -9,6 +9,9 @@
 
 `verilator_config
 // FPU waivers
+// The scalar T-Head divider does not use the PULP lane synchronization signals.
+lint_off -rule UNUSEDSIGNAL -file "*/vendor/cvfpu/src/fpnew_opgroup_multifmt_slice.sv" -match "Bits of signal are not driven, nor used: 'divsqrt_done'[0]"
+lint_off -rule UNUSEDSIGNAL -file "*/vendor/cvfpu/src/fpnew_opgroup_multifmt_slice.sv" -match "Bits of signal are not driven, nor used: 'divsqrt_ready'[0]"
 lint_off -rule DECLFILENAME -file "*/vendor/pulp-common-cells/src/*.sv" -match "Filename '*' does not match * name: *"
 lint_off -rule UNUSED -file "*/vendor/pulp-common-cells/src/*.sv" -match "Parameter is not used: *"
 lint_off -rule UNUSED -file "*/vendor/pulp-common-cells/src/*.sv" -match "Signal is not used: *"
@@ -48,4 +51,4 @@ lint_off -rule UNOPTFLAT -file "*/vendor/cvfpu/src/fpnew_opgroup_block.sv" -matc
 lint_off -rule UNOPTFLAT -file "*/vendor/cvfpu/src/fpnew_opgroup_multifmt_slice.sv" -match "Signal unoptimizable: Feedback to clock or circular logic: '*u_fpu_wrapper.u_fpu.gen_operation_groups[3].i_opgroup_block.gen_merged_slice.i_multifmt_slice.target_regs.byp_pipe_ready'"
 lint_off -rule UNOPTFLAT -file "*/vendor/cvfpu/src/fpnew_fma_multi.sv" -match "Signal unoptimizable: Feedback to clock or circular logic: '*u_fpu_wrapper.u_fpu.gen_operation_groups[0].i_opgroup_block.gen_merged_slice.i_multifmt_slice.gen_num_lanes[0].active_lane.lane_instance.i_fpnew_fma_multi.regular_status'"
 lint_off -rule UNOPTFLAT -file "*/vendor/cvfpu/src/fpnew_fma_multi.sv" -match "Signal unoptimizable: Feedback to clock or circular logic: '*u_fpu_wrapper.u_fpu.gen_operation_groups[0].i_opgroup_block.gen_merged_slice.i_multifmt_slice.gen_num_lanes[0].active_lane.lane_instance.i_fpnew_fma_multi.inp_pipe_ready'"
-lint_off -rule UNOPTFLAT -file "*/vendor/cvfpu/src/fpnew_divsqrt_th_32.sv" -match "Signal unoptimizable: Feedback to clock or circular logic: '*u_fpu_wrapper.u_fpu.gen_operation_groups[1].i_opgroup_block.gen_merged_slice.i_multifmt_slice.gen_num_lanes[0].active_lane.lane_instance.genblk1.i_fpnew_divsqrt_multi_th.inp_pipe_ready'"
+lint_off -rule UNOPTFLAT -file "*/vendor/cvfpu/src/fpnew_divsqrt_th_32.sv" -match "Signal unoptimizable: *: '*u_fpu_wrapper.u_fpu.gen_operation_groups[1].i_opgroup_block.gen_merged_slice.i_multifmt_slice.gen_num_lanes[0].active_lane.lane_instance.genblk1.i_fpnew_divsqrt_multi_th.inp_pipe_ready'"
