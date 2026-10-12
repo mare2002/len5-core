@@ -12,10 +12,6 @@ integer/FP source and destination banks and snapshots FPRs. The monitor observes
 fused rs3, FP write enable and the actual FP register file. Comparisons retain raw
 NaN-boxing bits and the existing architectural-prefix and squash rules.
 
-* The standalone `test_fd.cpp` regression passed with `-Wall -Wextra -Werror`.
-  It checks f0 versus x0, conversion register banks, fused rs3 faults, boxing
-  faults, wrong commit banks, FP checkpoint faults, fcsr faults, out-of-order
-  checkpoints and squashed FP discrepancies.
 * The Verilator 5.040 differential model built against the cached Spike v1.1.0.
 * Existing `crc32` firmware passed with 29,432 commits, 25,904 checkpoints,
   3,528 out-of-order commits and no discrepancies.

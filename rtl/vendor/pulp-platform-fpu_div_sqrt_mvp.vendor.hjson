@@ -8,6 +8,8 @@
     rev: "917dd79cb2dc1a8f43df1a84e0e4231508a980e9", # master @2024-05-15
   },
 
+  patch_dir: "patches/fpu-div-sqrt-mvp",
+
   exclude_from_upstream: [
     ".gitignore",
     "*/.gitignore",

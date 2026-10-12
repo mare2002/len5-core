@@ -77,7 +77,8 @@ module control_mvp
 
    output logic [C_MANT_FP64+4:0]                     Mant_result_prenorm_DO,
  //  output logic [3:0]                                 Round_bit_DO,
-   output logic [C_EXP_FP64+1:0]                      Exp_result_prenorm_DO
+   output logic [C_EXP_FP64+1:0]                      Exp_result_prenorm_DO,
+   output logic                                       Div_R_zero_SO
  );
 
    logic  [C_MANT_FP64+1+4:0]                         Partial_remainder_DN,Partial_remainder_DP; //58bits,r=q+2
@@ -2416,6 +2417,13 @@ module control_mvp
              Partial_remainder_DP <= Partial_remainder_DN;
           end
     end
+
+   // Local fix, based on upstream PR #30: non-restoring exact division can
+   // finish with a partial remainder of either zero or minus the denominator.
+   logic [C_MANT_FP64+5:0] Div_neg_denominator_D;
+   assign Div_neg_denominator_D = ~{Denominator_se_D,4'b0} + 1'b1;
+   assign Div_R_zero_SO = (Partial_remainder_DP == '0) |
+                         (Partial_remainder_DP == Div_neg_denominator_D);
 
    logic [C_MANT_FP64+4:0] Quotient_DN;
 

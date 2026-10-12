@@ -246,14 +246,7 @@ execution statistics.
 ## Validation
 
 Validation results are recorded in `VALIDATION.md`. Existing applications and
-benchmark runs continue to use the same C++ checker. The standalone F/D checker
-regression exercises writable f0, mixed register banks, fused rs3, NaN-boxing
-mismatches, fcsr checks, out-of-order checkpoints and squash handling:
-
-```sh
-c++ -std=c++17 tb/verilator/diff/checker.cpp tb/verilator/diff/test_fd.cpp -o /tmp/test_fd
-/tmp/test_fd /tmp/len5-fd-tests
-```
+benchmark runs continue to use the same C++ checker.
 
 See [actual results and known failures](VALIDATION.md) for the latest FS/fcsr
 validation and historical results. Unsupported trap behavior is not counted
