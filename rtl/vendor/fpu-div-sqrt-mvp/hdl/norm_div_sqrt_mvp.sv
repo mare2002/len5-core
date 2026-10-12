@@ -477,11 +477,20 @@ module norm_div_sqrt_mvp
       ((RM_SI == C_RM_PLUSINF) && !Sign_in_DI) ||
       ((RM_SI == C_RM_MINUSINF) && Sign_in_DI);
   always_comb begin
-    Mant_before_format_ctl_D = Full_precision_SI ? Mant_res_round_D : Mant_res_norm_D;
-    Exp_before_format_ctl_D = Full_precision_SI ? Exp_res_round_D : Exp_res_norm_D;
     if (Overflow_S) begin
-      Mant_before_format_ctl_D = Overflow_to_inf_S ? '0 : '1;
-      Exp_before_format_ctl_D = Overflow_to_inf_S ? Exp_max_D : Exp_max_D - 1'b1;
+      if (Overflow_to_inf_S) begin
+        Mant_before_format_ctl_D = '0;
+        Exp_before_format_ctl_D  = Exp_max_D;
+      end else begin
+        Mant_before_format_ctl_D = '1;
+        Exp_before_format_ctl_D  = Exp_max_D - 1'b1;
+      end
+    end else if (Full_precision_SI) begin
+      Mant_before_format_ctl_D = Mant_res_round_D;
+      Exp_before_format_ctl_D  = Exp_res_round_D;
+    end else begin
+      Mant_before_format_ctl_D = Mant_res_norm_D;
+      Exp_before_format_ctl_D  = Exp_res_norm_D;
     end
   end
 

@@ -74,7 +74,7 @@ index 3af6081..667bffa 100644
     .Inf_a_SI              (Inf_a_S            ),
     .Inf_b_SI              (Inf_b_S            ),
 diff --git a/hdl/norm_div_sqrt_mvp.sv b/hdl/norm_div_sqrt_mvp.sv
-index 97ba25b..63461c9 100644
+index 97ba25b..880f019 100644
 --- a/hdl/norm_div_sqrt_mvp.sv
 +++ b/hdl/norm_div_sqrt_mvp.sv
 @@ -49,6 +49,7 @@ module norm_div_sqrt_mvp
@@ -163,7 +163,7 @@ index 97ba25b..63461c9 100644
            default          :
              Mant_roundUp_S = 0;
          endcase // case (RM_DI)
-@@ -434,15 +451,39 @@ module norm_div_sqrt_mvp
+@@ -434,15 +451,48 @@ module norm_div_sqrt_mvp
  
  
    assign Mant_res_round_D = (Mant_renorm_S)?Mant_upperRounded_D[C_MANT_FP64:1]:Mant_upperRounded_D[C_MANT_FP64-1:0]; // including the process of the hidden bit
@@ -196,17 +196,26 @@ index 97ba25b..63461c9 100644
 +      ((RM_SI == C_RM_PLUSINF) && !Sign_in_DI) ||
 +      ((RM_SI == C_RM_MINUSINF) && Sign_in_DI);
 +  always_comb begin
-+    Mant_before_format_ctl_D = Full_precision_SI ? Mant_res_round_D : Mant_res_norm_D;
-+    Exp_before_format_ctl_D = Full_precision_SI ? Exp_res_round_D : Exp_res_norm_D;
 +    if (Overflow_S) begin
-+      Mant_before_format_ctl_D = Overflow_to_inf_S ? '0 : '1;
-+      Exp_before_format_ctl_D = Overflow_to_inf_S ? Exp_max_D : Exp_max_D - 1'b1;
++      if (Overflow_to_inf_S) begin
++        Mant_before_format_ctl_D = '0;
++        Exp_before_format_ctl_D  = Exp_max_D;
++      end else begin
++        Mant_before_format_ctl_D = '1;
++        Exp_before_format_ctl_D  = Exp_max_D - 1'b1;
++      end
++    end else if (Full_precision_SI) begin
++      Mant_before_format_ctl_D = Mant_res_round_D;
++      Exp_before_format_ctl_D  = Exp_res_round_D;
++    end else begin
++      Mant_before_format_ctl_D = Mant_res_norm_D;
++      Exp_before_format_ctl_D  = Exp_res_norm_D;
 +    end
 +  end
  
    always_comb    //NaN Boxing
      begin  //
-@@ -464,7 +505,8 @@ module norm_div_sqrt_mvp
+@@ -464,7 +514,8 @@ module norm_div_sqrt_mvp
            end
      end
  
