@@ -54,6 +54,7 @@ filesets:
     - tb/verilator/diff/checker.hh: {is_include_file: true}
     - tb/verilator/diff/monitor.hh: {is_include_file: true}
     - tb/verilator/diff/spike_adapter.hh: {is_include_file: true}
+    - tb/verilator/diff/vector_bits.hh: {is_include_file: true}
     - tb/verilator/diff/signals.vlt: {file_type: vlt}
     file_type: cppSource
 
@@ -191,6 +192,8 @@ targets:
         - '-f diff-options.vc'
         make_options:
         - '-B'
+        - 'OPT_FAST=-O2'
+        - 'OPT_GLOBAL=-O2'
         run_options:
         - '--diff'
 

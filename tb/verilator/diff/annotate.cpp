@@ -1,5 +1,6 @@
 #include "monitor.hh"
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <gtkwave/fstapi.h>
 #include <limits>
@@ -9,10 +10,33 @@
 namespace len5::diff {
 namespace {
 using Key = std::tuple<Stage, unsigned, std::string>;
+// Resolve immutable lane handles once. Emission order and values remain unchanged.
+struct LaneSignals {
+    fstHandle event_valid = 0;
+    fstHandle instruction_id = 0;
+    fstHandle pc = 0;
+    fstHandle instruction = 0;
+    fstHandle architectural_order = 0;
+    fstHandle rob_idx = 0;
+    fstHandle load_idx = 0;
+    fstHandle store_idx = 0;
+    fstHandle cycle = 0;
+    fstHandle event_time = 0;
+    fstHandle field = 0;
+    fstHandle register_index = 0;
+    fstHandle expected_value = 0;
+    fstHandle actual_value = 0;
+    fstHandle mismatch = 0;
+    fstHandle confirmed = 0;
+    fstHandle squashed = 0;
+    fstHandle confirmation_time = 0;
+    std::array<fstHandle, unsigned(Field::fp_register_value) + 1> expected{}, actual{};
+};
 struct Merger {
     fstWriterContext *writer = nullptr;
     std::vector<fstHandle> rtl;
     std::map<Key, fstHandle> signals;
+    std::array<std::vector<LaneSignals>, unsigned(Stage::overall) + 1> bound_lanes;
     std::map<std::string, fstHandle> overall;
     std::ifstream events;
     Event next{};
@@ -26,6 +50,44 @@ struct Merger {
     ~Merger() {
         if (writer)
             fstWriterClose(writer);
+    }
+    void bind_lanes(const std::map<Stage, unsigned> &maximum) {
+        for (auto [stage, count] : maximum) {
+            auto &lanes = bound_lanes.at(unsigned(stage));
+            lanes.resize(count);
+            for (unsigned lane = 0; lane < count; ++lane) {
+                auto &bound = lanes[lane];
+                auto get = [&](const char *name) { return signals.at({stage, lane, name}); };
+                bound.event_valid = get("event_valid");
+                bound.instruction_id = get("instruction_id");
+                bound.pc = get("pc");
+                bound.instruction = get("instruction");
+                bound.architectural_order = get("architectural_order");
+                bound.rob_idx = get("rob_idx");
+                bound.load_idx = get("load_idx");
+                bound.store_idx = get("store_idx");
+                bound.cycle = get("cycle");
+                bound.event_time = get("event_time");
+                bound.field = get("field");
+                bound.register_index = get("register_index");
+                bound.expected_value = get("expected_value");
+                bound.actual_value = get("actual_value");
+                bound.mismatch = get("mismatch");
+                bound.confirmed = get("confirmed");
+                bound.squashed = get("squashed");
+                bound.confirmation_time = get("confirmation_time");
+                for (unsigned field = 0; field < bound.expected.size(); ++field) {
+                    auto expected =
+                        signals.find({stage, lane, std::string("expected_") + name(Field(field))});
+                    auto actual =
+                        signals.find({stage, lane, std::string("actual_") + name(Field(field))});
+                    if (expected != signals.end())
+                        bound.expected[field] = expected->second;
+                    if (actual != signals.end())
+                        bound.actual[field] = actual->second;
+                }
+            }
+        }
     }
     void emit(fstHandle h, uint64_t value, unsigned width = 64) {
         fstWriterEmitValueChange64(writer, h, width, value);
@@ -49,32 +111,36 @@ struct Merger {
                 event_time = e.time;
             }
             auto lane = lanes[e.stage]++;
-            auto sig = [&](const std::string &n) { return signals.at({e.stage, lane, n}); };
-            emit(sig("event_valid"), 1, 1);
-            pulses.push_back(sig("event_valid"));
-            emit(sig("instruction_id"), e.id);
-            emit(sig("pc"), e.pc);
-            emit(sig("instruction"), e.instruction);
-            emit(sig("architectural_order"), e.architectural_order);
-            emit(sig("rob_idx"), e.rob);
-            emit(sig("load_idx"), e.load);
-            emit(sig("store_idx"), e.store);
-            emit(sig("cycle"), e.cycle);
-            emit(sig("event_time"), e.time);
-            emit(sig("field"), uint32_t(e.field));
-            emit(sig("register_index"), e.register_index);
-            emit(sig("expected_value"), e.expected);
-            emit(sig("actual_value"), e.actual);
-            emit(sig(std::string("expected_") + name(e.field)), e.expected);
-            emit(sig(std::string("actual_") + name(e.field)), e.actual);
+            const auto &sig = bound_lanes.at(unsigned(e.stage)).at(lane);
+            const auto expected = sig.expected.at(unsigned(e.field));
+            const auto actual = sig.actual.at(unsigned(e.field));
+            if (!expected || !actual)
+                throw std::runtime_error("unbound annotation field");
+            emit(sig.event_valid, 1, 1);
+            pulses.push_back(sig.event_valid);
+            emit(sig.instruction_id, e.id);
+            emit(sig.pc, e.pc);
+            emit(sig.instruction, e.instruction);
+            emit(sig.architectural_order, e.architectural_order);
+            emit(sig.rob_idx, e.rob);
+            emit(sig.load_idx, e.load);
+            emit(sig.store_idx, e.store);
+            emit(sig.cycle, e.cycle);
+            emit(sig.event_time, e.time);
+            emit(sig.field, uint32_t(e.field));
+            emit(sig.register_index, e.register_index);
+            emit(sig.expected_value, e.expected);
+            emit(sig.actual_value, e.actual);
+            emit(expected, e.expected);
+            emit(actual, e.actual);
             auto it = errors.find(e.serial);
             bool confirmed = it != errors.end() && it->second->confirmed;
-            emit(sig("mismatch"), e.mismatch, 1);
-            emit(sig("confirmed"), confirmed, 1);
-            emit(sig("squashed"), it != errors.end() && it->second->squashed, 1);
-            emit(sig("confirmation_time"), it == errors.end() ? 0 : it->second->confirmation.time);
+            emit(sig.mismatch, e.mismatch, 1);
+            emit(sig.confirmed, confirmed, 1);
+            emit(sig.squashed, it != errors.end() && it->second->squashed, 1);
+            emit(sig.confirmation_time, it == errors.end() ? 0 : it->second->confirmation.time);
             if (e.mismatch) {
-                pulses.push_back(sig("mismatch"));
+                pulses.push_back(sig.mismatch);
                 emit(overall.at("mismatch_pulse"), 1, 1);
                 pulses.push_back(overall.at("mismatch_pulse"));
             }
@@ -223,6 +289,7 @@ void annotate(const std::string &original, const Checker &checker) {
         fstWriterSetUpscope(m.writer);
     }
     fstWriterSetUpscope(m.writer);
+    m.bind_lanes(maximum);
     m.at(0);
     for (const auto &[key, h] : m.overall)
         m.emit(h, 0, (key == "verification_failed" || key == "mismatch_pulse") ? 1 : 64);

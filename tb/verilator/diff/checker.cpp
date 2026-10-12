@@ -600,7 +600,7 @@ void Checker::commit(uint32_t rob, uint64_t pc, uint32_t insn, uint8_t rd, bool 
 void Checker::checkpoint(const std::array<uint64_t, 32> &regs, Stamp t,
                          const std::map<uint32_t, uint64_t> &csrs,
                          const std::array<uint64_t, 32> *fp_regs) {
-    if (prefix_ == 0 || prefix_ != newest_commit_ || prefix_ == last_checkpoint_)
+    if (!checkpoint_due())
         return;
     auto p = architectural_.at(prefix_ - 1);
     for (unsigned i = 0; i < 32; ++i) {

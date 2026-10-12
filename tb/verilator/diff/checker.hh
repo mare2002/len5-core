@@ -147,6 +147,10 @@ class Checker {
     void checkpoint(const std::array<uint64_t, 32> &registers, Stamp,
                     const std::map<uint32_t, uint64_t> &csrs = {},
                     const std::array<uint64_t, 32> *fp_registers = nullptr);
+    // Query after processing this edge's commits; observation must still be post-edge.
+    bool checkpoint_due() const {
+        return prefix_ != 0 && prefix_ == newest_commit_ && prefix_ != last_checkpoint_;
+    }
     void source_at_dispatch(uint32_t rob, uint64_t value, Stamp);
     void flush_frontend(Stamp);
     void flush_backend(Stamp);

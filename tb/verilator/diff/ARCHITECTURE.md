@@ -157,5 +157,5 @@ on a flush alone. A separate commit-progress timer detects stalls/deadlock.
 * Spike/Verilator internals are intentionally pinned. To support another
   version, update and test the adapter/schema generator against actual headers;
   do not remove the version checks blindly. Journal I/O and read-only VPI have
-  overhead in enabled runs; large-trace throughput has not been benchmarked.
+  overhead in enabled runs; see [the profiling results](PERFORMANCE.md).
 

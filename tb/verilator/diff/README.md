@@ -248,6 +248,9 @@ execution statistics.
 Validation results are recorded in `VALIDATION.md`. Existing applications and
 benchmark runs continue to use the same C++ checker.
 
+See [performance measurements and profiling](PERFORMANCE.md) for the measured
+bottlenecks, optimization results, and reproducible benchmark commands.
+
 See [actual results and known failures](VALIDATION.md) for the latest FS/fcsr
 validation and historical results. Unsupported trap behavior is not counted
 as verified execution.
