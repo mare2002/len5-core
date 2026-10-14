@@ -67,3 +67,6 @@ build*
 
 #Veridian yml
 veridian.yml
+
+#AI md
+AGENTS.md

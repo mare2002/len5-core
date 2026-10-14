@@ -284,6 +284,17 @@ check-alu: | .check-fusesoc
 		--dump_waves=false \
 		--max_cycles=1000000
 
+# Standalone frontend verification; no Spike, firmware or RTL formatting.
+.PHONY: check-pc-gen pc-gen-build check-pc-gen-framework
+check-pc-gen:
+	@bash scripts/sim/check-pc-gen.sh
+
+pc-gen-build:
+	@PC_GEN_BUILD_ONLY=true bash scripts/sim/check-pc-gen.sh
+
+check-pc-gen-framework: pc-gen-build
+	python3 tb/frontend/pc_gen/validate.py --binary "$$(python3 tb/frontend/pc_gen/configuration.py --binary --build-dir '$(BUILD_DIR)' --boot '$(or $(BOOT_PC),0)')"
+
 # Updated Vendored Files
 # ----------------------
 .PHONY: vendor-update
@@ -356,3 +367,19 @@ export PROJECT
 export LINKER
 export COPT
 export SPIKE_SRC SPIKE_BUILD VERILATOR JOBS FUSESOC VERBOSE
+
+# Build once, then run isolated seed processes; jobs do not share artifacts.
+.PHONY: check-pc-gen-random check-pc-gen-regression check-pc-gen-random-framework
+check-pc-gen-random:
+	@RANDOM_MODE=true bash scripts/sim/check-pc-gen.sh
+
+check-pc-gen-regression: pc-gen-build
+	python3 tb/frontend/pc_gen/regress.py --binary "$$(python3 tb/frontend/pc_gen/configuration.py --binary --build-dir '$(BUILD_DIR)' --boot '$(or $(BOOT_PC),0)')" --output "$(BUILD_DIR)/pc-gen/regression" --seed "$(or $(SEED),1)" --seeds "$(or $(SEEDS),100)" --cycles "$(or $(CYCLES),10000)" --campaign "$(or $(CAMPAIGN),all)" --contract "$(or $(PC_GEN_CONTRACT),proposed)" --weights "$(WEIGHTS)" --guided "$(or $(GUIDED),true)" --log-level "$(or $(LOG_LEVEL),LOG_LOW)" --waves "$(or $(DUMP_WAVES),false)" --journal "$(or $(JOURNAL),auto)" --jobs "$(or $(JOBS),1)" $(if $(EARLY_ACCEPT),--early-accept=$(EARLY_ACCEPT)) $(if $(EARLY_TARGET),--early-target=$(EARLY_TARGET)) $(if $(filter true,$(REQUIRE_MATRIX)),--require-matrix)
+
+check-pc-gen-random-framework: pc-gen-build
+	python3 tb/frontend/pc_gen/validate_random.py --binary "$$(python3 tb/frontend/pc_gen/configuration.py --binary --build-dir '$(BUILD_DIR)' --boot '$(or $(BOOT_PC),0)')"
+
+# Disposable copies of pc_gen only; selected production packages stay untouched.
+.PHONY: check-pc-gen-mutations
+check-pc-gen-mutations: pc-gen-build
+	python3 tb/frontend/pc_gen/mutate.py --binary "$$(python3 tb/frontend/pc_gen/configuration.py --binary --build-dir '$(BUILD_DIR)' --boot '$(or $(BOOT_PC),0)')" --output "$(BUILD_DIR)/pc-gen/mutation" --jobs "$(or $(JOBS),2)"

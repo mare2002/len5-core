@@ -65,7 +65,7 @@ module pc_gen #(
       add_pc_early_jump = early_jump_offs_i;
     end else begin
       add_pc_offset     = {{{(64-LEN5_MULTIPLE_ISSUES_BITS-1){1'b0}}, pc_increase}<<ILEN_BIT_SUFF};
-      add_pc_early_jump = pc_o;
+      add_pc_early_jump = {pc_o[XLEN-1:ILEN_BIT_SUFF], {ILEN_BIT_SUFF{1'b0}}};
     end
   end
 

@@ -1,0 +1,131 @@
+CAPI=2:
+# SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+name: polito:len5:pc-gen-tb:0.1.0
+description: Standalone port-only pc_gen directed and constrained-random verification
+
+filesets:
+  dut:
+    depend:
+    - polito:len5:packages
+    files:
+    - ../../../rtl/frontend/pc_gen.sv
+    - pc_gen_tb.sv
+    file_type: systemVerilogSource
+  harness:
+    depend:
+    - polito:len5:verilator-common
+    files:
+    - pc_gen_model.hh: {is_include_file: true}
+    - pc_gen_model.cpp
+    - pc_gen_configuration.hh: {is_include_file: true}
+    - pc_gen_configuration.cpp
+    - pc_gen_environment.hh: {is_include_file: true}
+    - pc_gen_environment.cpp
+    - pc_gen_scoreboard.hh: {is_include_file: true}
+    - pc_gen_scoreboard.cpp
+    - pc_gen_driver.hh: {is_include_file: true}
+    - pc_gen_driver.cpp
+    - pc_gen_random.hh: {is_include_file: true}
+    - pc_gen_random.cpp
+    - pc_gen_tb.cpp
+    file_type: cppSource
+
+targets:
+  sim:
+    default_tool: verilator
+    toplevel: pc_gen_tb
+    filesets: [dut, harness]
+    parameters: [BOOT_PC_HI, BOOT_PC_LO, seed, max_cycles, log_level, dump_waves, run_dir, scenario, contract, early_accept, early_target, inject_failure, random, cycles, campaign, weights, guided, journal, expect_issues]
+    tools:
+      verilator:
+        mode: cc
+        verilator_options:
+        - --assert
+        - --trace-fst
+        - --trace-depth 1
+        - --x-assign unique
+        - --x-initial unique
+        - -Wall
+        - -Wpedantic
+        make_options:
+        - OBJCACHE=
+        - CXX=/usr/bin/g++
+        - -j4
+        - OPT_FAST=-O2
+        - OPT_GLOBAL=-O2
+        - CXXFLAGS+=-std=c++17
+
+parameters:
+  BOOT_PC_HI:
+    datatype: int
+    default: 0
+    paramtype: vlogparam
+    description: Upper 32 bits of the elaborated BOOT_PC
+  BOOT_PC_LO:
+    datatype: int
+    default: 0
+    paramtype: vlogparam
+    description: Lower 32 bits of the elaborated BOOT_PC
+  seed:
+    datatype: int
+    default: 1
+    paramtype: cmdlinearg
+  max_cycles:
+    datatype: int
+    default: 50000
+    paramtype: cmdlinearg
+  log_level:
+    datatype: str
+    default: LOG_LOW
+    paramtype: cmdlinearg
+  dump_waves:
+    datatype: str
+    default: "false"
+    paramtype: cmdlinearg
+  run_dir:
+    datatype: str
+    paramtype: cmdlinearg
+  scenario:
+    datatype: str
+    default: all
+    paramtype: cmdlinearg
+  contract:
+    datatype: str
+    default: proposed
+    paramtype: cmdlinearg
+  early_accept:
+    datatype: str
+    paramtype: cmdlinearg
+  early_target:
+    datatype: str
+    paramtype: cmdlinearg
+  inject_failure:
+    datatype: str
+    paramtype: cmdlinearg
+  random:
+    datatype: bool
+    default: false
+    paramtype: cmdlinearg
+  cycles:
+    datatype: int
+    default: 10000
+    paramtype: cmdlinearg
+  campaign:
+    datatype: str
+    default: all
+    paramtype: cmdlinearg
+  weights:
+    datatype: str
+    paramtype: cmdlinearg
+  guided:
+    datatype: str
+    default: "true"
+    paramtype: cmdlinearg
+  journal:
+    datatype: str
+    default: auto
+    paramtype: cmdlinearg
+  expect_issues:
+    datatype: int
+    paramtype: cmdlinearg
+    description: Optional replay compatibility assertion; does not configure RTL

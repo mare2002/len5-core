@@ -34,7 +34,7 @@ package len5_config_pkg;
 
   // Multi-issue architecture
   // ------------------------
-  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd8;//maximum number of issues per cycle
+  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd4;//maximum number of issues per cycle
 
   // Enable M extension support
   // --------------------------
