@@ -285,12 +285,18 @@ check-alu: | .check-fusesoc
 		--max_cycles=1000000
 
 # Standalone frontend verification; no Spike, firmware or RTL formatting.
-.PHONY: check-pc-gen pc-gen-build check-pc-gen-framework
-check-pc-gen:
+# Build once, then run independent native groups without concurrent FuseSoC setup.
+.PHONY: check-pc-gen check-pc-gen-run pc-gen-build check-pc-gen-framework
+check-pc-gen: REQUIRE_MATRIX ?= true
+check-pc-gen: pc-gen-build
+	@python3 tb/frontend/pc_gen/suite.py --binary "$$(python3 tb/frontend/pc_gen/configuration.py --binary --build-dir '$(BUILD_DIR)' --boot '$(or $(BOOT_PC),0)')" --output "$(BUILD_DIR)/pc-gen/suite" --test-jobs "$(or $(TEST_JOBS),$(JOBS))" --jobs "$(JOBS)" --seed "$(or $(SEED),1)" --seeds "$(or $(SEEDS),100)" --cycles "$(or $(CYCLES),10000)" --max-cycles "$(MAX_CYCLES)" --campaign "$(or $(CAMPAIGN),all)" --contract "$(or $(PC_GEN_CONTRACT),proposed)" --weights "$(WEIGHTS)" --guided "$(or $(GUIDED),true)" --journal "$(or $(JOURNAL),auto)" --log-level "$(LOG_LEVEL)" --waves "$(or $(DUMP_WAVES),false)" --require-matrix "$(REQUIRE_MATRIX)" $(if $(EARLY_ACCEPT),--early-accept=$(EARLY_ACCEPT)) $(if $(EARLY_TARGET),--early-target=$(EARLY_TARGET)) $(if $(INJECT_FAILURE),--inject-failure=$(INJECT_FAILURE))
+
+# Former check-pc-gen behavior: directed T01-T22, or one SCENARIO for debugging.
+check-pc-gen-run:
 	@bash scripts/sim/check-pc-gen.sh
 
 pc-gen-build:
-	@PC_GEN_BUILD_ONLY=true bash scripts/sim/check-pc-gen.sh
+	@PC_GEN_BUILD_ONLY=true bash scripts/sim/check-pc-gen.sh || { echo "Test failed: pc_gen build"; exit 1; }
 
 check-pc-gen-framework: pc-gen-build
 	python3 tb/frontend/pc_gen/validate.py --binary "$$(python3 tb/frontend/pc_gen/configuration.py --binary --build-dir '$(BUILD_DIR)' --boot '$(or $(BOOT_PC),0)')"

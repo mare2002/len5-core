@@ -7,10 +7,11 @@ during stalls, exact target pass-through, modular arithmetic and N-aware bundle
 progression. Residual acknowledgment/lifecycle/consumer-flush assumptions stay
 explicit. This verifies pc_gen alone, not the frontend or processor.
 
-**Current result:** the selected N=4 DUT has a confirmed normal-progression defect
-after unaligned supplied targets: `0x701 -> 0x711`, where C3/D requires `0x710`.
-Target pass-through itself is correct. T19 and randomized characterization preserve
-this evidence and return nonzero. RTL and configuration were not modified.
+`make check-pc-gen` is the complete standalone verification suite. It builds the
+currently selected DUT once, runs independent verification groups concurrently,
+and prints **All tests passed** only when every group succeeds. A failed group
+prints **Test failed** and makes the command return nonzero. Production RTL and
+the golden behavioral model are not changed by this orchestration.
 
 ## Build and run commands
 
@@ -18,7 +19,13 @@ Initialize Conda in your shell first if necessary, then:
 
 ```sh
 source private/init.sh
-make check-pc-gen
+# Complete suite, including 100 seeds x 10000 cycles and mutations.
+make check-pc-gen JOBS=4 TEST_JOBS=4 LOG_LEVEL=LOG_LOW
+
+# Directed-only run, formerly named check-pc-gen.
+make check-pc-gen-run
+
+# Individual groups remain available for focused work.
 make check-pc-gen-framework
 make check-pc-gen-random-framework
 make check-pc-gen-regression SEEDS=100 CYCLES=10000 JOBS=4 REQUIRE_MATRIX=true
@@ -28,30 +35,44 @@ make check-pc-gen-mutations JOBS=2
 | Target | Action |
 | --- | --- |
 | `pc-gen-build` | Build only the currently source-selected DUT and native harness; no simulation. |
-| `check-pc-gen` | Build and run all T01–T22; SCENARIO selects one. Original DUT failures return nonzero. |
+| `check-pc-gen` | Build once and run every verification group: directed, model/environment/framework, random framework, single random run, multi-seed regression, mutations and orchestration self-tests. Final aggregate pass/fail and JSON summary. |
+| `check-pc-gen-run` | Former directed-only command: T01–T22, or one SCENARIO. Original DUT failures return nonzero. |
 | `check-pc-gen-framework` | Compile independent model/environment units; execute directed profiles, replay/FST, logger, failure injection and stale-configuration guards. Original DUT failures remain failures. |
 | `check-pc-gen-random` | Build and run one seeded random campaign; defaults 10000 cycles, all campaigns. |
 | `check-pc-gen-random-framework` | Native randomized validation, three synthetic confidence fixtures, four pure coverage-width fixtures, journal/causality/temporal reconstruction, replay, weights and failure paths. |
 | `check-pc-gen-regression` | Build once, run SEEDS consecutive seeds in JOBS parallel workers, aggregate independent reports/coverage. REQUIRE_MATRIX fails incomplete required combinations. |
 | `check-pc-gen-mutations` | Compile disposable RTL mutations with current production packages, verify detection and compare original before/after. Original baseline failures still yield nonzero. |
 
-Build/setup invocations sharing one configuration should be completed before
-starting independent native runs; the multi-seed regression builds once then
-safely runs seeds in parallel. FuseSoC setup can replace its build outputs. Every
+The aggregate target builds before starting any verification group, so parallel
+jobs never perform FuseSoC setup against the shared original DUT. `TEST_JOBS`
+controls concurrent groups and defaults to `JOBS`; `JOBS` controls regression
+seeds and disposable mutation builds. Use `JOBS=1 TEST_JOBS=1` for serial execution.
+Output from each group is captured separately and printed together when it
+finishes, preventing interleaved diagnostics. Every group is allowed to finish
+when another fails; the final result includes all failures.
+
+The aggregate always runs all directed scenarios; `SCENARIO` applies to
+`check-pc-gen-run`. It defaults to SEEDS=100, CYCLES=10000, CAMPAIGN=all and
+REQUIRE_MATRIX=true; existing weights, profile, BOOT_PC and replay options apply.
+Explicitly reducing seeds/cycles or selecting one campaign is a shortened run,
+not the default full randomized campaign.
+
+Separate build/setup invocations sharing a configuration should still be
+completed before starting independent native runs. FuseSoC setup can replace its build outputs. Every
 simulation has a private run directory. No RTL formatting, firmware, Spike,
 Cocotb or integration test is used. Existing C++17/FuseSoC/Edalize/Verilator/FST tools
 are reused, with the system compiler and no new dependencies.
 
 ```sh
 # Focused approved scenarios (currently passing).
-make check-pc-gen SCENARIO=T09 SEED=7 LOG_LEVEL=LOG_MEDIUM
-make check-pc-gen SCENARIO=T12 PC_GEN_CONTRACT=strict
+make check-pc-gen-run SCENARIO=T09 SEED=7 LOG_LEVEL=LOG_MEDIUM
+make check-pc-gen-run SCENARIO=T12 PC_GEN_CONTRACT=strict
 
-# Reproduce the observed defect, with public-port waveform evidence.
-make check-pc-gen SCENARIO=T19 SEED=7 DUMP_WAVES=true LOG_LEVEL=LOG_HIGH
+# Inspect the malformed-address scenario with public-port waveform evidence.
+make check-pc-gen-run SCENARIO=T19 SEED=7 DUMP_WAVES=true LOG_LEVEL=LOG_HIGH
 
 # Instruction-aligned but non-bundle-aligned BOOT; same selected issue width.
-make check-pc-gen SCENARIO=T01 BOOT_PC=65924
+make check-pc-gen-run SCENARIO=T01 BOOT_PC=65924
 
 # One seeded campaign or a longer parallel campaign.
 make check-pc-gen-random SEED=17 CYCLES=10000 CAMPAIGN=architectural
@@ -59,7 +80,7 @@ make check-pc-gen-regression SEEDS=100 CYCLES=10000 JOBS=4 \
     CAMPAIGN=stress PC_GEN_CONTRACT=strict REQUIRE_MATRIX=true
 ```
 
-`SEED`, `SEEDS`, `CYCLES`, `JOBS`, `SCENARIO`, `BOOT_PC`, `MAX_CYCLES`,
+`SEED`, `SEEDS`, `CYCLES`, `JOBS`, `TEST_JOBS`, `SCENARIO`, `BOOT_PC`, `MAX_CYCLES`,
 `LOG_LEVEL`, `DUMP_WAVES`, `PC_GEN_CONTRACT`, `CAMPAIGN`, `GUIDED`, `WEIGHTS`,
 `JOURNAL`, `REQUIRE_MATRIX`, `BUILD_DIR`, `FUSESOC`, `VERILATOR` retain existing
 conventions. Campaign is `all|architectural|stress|characterization`. Journal is
@@ -125,6 +146,7 @@ the unrelated existing processor regression.
 | [pc_gen_scoreboard.hh](pc_gen_scoreboard.hh), [pc_gen_scoreboard.cpp](pc_gen_scoreboard.cpp) | Requirement-tagged comparisons, bounded history, journal/report generation and observed functional coverage. |
 | [pc_gen_tb.cpp](pc_gen_tb.cpp) | CLI and the T01-T22 directed scenario catalog. Semantic stimuli are shared with the random generator. Directed burst lengths and random campaigns use the explicit seed. |
 | [pc_gen_random.hh](pc_gen_random.hh), [pc_gen_random.cpp](pc_gen_random.cpp) | Seeded semantic scenarios, weighted actions, bounded coverage feedback and reproducible payload/latency streams. |
+| [suite.py](suite.py), [suite_unit.py](suite_unit.py) | Build-once parallel group orchestration, aggregate status/logs, and independent concurrency/failure-propagation checks. |
 | [regress.py](regress.py), [validate_random.py](validate_random.py), [mutate.py](mutate.py) | Isolated parallel seed regressions, coverage merging, native replay/causality/coverage/failure validation. |
 | [pc_gen_tb.core](pc_gen_tb.core) | Native FuseSoC integration; depends only on LEN5 packages and the shared logger. Compiles only this production module and the test-only wrapper. |
 | [pc_gen_unit.cpp](pc_gen_unit.cpp), [pc_gen_scoreboard_unit.cpp](pc_gen_scoreboard_unit.cpp), [validate.py](validate.py) | Model/causality invariants and native integration/failure-path validation. |
@@ -225,8 +247,16 @@ zero-based consuming cycles and REQ/RSP/SCB messages are preserved. Addresses us
 zero-padded 64-bit hex. Ordinary random runs do not log every cycle. Failure records
 include scenario/requirement/evidence, seed/cycle/phase, inputs, previous independent
 PC, selected event, expected/actual values, bounded recent history and replay.
-Summaries retain `TEST SUCCEEDED > errors: <errors>/<transactions>` and
-`TEST FAILED > errors: <errors>/<transactions>`. Field comparisons, checked
+Native summaries retain `TEST SUCCEEDED > errors: <errors>/<transactions>` and
+`TEST FAILED > errors: <errors>/<transactions>`. Each directed scenario and
+completed native run also emits `Test successfully passed` or `Test failed`,
+using the existing TbLogger verbosity. Python validators replace the ambiguous
+`CHECKED` label with the same explicit verdict, showing the expected exit code
+for negative tests. An injected failure, intentional timeout or malformed
+framework case passes its meta test only when the expected rejection is detected;
+an unexpected original-DUT failure never becomes a success. Individual groups
+print a completion verdict; the full suite ends with `All tests passed` or
+`Test failed`. Field comparisons, checked
 transactions, cycles and sampled records are separate counts.
 
 | Native status | Meaning |
@@ -249,10 +279,36 @@ Artifact roots retain existing conventions:
 - Validation: `build/pc-gen/validation/directed-*` and `random-*`, including unit/confidence/coverage fixtures and summary.json.
 - Regression: `build/pc-gen/regression/<campaign>-<profile>-<suffix>/summary.json`, private seed directories and console logs.
 - Mutation: `build/pc-gen/mutation/audit-*/summary.json`, disposable mutant sources/builds, original before/after evidence.
+- Full suite: `build/pc-gen/suite/all-*/summary.json`, per-group `.log` files and independent group artifact directories beneath that root.
 
-## Current audit results
+## Current suite validation
 
-Current audit details and final completed counts are recorded below. The older
+Validated with `make check-pc-gen JOBS=4 TEST_JOBS=4 LOG_LEVEL=LOG_LOW` using the
+current N=4 configuration: all seven groups passed, ending with `All tests passed`.
+The run took 64.3 seconds after build. T01–T22 all reported individual success;
+341 independent model/environment checks and the existing framework/replay/failure
+checks passed. The 100 x 10000-cycle regression performed 6946924 comparisons
+with zero mismatches, closing combinations 20/20 (architectural), 48/48 (stress),
+48/48 (characterization), and declared features 203/203, 319/319, 334/334.
+All eight disposable mutations compiled and were detected, and original before/
+after results passed. Production hashes for 331 files remain unchanged during
+this presentation/orchestration change. The golden model is unchanged.
+
+Evidence: [full-suite summary](../../../build/pc-gen/suite/all-wwk66cx9/summary.json)
+and per-group logs under that directory. `make check-pc-gen-run SCENARIO=T01
+INJECT_FAILURE=pc LOG_LEVEL=LOG_LOW` correctly reports `Test failed` and returns
+nonzero. Independent orchestration checks verify actual overlap of worker
+processes, continuation after child failures/missing executables, and final
+success/failure messages and exit status. An output-directory override was also
+validated for those checks. Expected negative framework tests print success
+with their expected nonzero exit explicitly recorded.
+
+The previous audit below predates the user's RTL alignment correction and remains
+historical evidence; its failure counts are not the current result.
+
+## Historical approved-contract audit results
+
+Historical audit details and counts from that earlier phase are recorded below. The older
 N=8 zero-mismatch campaigns preceded the approved raw-target successor checks.
 Only N=4 has been compiled and executed in this phase; all-width pure C++ fixtures
 are mathematical/collector tests and do not imply four DUT builds.
@@ -328,7 +384,7 @@ Reproduction commands:
 
 ```sh
 source private/init.sh
-make check-pc-gen SCENARIO=T19 SEED=7 DUMP_WAVES=true LOG_LEVEL=LOG_HIGH
+make check-pc-gen-run SCENARIO=T19 SEED=7 DUMP_WAVES=true LOG_LEVEL=LOG_HIGH
 make check-pc-gen-regression SEED=1 SEEDS=100 CYCLES=10000 JOBS=4 REQUIRE_MATRIX=true
 make check-pc-gen-regression SEEDS=100 CYCLES=10000 JOBS=4 REQUIRE_MATRIX=true PC_GEN_CONTRACT=strict
 make check-pc-gen-mutations JOBS=2

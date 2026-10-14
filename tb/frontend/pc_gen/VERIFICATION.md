@@ -325,7 +325,7 @@ Zero meaningful comparisons yields incomplete status, never success.
 | T16 | Clock-stopped pulses, falling/stable PC; C8/C7 | No setup/hold claim. |
 | T17 | 32-bit/sign/wrap/negative underflow; C3/C5/C6 | Definitive XLEN modular arithmetic. |
 | T18 | Reset during stall/held active events; C1/C2/epochs | Retained. |
-| T19 | Target low bits 01/10/11 for E/R-T/R-N/J/P, hold then sequential; C3–C7 | Raw targets exact, added next ordinary edge; confirmed C3 discrepancy observed. |
+| T19 | Target low bits 01/10/11 for E/R-T/R-N/J/P, hold then sequential; C3–C7 | Raw targets exact, added next ordinary edge; pre-fix discrepancy retained as historical evidence. |
 | T20 | Each inactive/losing field poisoned independently; C7/priority | Definitive selected PC, sideband correctly qualified. |
 | T21 | E/R override J with distinct metadata; C4/C5/Q4 | Commit don't-care, branch-overridden unknown; PC definitive. |
 | T22 | Supplied trap/MRET/vectored-interrupt-shaped targets; C4/Q10 | Added supplied vector-shaped address; producer calculations outside scope. |
@@ -387,8 +387,8 @@ verification, sideband consumer proof or full contract sign-off.
 | Q3 | Applicable J redirects despite M=0; older base+signed displacement, higher E/R overrides. | Producer WAIT_ISSUE holds until issue/flush; no J ack exists; exact duplicate/lifetime/cancellation contract still I. Memory flushing outside scope. | T09/T10/T11/T12: no discrepancy. Historical ready-gated hypothesis rejected for current checking. |
 | Q4 | Selected J metadata exact; commit-overridden, reset and idle unused values are don't-care. | R+J consumer flush window remains Q; actual flush correctness outside scope. | T09/T21 plus per-field characterization: no required metadata discrepancy. Historical always-arithmetic hypothesis superseded. |
 | Q5 | Ordinary valid&&M acceptance, E/R independent of M, E outranks R. | Control-cycle valid qualification and sole-active ready retain established I policy; idle/reset/shared losing acknowledgments not defined. | T03/T05/T08/T12: PC checks pass; residual checks explicit per profile. |
-| Q6 | B=4N, bundle-interval successor and supported 1/2/4/8 are D; source is sole selector. | Whole-core width support/scheduling is outside scope; only selected N elaborated. | T02/T04/T06 and BOOT variants; T19 detects failure of normal alignment after raw target. |
-| Q7 | Targets exact, modular arithmetic, no extra alignment/fault validation; only normal successor aligns. | Executability/fault/JALR target validation belongs producers. | T15/T17/T19: pass-through passes; next successor retains low bits in RTL, confirmed C3 defect. |
+| Q6 | B=4N, bundle-interval successor and supported 1/2/4/8 are D; source is sole selector. | Whole-core width support/scheduling is outside scope; only selected N elaborated. | T02/T04/T06 and BOOT variants; T19 checks normal alignment after raw target; historical pre-fix mismatch. |
+| Q7 | Targets exact, modular arithmetic, no extra alignment/fault validation; only normal successor aligns. | Executability/fault/JALR target validation belongs producers. | T15/T17/T19: pass-through passes; pre-fix successor retained low bits; current selected DUT passes after the user's RTL correction. |
 | Q8 | Stable consuming inputs, stalled P may change, final accepted P controls successor. | Physical setup/hold outside Verilator. | Strengthened T04, V18/random stalls: no discrepancy. |
 | Q9 | Younger cancellation, older survival, exception precedence, no delayed losing event after deassertion. | Physical memory/frontend/backend/ROB flush cannot be verified here; abstract timing/reachability still I. | T12/T18/environment unit checks; standalone PC selection checked, no queue-content claims. |
 | Q10 | Trap via mtvec, interrupt direct/vector, MRET via mepc. pc_gen forwards supplied commit address. | Producer calculations explicitly outside scope; inspect-only concerns in commit_stage not verified/fixed. | T22 synthetic supplied targets pass; not an MRET integration test. |
@@ -398,7 +398,11 @@ Q1–Q10 retained in `specification_status`. Resolved questions are not deleted 
 the design record. Legacy alternative Q3 ready-gating and Q4 always-arithmetic
 reports remain prior provisional evidence, not current confirmed RTL defects.
 
-## Current discrepancy and audit evidence
+## Historical discrepancy and audit evidence
+
+This record predates the user's RTL correction; it is retained as historical
+evidence. The subsequent suite orchestration change does not modify RTL or the
+reference-model contract.
 
 Selected production configuration at this audit: N=4, B=16, source
 `rtl/packages/len5_config_pkg.sv:37`. In T19 the supplied target `0x701` is accepted
@@ -629,9 +633,9 @@ with `--inplace` and can modify RTL (S11). Use the targeted `check-pc-gen` and
 `check-pc-gen-framework` commands documented beside the implementation.
 
 
-## Completed approved-contract validation
+## Historical approved-contract validation
 
-See [README current audit results](README.md#current-audit-results) and
+See [README current audit results](README.md#historical-approved-contract-audit-results) and
 [approved-contract-audit.json](../../../build/pc-gen/approved-contract-audit.json)
 for exact commands, counts and reproducible evidence. Build and independent
 framework checks pass; the original selected N=4 DUT fails T19 under the approved
@@ -643,6 +647,31 @@ crediting failing outcomes. This does not convert the original DUT failure into 
 pass. All eight disposable mutations compile and are detected; original before/
 after results remain identical. Partial BOOT and real-failure/FST replay checks
 pass. Production source/configuration hashes remain unchanged for all 331 files.
+
+## Complete-suite execution and result messages
+
+`make check-pc-gen` now builds only the selected DUT once, then runs all standalone
+verification groups through `suite.py`: T01–T22, independent model/environment and
+framework checks, randomized framework/confidence/coverage checks, a single-seed
+random run, the configured multi-seed regression, disposable mutations, and
+orchestration self-tests. `make check-pc-gen-run` preserves the former directed-only
+behavior and accepts SCENARIO=T01..T22. Existing focused group targets remain.
+
+TEST_JOBS bounds parallel groups (default JOBS); JOBS bounds regression seeds and
+mutation builds. All artifacts are isolated beneath a unique build/pc-gen/suite
+run directory. Group output is collected into separate logs, emitted without
+interleaving, and retained with command/exit/timing evidence in summary.json.
+Every scheduled group finishes even when another fails. Any unexpected failure,
+incomplete required coverage, missing executable or build error makes the command
+nonzero; only all successful groups produce `All tests passed`.
+
+Each directed scenario reports `Test successfully passed` after meaningful checks
+with no new mismatches, or `Test failed` on a mismatch/exception/empty case. Native
+module summaries keep the established LEN5 TEST SUCCEEDED/TEST FAILED format and
+add the explicit completion verdict. Python case validators print the same
+verdict, including expected nonzero exit status for intentional negative tests.
+This changes presentation and scheduling; it does not alter reference-model
+rules, event constraints, coverage denominators or mismatch classifications.
 
 ## Historical implementation evidence (superseded contracts)
 

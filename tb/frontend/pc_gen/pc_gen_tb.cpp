@@ -118,7 +118,17 @@ class Directed {
     void test(const char* id, const char* title, const char* req, const std::function<void()>& f) {
         if(selection_!="all" && selection_!=id) return;
         id_=id; title_=title; requirements_=req; campaign_=Campaign::Stress;
-        TB_LOG(LOG_LOW,"REQ > Starting %s: %s requirements=%s",id,title,req); f();
+        TB_LOG(LOG_LOW,"REQ > Starting %s: %s requirements=%s",id,title,req);
+        const auto before_errors=sim_.scoreboard().field_errors();
+        const auto before_checks=sim_.scoreboard().field_checks();
+        try { f(); }
+        catch(...) { TB_ERR("Test failed > id=%s: %s",id,title); throw; }
+        if(sim_.scoreboard().field_checks()==before_checks) {
+            sim_.scoreboard().problem("framework_error",std::string(id)+": no meaningful comparisons");
+            TB_ERR("Test failed > id=%s: no meaningful comparisons",id);
+        } else if(sim_.scoreboard().field_errors()!=before_errors)
+            TB_ERR("Test failed > id=%s: %s; mismatches=%" PRIu64,id,title,sim_.scoreboard().field_errors()-before_errors);
+        else TB_SUCCESS(LOG_LOW,"Test successfully passed > id=%s: %s",id,title);
     }
     void reset() {
         Inputs i; i.rst_n=false; sim_.probe(stimulus(i,Campaign::Stress)); send(i); send(i);

@@ -31,6 +31,7 @@ if ! "${FUSESOC:-fusesoc}" run --no-export --target sim --tool verilator \
     --BOOT_PC_HI="$boot_high" --BOOT_PC_LO="$boot_low" > "$model_dir/build.log" 2>&1; then
     tail -n 60 "$model_dir/build.log" >&2
     echo "pc_gen build failed; see $model_dir/build.log" >&2
+    echo "Test failed: pc_gen build" >&2
     exit 2
 fi
 echo '## pc_gen build complete.'
@@ -60,4 +61,9 @@ result=$?
 set -e
 cat "$run_dir/console.log"
 echo "## pc_gen console log: $run_dir/console.log"
+if [[ $result == 0 ]]; then
+    echo 'Test successfully passed: pc_gen run'
+else
+    echo 'Test failed: pc_gen run'
+fi
 exit "$result"

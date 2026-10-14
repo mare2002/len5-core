@@ -32,9 +32,10 @@ def main():
     unit_result = subprocess.run([str(unit)], text=True, capture_output=True, check=True)
     (directory / "unit.log").write_text(unit_result.stdout + unit_result.stderr)
     print(unit_result.stdout.strip())
+    print("Test successfully passed: independent model/environment", flush=True)
     results = []
 
-    def run(label, options=(), status=0):
+    def run_case(label, options=(), status=0):
         case_dir = directory / label
         case_dir.mkdir()
         argv = [str(binary), "--run_dir", str(case_dir), "--log_level", "LOG_LOW", "--seed", "7", *options]
@@ -67,8 +68,17 @@ def main():
         results.append({"case": label, "command": argv, "exit_status": completed.returncode,
                         "field_checks": report["field_checks"], "field_errors": report["field_errors"],
                         "dut_failure": status is None and completed.returncode == 1})
-        print(f"CHECKED: {label}: exit={completed.returncode}, checks={report['field_checks']}, errors={report['field_errors']}")
+        verdict = "Test failed" if status is None and completed.returncode else "Test successfully passed"
+        expected = f", expected exit={status}" if status is not None and status else ""
+        print(f"{verdict}: {label}: exit={completed.returncode}{expected}, checks={report['field_checks']}, errors={report['field_errors']}", flush=True)
         return report, case_dir
+
+    def run(label, *args, **kwargs):
+        try:
+            return run_case(label, *args, **kwargs)
+        except Exception:
+            print(f"Test failed: {label}", flush=True)
+            raise
 
     baseline, base_dir = run("proposed", status=None)
     coverage = json.loads((base_dir / "logs/coverage.json").read_text())
@@ -157,8 +167,14 @@ def main():
                "replay_sha256": digest(base_dir / "logs/samples.jsonl")}
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(f"Validation evidence: {directory}")
+    print("Test failed: pc_gen framework" if failed else "Test successfully passed: pc_gen framework", flush=True)
     return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        result = main()
+    except Exception:
+        print("Test failed: pc_gen framework", flush=True)
+        raise
+    raise SystemExit(result)

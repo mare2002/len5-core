@@ -41,6 +41,7 @@ def main():
         assert report['confirmed_mismatches'] == (0 if case=='unverified' else 1)
         assert report['provisional_mismatches'] == (2 if case=='unverified' else 0 if case=='definitive' else 1)
         assert report['field_errors'] == (1 if case=='definitive' else 2)
+        print(f'Test successfully passed: synthetic confidence {case} (expected mismatch detected)', flush=True)
     print('PASS: synthetic scoreboard evidence preserves provisional versus confirmed priority classification')
     coverage_fixtures = root/'synthetic-coverage-configurations'
     subprocess.run([str(confidence_binary), str(coverage_fixtures), 'coverage'], check=True)
@@ -61,9 +62,10 @@ def main():
         assert counters.get('V10/architectural/interrupted_stall/1') == 1
         assert counters.get('V09/architectural/hold->prediction') == 1
         assert not counters.get('V09/architectural/hold->hold')
+        print(f'Test successfully passed: pure coverage fixture N={width}', flush=True)
     print('PASS: four pure coverage fixtures adapt lane counters, goals and exclusions; no alternate DUT was built')
 
-    def run(label, flags=(), status=None, cycles=2048):
+    def run_case(label, flags=(), status=None, cycles=2048):
         directory = root / label
         directory.mkdir()
         command = [str(binary), '--random', '--seed=17', f'--cycles={cycles}', f'--max_cycles={cycles}',
@@ -89,8 +91,17 @@ def main():
         assert ('TEST FAILED > errors:' if result.returncode else 'TEST SUCCEEDED > errors: 0/') in console
         assert 'campaign=' in console and 'seed=' in console
         results.append({'case': label, 'command': command, 'checks': report['field_checks'], 'errors': report['field_errors'], 'status': result.returncode, 'dut_failure': status is None and result.returncode == 1})
-        print(f'CHECKED: {label}: checks={report["field_checks"]}, errors={report["field_errors"]}')
+        verdict = 'Test failed' if status is None and result.returncode else 'Test successfully passed'
+        expected = f', expected exit={status}' if status is not None and status else ''
+        print(f'{verdict}: {label}: exit={result.returncode}{expected}, checks={report["field_checks"]}, errors={report["field_errors"]}', flush=True)
         return report, cov, directory
+
+    def run(label, *args, **kwargs):
+        try:
+            return run_case(label, *args, **kwargs)
+        except Exception:
+            print(f"Test failed: {label}", flush=True)
+            raise
 
     first, coverage, directory = run('all-full', ['--journal=full'])
     assert coverage['requirement_checks'] == first['campaign_requirement_checks']
@@ -257,8 +268,14 @@ def main():
                                                  'causal_and_coverage_reconstruction': 'passed', 'synthetic_confidence_checks': 3,
                                                  'synthetic_coverage_configurations': [1, 2, 4, 8]}, indent=2)+'\n')
     print(f'Validation evidence: {root}/summary.json')
+    print("Test failed: pc_gen random framework" if failed else "Test successfully passed: pc_gen random framework", flush=True)
     return 1 if failed else 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        result = main()
+    except Exception:
+        print("Test failed: pc_gen random framework", flush=True)
+        raise
+    raise SystemExit(result)

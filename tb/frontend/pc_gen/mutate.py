@@ -39,6 +39,7 @@ def main():
         with (root/(label+'.log')).open('w') as log:
             result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)
         report = json.loads((directory/'logs/report.json').read_text())
+        print(('Test successfully passed' if result.returncode == 0 else 'Test failed')+': '+label, flush=True)
         return dict(exit_status=result.returncode, comparisons=report['field_checks'], field_errors=report['field_errors'],
                     confirmed=report['confirmed_mismatches'], provisional=report['provisional_mismatches'],
                     stimulus_digest=report['stimulus_digest'], artifacts=str(directory))
@@ -80,6 +81,7 @@ def main():
         # assignments; all other replacement sites must be unique.
         expected_sites = 2 if label == 'not_taken_recovery' else 1
         if text.count(before) != expected_sites:
+            print('Test failed: mutation '+label+'; replacement site changed', flush=True)
             raise ValueError('mutation site changed: '+label)
         (directory/'pc_gen.sv').write_text(text.replace(before, after, 1))
         core = (source/'pc_gen_tb.core').read_text()
@@ -101,6 +103,7 @@ def main():
                       build_command=shlex.join(command), build_status=built.returncode, artifacts=str(directory),
                       mutation_source_sha256=hashlib.sha256((directory/'pc_gen.sv').read_bytes()).hexdigest())
         if built.returncode:
+            print('Test failed: mutation '+label+'; build failed', flush=True)
             result['status'] = 'not_executed_build_failure'
             return result
         binary = model/'sim-verilator/Vpc_gen_tb'
@@ -119,7 +122,7 @@ def main():
                       comparisons=report['field_checks'], field_errors=report['field_errors'],
                       confirmed=report['confirmed_mismatches'], provisional=report['provisional_mismatches'],
                       first_detection=next(iter(errors), None))
-        print('%s: %s req=%s scenario=%s comparisons=%d' % (result['status'], label, requirement, scenario, report['field_checks']), flush=True)
+        print('%s: mutation %s req=%s scenario=%s comparisons=%d (%s)' % ('Test successfully passed' if detected else 'Test failed', label, requirement, scenario, report['field_checks'], result['status']), flush=True)
         return result
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
@@ -141,8 +144,14 @@ def main():
                    production_rtl_unchanged=True, original_rtl_sha256=hashlib.sha256(original).hexdigest())
     (root/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
     print('Mutation evidence: '+str(root/'summary.json'))
+    print('Test successfully passed: pc_gen mutations' if passed else 'Test failed: pc_gen mutations', flush=True)
     return 0 if passed else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        result = main()
+    except Exception:
+        print('Test failed: pc_gen mutations', flush=True)
+        raise
+    raise SystemExit(result)

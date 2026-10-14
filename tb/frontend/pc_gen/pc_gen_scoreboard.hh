@@ -84,6 +84,7 @@ public:
     void problem(const std::string& kind, const std::string& reason);
     int finish(const std::string& reason, bool complete_suite, const std::string& selection);
     uint64_t field_checks() const { return field_checks_; }
+    uint64_t field_errors() const { return field_errors_; }
 };
 std::string sample_json(const Sample&);
 } // namespace len5::pcgen

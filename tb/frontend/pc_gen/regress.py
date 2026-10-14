@@ -3,7 +3,7 @@
 """Run isolated native seeded campaigns after the existing FuseSoC build."""
 import argparse
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from pathlib import Path
 import shlex
@@ -62,7 +62,14 @@ def main():
                 'report': report, 'coverage': coverage, 'artifacts': str(directory)}
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        runs = list(pool.map(run, range(args.seed, args.seed+args.seeds)))
+        futures = [pool.submit(run, seed) for seed in range(args.seed, args.seed+args.seeds)]
+        runs = []
+        for future in as_completed(futures):
+            result = future.result()
+            runs.append(result)
+            verdict = 'Test successfully passed' if result['passed'] else 'Test failed'
+            print(f"{verdict}: random seed {result['seed']}: exit={result['exit_status']}, checks={result['report'].get('field_checks', 0)}, errors={result['report'].get('field_errors', 0)}", flush=True)
+    runs.sort(key=lambda result: result['seed'])
     counters = Counter()
     requirements = Counter()
     campaign_requirements = Counter()
@@ -150,8 +157,14 @@ def main():
         if not run['passed']:
             print(f"FAILED seed {run['seed']}: {run['artifacts']}; replay: {run['command']}")
     print(f'Regression evidence: {root}/summary.json')
+    print('Test successfully passed: pc_gen regression' if passed else 'Test failed: pc_gen regression', flush=True)
     return 0 if passed else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        result = main()
+    except Exception:
+        print('Test failed: pc_gen regression', flush=True)
+        raise
+    raise SystemExit(result)

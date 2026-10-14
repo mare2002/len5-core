@@ -543,6 +543,8 @@ int Scoreboard::finish(const std::string& reason, bool complete_suite, const std
     else TB_SUCCESS(LOG_LOW,"TEST SUCCEEDED > errors: %" PRIu64 "/%" PRIu64,errors_,transactions_);
     TB_LOG(LOG_LOW,"SCB > checks=%" PRIu64 " field_errors=%" PRIu64 " matrix_holes=%u reset_holes=%u report=%s/report.json (partial contract)",
         field_checks_,field_errors_,coverage.matrix_holes(),coverage.reset_holes(),directory_.c_str());
+    if(result) TB_ERR("Test failed > pc_gen %s; exit_status=%d",selection.c_str(),result);
+    else TB_SUCCESS(LOG_LOW,"Test successfully passed > pc_gen %s",selection.c_str());
     return result;
 }
 } // namespace len5::pcgen
