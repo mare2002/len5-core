@@ -1,0 +1,84 @@
+CAPI=2:
+name: polito:len5:fetch-mem-if-tb:0.1.0
+description: Independent event-driven fetch_mem_if transport and exception verification
+filesets:
+  dut:
+    depend:
+    - polito:len5:packages
+    files:
+    - ../../../rtl/common/modn_counter.sv
+    - ../../../rtl/common/fifo_nohs.sv
+    - ../../../rtl/common/spill_cell_flush_cu.sv
+    - ../../../rtl/common/spill_cell_flush.sv
+    - ../../../rtl/frontend/fetch_mem_if.sv
+    - fetch_mem_tb.sv
+    file_type: systemVerilogSource
+  harness:
+    depend:
+    - polito:len5:verilator-common
+    files:
+    - fetch_mem_model.hh:
+        is_include_file: true
+    - fetch_mem_model.cpp
+    - fetch_mem_environment.hh:
+        is_include_file: true
+    - fetch_mem_environment.cpp
+    - fetch_mem_scoreboard.hh:
+        is_include_file: true
+    - fetch_mem_scoreboard.cpp
+    - fetch_mem_driver.hh:
+        is_include_file: true
+    - fetch_mem_driver.cpp
+    - fetch_mem_directed.hh:
+        is_include_file: true
+    - fetch_mem_directed.cpp
+    - fetch_mem_random.hh:
+        is_include_file: true
+    - fetch_mem_random.cpp
+    - fetch_mem_configuration.cpp
+    - fetch_mem_tb.cpp
+    - ../pc_gen/pc_gen_model.hh:
+        is_include_file: true
+    - ../pc_gen/pc_gen_model.cpp
+    - ../early_jump_unit/early_jump_instructions.hh:
+        is_include_file: true
+    - ../early_jump_unit/early_jump_instructions.cpp
+    file_type: cppSource
+  waivers:
+    files:
+    - fetch_mem_waivers.vlt
+    file_type: vlt
+targets:
+  sim:
+    default_tool: verilator
+    toplevel: fetch_mem_tb
+    filesets:
+    - dut
+    - harness
+    - waivers
+    parameters:
+    - MEM_DEPTH
+    tools:
+      verilator:
+        mode: cc
+        verilator_options:
+        - --assert
+        - --trace-fst
+        - --trace-depth 1
+        - --x-assign unique
+        - --x-initial unique
+        - -Wall
+        - -Wpedantic
+        make_options:
+        - OBJCACHE=
+        - CXX=/usr/bin/g++
+        - -j4
+        - OPT_FAST=-O2
+        - OPT_GLOBAL=-O2
+        - CXXFLAGS+=-std=c++17
+parameters:
+  MEM_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    default: 2
+    description: Source-derived production metadata-depth default; verified at startup

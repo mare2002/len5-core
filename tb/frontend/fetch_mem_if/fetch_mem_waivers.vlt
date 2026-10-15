@@ -1,0 +1,13 @@
+`verilator_config
+// The DUT deliberately transports all prediction fields; common packages contain
+// additional constants/types. Keep functional width/loop warnings visible.
+lint_off -rule DECLFILENAME -file "*/fetch_mem_tb.sv"
+lint_off -rule UNUSEDSIGNAL -file "*/fetch_mem_if.sv"
+lint_off -rule UNUSEDPARAM -file "*/fetch_mem_if.sv"
+// Deliberately unused terminal count and assertion-only validity bookkeeping.
+lint_off -rule PINCONNECTEMPTY -file "*/fifo_nohs.sv" -match "*tc_o*"
+lint_off -rule UNUSEDSIGNAL -file "*/fifo_nohs.sv" -match "*data_valid*"
+// The source-selected request SKIP=1 bypass intentionally does not use these pins.
+lint_off -rule UNUSEDSIGNAL -file "*/spill_cell_flush.sv" -match "*clk_i*"
+lint_off -rule UNUSEDSIGNAL -file "*/spill_cell_flush.sv" -match "*rst_ni*"
+lint_off -rule UNUSEDSIGNAL -file "*/spill_cell_flush.sv" -match "*flush_i*"
