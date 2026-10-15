@@ -389,3 +389,32 @@ check-pc-gen-random-framework: pc-gen-build
 .PHONY: check-pc-gen-mutations
 check-pc-gen-mutations: pc-gen-build
 	python3 tb/frontend/pc_gen/mutate.py --binary "$$(python3 tb/frontend/pc_gen/configuration.py --binary --build-dir '$(BUILD_DIR)' --boot '$(or $(BOOT_PC),0)')" --output "$(BUILD_DIR)/pc-gen/mutation" --jobs "$(or $(JOBS),2)"
+
+# Standalone early_jump_unit with its real RAS. Configuration comes only from RTL packages.
+.PHONY: early-jump-build check-early-jump check-early-jump-run check-early-jump-framework check-early-jump-random check-early-jump-random-framework check-early-jump-regression check-early-jump-mutations
+EARLY_JUMP_BINARY = $$(python3 tb/frontend/early_jump_unit/configuration.py --binary --build-dir '$(BUILD_DIR)')
+EARLY_JUMP_POLICIES = $(if $(RAS_ORDER),--order=$(RAS_ORDER)) $(if $(RAS_EXCEPTION),--exception=$(RAS_EXCEPTION)) $(if $(RAS_BOUNDARIES),--boundaries=$(RAS_BOUNDARIES)) $(if $(EARLY_LIFECYCLE),--lifecycle=$(EARLY_LIFECYCLE))
+early-jump-build:
+	@EARLY_JUMP_BUILD_ONLY=true bash scripts/sim/check-early-jump.sh
+
+check-early-jump: REQUIRE_MATRIX ?= true
+check-early-jump: early-jump-build
+	@python3 tb/frontend/early_jump_unit/suite.py --binary "$(EARLY_JUMP_BINARY)" --output "$(BUILD_DIR)/early-jump/suite" --test-jobs "$(or $(TEST_JOBS),$(JOBS))" --jobs "$(JOBS)" --seed "$(or $(SEED),1)" --seeds "$(or $(SEEDS),100)" --cycles "$(or $(CYCLES),10000)" --max-cycles "$(MAX_CYCLES)" --campaign "$(or $(CAMPAIGN),all)" --contract "$(or $(EARLY_JUMP_CONTRACT),len5_minimal)" --weights "$(WEIGHTS)" --guided "$(or $(GUIDED),true)" --journal "$(or $(JOURNAL),auto)" --log-level "$(LOG_LEVEL)" --waves "$(or $(DUMP_WAVES),false)" --require-matrix "$(REQUIRE_MATRIX)" $(EARLY_JUMP_POLICIES) $(if $(INJECT_FAILURE),--inject-failure=$(INJECT_FAILURE))
+
+check-early-jump-run:
+	@LOG_LEVEL="$(LOG_LEVEL)" MAX_CYCLES="$(MAX_CYCLES)" bash scripts/sim/check-early-jump.sh
+
+check-early-jump-framework: early-jump-build
+	@python3 tb/frontend/early_jump_unit/validate.py --binary "$(EARLY_JUMP_BINARY)" --output "$(BUILD_DIR)/early-jump/validation"
+
+check-early-jump-random:
+	@RANDOM_MODE=true LOG_LEVEL="$(LOG_LEVEL)" MAX_CYCLES="$(MAX_CYCLES)" bash scripts/sim/check-early-jump.sh
+
+check-early-jump-random-framework: early-jump-build
+	@python3 tb/frontend/early_jump_unit/validate_random.py --binary "$(EARLY_JUMP_BINARY)" --output "$(BUILD_DIR)/early-jump/validation"
+
+check-early-jump-regression: early-jump-build
+	@python3 tb/frontend/early_jump_unit/regress.py --binary "$(EARLY_JUMP_BINARY)" --output "$(BUILD_DIR)/early-jump/regression" --seed "$(or $(SEED),1)" --seeds "$(or $(SEEDS),100)" --cycles "$(or $(CYCLES),10000)" --campaign "$(or $(CAMPAIGN),all)" --contract "$(or $(EARLY_JUMP_CONTRACT),len5_minimal)" --weights "$(WEIGHTS)" --guided "$(or $(GUIDED),true)" --journal "$(or $(JOURNAL),auto)" --log-level "$(LOG_LEVEL)" --waves "$(or $(DUMP_WAVES),false)" --jobs "$(JOBS)" $(EARLY_JUMP_POLICIES) $(if $(filter true,$(REQUIRE_MATRIX)),--require-matrix)
+
+check-early-jump-mutations: early-jump-build
+	@python3 tb/frontend/early_jump_unit/mutate.py --binary "$(EARLY_JUMP_BINARY)" --output "$(BUILD_DIR)/early-jump/mutation" --jobs "$(JOBS)"

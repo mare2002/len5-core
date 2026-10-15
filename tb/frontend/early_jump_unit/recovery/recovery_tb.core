@@ -1,0 +1,28 @@
+CAPI=2:
+name: polito:len5:recovery-audit:0.1.0
+filesets:
+  test:
+    depend:
+      - polito:len5:len5
+      - polito:len5:verilator-common
+    files:
+      - ../../../memory/memory_class.svh: {is_include_file: true}
+      - ../../../memory/memory_if.sv
+      - ../../../memory/memory_bare_emu.sv
+      - ../../../len5_utils.svh: {is_include_file: true}
+      - ../../../tb_bare.sv
+      - recovery_tb.sv
+    file_type: systemVerilogSource
+  driver:
+    files: [recovery_tb.cpp]
+    file_type: cppSource
+targets:
+  sim:
+    default_tool: verilator
+    filesets: [test, driver]
+    toplevel: recovery_tb
+    tools:
+      verilator:
+        make_options: [OBJCACHE=, CXX=/usr/bin/g++, -j4, OPT_FAST=-O2, OPT_GLOBAL=-O2]
+        mode: cc
+        verilator_options: [--assert, --trace-fst, --trace-structs, --trace-max-array, '128', -Wno-fatal]

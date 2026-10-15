@@ -1,0 +1,78 @@
+CAPI=2:
+# SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+name: polito:len5:early-jump-tb:0.1.0
+description: Standalone encoded-instruction early_jump_unit and real instantiated
+  RAS verification
+filesets:
+  dut:
+    depend:
+    - polito:len5:packages
+    files:
+    - ../../../rtl/common/prio_enc.sv
+    - ../../../rtl/frontend/ras.sv
+    - ../../../rtl/frontend/early_jump_unit.sv
+    - early_jump_tb.sv
+    file_type: systemVerilogSource
+  harness:
+    depend:
+    - polito:len5:verilator-common
+    files:
+    - early_jump_instructions.hh:
+        is_include_file: true
+    - early_jump_instructions.cpp
+    - early_jump_model.hh:
+        is_include_file: true
+    - early_jump_model.cpp
+    - early_jump_environment.hh:
+        is_include_file: true
+    - early_jump_environment.cpp
+    - early_jump_scoreboard.hh:
+        is_include_file: true
+    - early_jump_scoreboard.cpp
+    - early_jump_driver.hh:
+        is_include_file: true
+    - early_jump_driver.cpp
+    - early_jump_directed.hh:
+        is_include_file: true
+    - early_jump_directed.cpp
+    - early_jump_random.hh:
+        is_include_file: true
+    - early_jump_random.cpp
+    - early_jump_configuration.cpp
+    - early_jump_tb.cpp
+    - ../pc_gen/pc_gen_model.hh:
+        is_include_file: true
+    - ../pc_gen/pc_gen_model.cpp
+    file_type: cppSource
+  waivers:
+    files:
+    - early_jump_waivers.vlt
+    file_type: vlt
+targets:
+  sim:
+    default_tool: verilator
+    toplevel: early_jump_tb
+    filesets:
+    - dut
+    - harness
+    - waivers
+    parameters: []
+    tools:
+      verilator:
+        mode: cc
+        verilator_options:
+        - --assert
+        - --trace-fst
+        - --trace-depth 1
+        - --x-assign unique
+        - --x-initial unique
+        - -Wall
+        - -Wpedantic
+        make_options:
+        - OBJCACHE=
+        - CXX=/usr/bin/g++
+        - -j4
+        - OPT_FAST=-O2
+        - OPT_GLOBAL=-O2
+        - CXXFLAGS+=-std=c++17
+parameters: {}

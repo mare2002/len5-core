@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+// Reuse the existing frontend waiver for intentionally unused encoder-valid outputs.
+`verilator_config
+lint_off -rule PINCONNECTEMPTY -file "*/ras.sv" -match "Instance pin connected by name with empty reference: 'valid_o'"
