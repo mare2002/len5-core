@@ -100,6 +100,13 @@ python3 tb/frontend/fetch_stage/results_unit.py
 ```
 
 No manual cycle/repetition/latency override is required for successful execution.
+`make check-frontend JOBS=2` runs the complete `check-pc-gen`, `check-early-jump`,
+`check-fetch-mem-if` and `check-fetch-stage` suites in that order. This includes
+their directed, framework, regression and mutation groups; it can be expensive.
+The suites run sequentially even with `make -j`, retaining their internal
+`JOBS`/`TEST_JOBS` parallelism and existing result policies. Width sweeps remain
+an explicit separate workflow.
+
 The native/Python result is retained independently of process status:
 
 | Verification status | Default exit | Strict exit |
