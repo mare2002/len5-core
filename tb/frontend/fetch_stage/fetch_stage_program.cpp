@@ -153,6 +153,7 @@ Program make_program(const Config &c, const std::string &family, unsigned reps, 
     if (reps < 2 || reps > 2047)
         throw std::invalid_argument("repetitions must be 2..2047");
     Assembler a(c.boot, family);
+    const bool thresholds = family == "threshold-interacting";
     const auto base = c.boot;
     auto done = [&]() {
         a.at(base + 0x700);
@@ -160,7 +161,54 @@ Program make_program(const Config &c, const std::string &family, unsigned reps, 
         a.addi(0, 0, 0);
         a.jal(0, "done");
     };
-    if (family == "reset-loaded") {
+    if (thresholds) {
+        // All targets are genuine PC+4 branches: outcome is operand-derived,
+        // immutable, and the resolved instruction stream is sequential.
+        a.label("threshold-down");
+        a.branch(1, 0, 0, "after-down"); // H0/index0, 2 -> 1
+        a.label("after-down");
+        a.addi(0, 0, 0);
+        a.at(base + 0x40);
+        a.label("threshold-up");
+        a.branch(0, 0, 0, "after-up");   // H0/index0, 1 -> 2
+        a.label("after-up");
+        a.addi(0, 0, 0);
+        a.at(base + 0x84);
+        a.label("threshold-post");
+        a.branch(1, 0, 0, "after-post"); // H1 XOR word1 = index0, 2 -> 1
+        a.label("after-post");
+        a.addi(0, 0, 0);
+        a.at(base + 0xc8);
+        a.branch(1, 0, 0, "after-final"); // H2 XOR word2 = index0, reads1
+        a.label("after-final");
+        a.addi(0, 0, 0);
+        a.at(base + 0x100);
+        a.jal(0, "threshold-body");
+        a.at(base + 0x200);
+        a.label("threshold-body");
+    }
+    if (family == "history-pair") {
+        a.label("history-seed");
+        a.jal(0, "history-A"); // one actual taken result establishes H=1
+        a.at(base + 0x40);
+        a.label("history-A");
+        a.branch(1, 0, 0, "history-B"); // correct NT: H1 -> H2
+        a.label("history-B");
+        a.branch(1, 0, 0, "history-tail"); // lookup H1/index0, update H2/index3
+        a.label("history-tail");
+        a.addi(0, 0, 0);
+        a.at(base + 0x9c);
+        a.label("history-probe");
+        a.branch(1, 0, 0, "history-after-probe"); // H4 XOR word7 = index3
+        a.label("history-after-probe");
+        a.jal(0, "done");
+    } else if (family == "branch-pressure") {
+        for (unsigned k = 0; k < 64; ++k) {
+            a.branch(1, 0, 0, "next-" + std::to_string(k));
+            a.label("next-" + std::to_string(k));
+        }
+        a.jal(0, "done");
+    } else if (family == "reset-loaded") {
         a.jal(1, "function");
         a.jal(0, "done");
         a.at(base + 0x200);
@@ -177,8 +225,8 @@ Program make_program(const Config &c, const std::string &family, unsigned reps, 
         a.branch(1, 0, 0, "tail");
         a.label("tail");
         a.jal(0, "done");
-    } else if (family == "sequential" || family == "short-sequential") {
-        for (unsigned k = 0; k < (family == "short-sequential" ? 12u : 256u); ++k)
+    } else if (family == "sequential" || family == "short-sequential" || family == "pressure-short") {
+        for (unsigned k = 0; k < (family == "short-sequential" ? 12u : family == "pressure-short" ? 48u : 256u); ++k)
             a.addi(8 + k % 8, 0, int(k));
         a.jal(0, "done");
     } else if (family == "loop-a" || family == "long") {
@@ -195,7 +243,7 @@ Program make_program(const Config &c, const std::string &family, unsigned reps, 
         a.addi(10, 10, 1);
         a.jal(0, "loop");
     } else if (family == "phase" || family == "alternating" || family == "interacting" ||
-               family == "conflict") {
+               family == "conflict" || thresholds) {
         a.addi(10, 0, 0);
         a.addi(11, 0, reps);
         a.addi(13, 0, 0);
@@ -213,7 +261,7 @@ Program make_program(const Config &c, const std::string &family, unsigned reps, 
         a.label("yes");
         a.addi(14, 14, 1);
         a.label("join");
-        if (family == "interacting" || family == "conflict") {
+        if (family == "interacting" || family == "conflict" || thresholds) {
             a.emit(immediate(7, 12, 10, 2));
             if (family == "conflict")
                 a.at(base + 0x18 + 4 * (uint64_t(1) << c.btb_bits));

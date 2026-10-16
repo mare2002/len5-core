@@ -26,11 +26,11 @@ uint64_t bounded(std::mt19937_64 &r, uint64_t n) {
 void Config::validate() const {
     if ((lanes != 1 && lanes != 2 && lanes != 4 && lanes != 8) || depth != 2 || ras_depth != 4 || hlen < 2 ||
         hlen > 16 || (1u << hlen) <= lanes || btb_bits < 1 || btb_bits > 16 || initial > 3 || boot % 4 ||
-        iq < lanes || !branch_capacity || rob < iq)
+        iq < lanes || !branch_capacity || !alu_capacity || rob < iq)
         throw std::invalid_argument("FE01/FEQ11: unsupported source configuration (N=1/2/4/8, depth2/RAS4, "
                                     "aligned BOOT, positive predictor widths)");
 }
-Predictor::Predictor(Config c) : cfg_(c), targets_(size_t(1) << c.btb_bits), counters_(size_t(1) << c.hlen) {
+Predictor::Predictor(Config c) : cfg_(c), targets_(size_t(1) << c.btb_bits), counters_(size_t(1) << c.hlen), generations_(size_t(1) << c.hlen) {
     c.validate();
     reset();
 }
@@ -38,6 +38,7 @@ void Predictor::reset() {
     std::fill(targets_.begin(), targets_.end(), Entry{});
     std::fill(counters_.begin(), counters_.end(), cfg_.initial);
     history_ = 0;
+    std::fill(generations_.begin(), generations_.end(), 0);
 }
 Prediction Predictor::predict(uint64_t pc) const {
     auto w = pc / 4;
@@ -51,6 +52,7 @@ PredictorUpdate Predictor::update(const Resolution &r) {
     u.before = counters_[u.index];
     u.after = r.taken ? std::min(3u, u.before + 1) : (u.before ? u.before - 1 : 0);
     counters_[u.index] = u.after;
+    ++generations_[u.index];
     history_ = unsigned((history_ * 2 + unsigned(r.taken)) % counters_.size());
     auto w = r.pc / 4;
     u.row = unsigned(w % targets_.size());
@@ -255,6 +257,7 @@ void Backend::reset() {
     epoch_ = freeze_id_ = resume_cycle_ = 0;
     expected_retire_pc_ = cfg_.boot;
     stats = {};
+    last_advance_ = UINT64_MAX;
 }
 uint64_t Backend::read(unsigned reg, uint64_t &dependency) const {
     dependency = 0;
@@ -269,20 +272,132 @@ uint64_t Backend::read(unsigned reg, uint64_t &dependency) const {
     }
     return committed_[reg];
 }
-bool Backend::ready() const {
-    size_t iq = 0, total = 0;
+void validate_resources(const Config &c, Resources r) {
+    if (r.iq > c.iq || r.rob > c.rob || r.branch > c.branch_capacity || r.alu > c.alu_capacity ||
+        r.branch + r.alu > r.rob)
+        throw std::logic_error("FE17: backend resource capacity/conservation violation");
+}
+void validate_lifecycle(const Instruction &r) {
+    if ((r.issued && (r.issue <= r.dispatch)) ||
+        (r.start != UINT64_MAX && (!r.issued || r.start <= r.issue || r.start < r.earliest ||
+                                  r.start < r.dependency_ready)) ||
+        (r.completed && (r.start == UINT64_MAX || r.execute <= r.start)) ||
+        (r.publication != UINT64_MAX && (!r.completed || r.publication <= r.execute)) ||
+        (r.retired && (r.canceled || r.publication == UINT64_MAX || r.retire <= r.publication)))
+        throw std::logic_error("FE17/18: backend lifecycle/latency violation");
+}
+void validate_backend_history(const std::vector<Instruction> &records) {
+    std::set<uint64_t> ids;
+    std::map<uint64_t, unsigned> issues, publications, retirements, alu_starts, branch_starts;
+    for (const auto &r : records) {
+        if (!r.id || !ids.insert(r.id).second)
+            throw std::logic_error("FE17: duplicate dynamic identity/completion/retirement record");
+        validate_lifecycle(r);
+        if (r.issued && ++issues[r.issue] > 1)
+            throw std::logic_error("FE17: excess scalar issue bandwidth");
+        if (r.start != UINT64_MAX && ++(r.semantic.control ? branch_starts : alu_starts)[r.start] > 1)
+            throw std::logic_error("FE17: excess per-unit execution initiation");
+        if (r.publication != UINT64_MAX && ++publications[r.publication] > 1)
+            throw std::logic_error("FE17: excess CDB result publication");
+        if (r.retired && ++retirements[r.retire] > 1)
+            throw std::logic_error("FE17: excess retirement bandwidth");
+        for (auto id : {r.dep_a, r.dep_b})
+            if (id) {
+                auto p = std::find_if(records.begin(), records.end(), [&](const Instruction &o) { return o.id == id; });
+                if (p == records.end() || id >= r.id || (!r.canceled && p->canceled) ||
+                    (r.start != UINT64_MAX && (p->publication == UINT64_MAX || r.start <= p->publication)))
+                    throw std::logic_error("FE16/17: invalid dependency/forwarding history");
+            }
+    }
+}
+Resources Backend::resources() const {
+    Resources s;
     for (const auto &r : records_)
         if (!r.canceled && !r.retired) {
-            ++total;
-            iq += !r.issued;
+            if (!r.issued)
+                ++s.iq;
+            else {
+                ++s.rob;
+                if (r.publication == UINT64_MAX)
+                    r.semantic.control ? ++s.branch : ++s.alu;
+            }
         }
-    return iq + cfg_.lanes <= cfg_.iq && total + cfg_.lanes <= cfg_.rob;
+    return s;
+}
+void Backend::audit(bool sample) {
+    auto r = resources();
+    validate_resources(cfg_, r);
+    if (sample) {
+        stats.iq_high = std::max<uint64_t>(stats.iq_high, r.iq);
+        stats.rob_high = std::max<uint64_t>(stats.rob_high, r.rob);
+        stats.branch_high = std::max<uint64_t>(stats.branch_high, r.branch);
+        stats.alu_high = std::max<uint64_t>(stats.alu_high, r.alu);
+        stats.inflight_high = std::max<uint64_t>(stats.inflight_high, r.iq + r.rob);
+    }
+    uint64_t issued = 0, started = 0, completed = 0, published = 0, retired = 0, canceled = 0;
+    for (const auto &i : records_) {
+        validate_lifecycle(i);
+        issued += i.issued;
+        started += i.start != UINT64_MAX;
+        completed += i.completed;
+        published += i.publication != UINT64_MAX;
+        retired += i.retired;
+        canceled += i.canceled;
+    }
+    if (stats.dispatched != records_.size() || issued != stats.issued || started != stats.started ||
+        completed != stats.executed || published != stats.published || retired != stats.retired ||
+        canceled != stats.canceled || stats.dispatched != pending() + retired + canceled)
+        throw std::logic_error("FE17/20: allocation/release conservation violation");
+}
+bool Backend::ready(unsigned mask) const {
+    if (mask == UINT32_MAX)
+        mask = (1u << cfg_.lanes) - 1;
+    if (mask >= (1u << cfg_.lanes) || (mask && (mask & (mask + 1))))
+        throw std::invalid_argument("FE17: whole-bundle admission requires a contiguous low mask");
+    return resources().iq + unsigned(__builtin_popcount(mask)) <= cfg_.iq;
+}
+void Backend::offered(bool valid, bool capacity_ready, bool random_ready) {
+    // Called once after a matched consuming edge using the immutable pre-edge
+    // admission decision. Count valid-offer stalls separately from capacity
+    // driven ready-low cycles; an idle output is not a stalled transaction.
+    if (!capacity_ready) ++stats.resource_stalls;
+    if (valid) {
+        ++stats.offered;
+        if (!capacity_ready) ++stats.iq_blocks;
+        if (!random_ready) ++stats.random_stalls;
+    }
+}
+std::string BackendStats::json() const {
+    std::ostringstream s;
+    s << "{\"offered_bundles\":" << offered << ",\"accepted_bundles\":" << accepted
+      << ",\"admitted_instructions\":" << dispatched << ",\"issued\":" << issued
+      << ",\"started\":" << started << ",\"completed\":" << executed
+      << ",\"published\":" << published << ",\"retired\":" << retired
+      << ",\"canceled\":" << canceled << ",\"iq_high\":" << iq_high
+      << ",\"rob_high\":" << rob_high << ",\"branch_high\":" << branch_high
+      << ",\"alu_high\":" << alu_high << ",\"inflight_high\":" << inflight_high
+      << ",\"iq_block_cycles\":" << iq_blocks << ",\"rob_block_cycles\":" << rob_blocks
+      << ",\"branch_block_cycles\":" << branch_blocks << ",\"alu_block_cycles\":" << alu_blocks
+      << ",\"resource_stall_cycles\":" << resource_stalls << ",\"random_stall_cycles\":" << random_stalls
+      << ",\"publication_contention_cycles\":" << publication_blocks << '}';
+    return s.str();
 }
 void Backend::dispatch(const Bundle &b, uint64_t cycle) {
-    if (!b.id || !accepted_bundles_.insert(b.id).second)
+    if (!b.id || accepted_bundles_.count(b.id))
         throw std::invalid_argument("FE17: duplicate/absent accepted bundle ID");
-    if (!ready())
-        throw std::runtime_error("FE17: backend capacity exceeded");
+    if (!b.mask || !ready(b.mask))
+        throw std::logic_error("FE17: illegal whole-bundle admission/capacity exceeded");
+    if (cycle > UINT64_MAX - sampler_.options().maximum)
+        throw std::invalid_argument("FE18: dispatch/readiness arithmetic overflow");
+    // Reject an invalid later lane before allocating IDs, versions or RNG draws.
+    for (unsigned k = 0; k < cfg_.lanes; ++k)
+        if (b.mask & (1u << k)) {
+            if (b.lanes[k].error)
+                throw std::invalid_argument("FE16: faulting bundle cannot enter ordinary execution");
+            evaluate(b.lanes[k].word, b.lanes[k].prediction.pc, 0, 0);
+        }
+    accepted_bundles_.insert(b.id);
+    ++stats.accepted;
     for (unsigned k = 0; k < cfg_.lanes; ++k)
         if (b.mask & (1u << k)) {
             const auto &p = b.lanes[k];
@@ -316,6 +431,7 @@ void Backend::dispatch(const Bundle &b, uint64_t cycle) {
                 versions_[r.semantic.rd].push_back(r.id);
             ++stats.dispatched;
         }
+    audit(false);
 }
 const Instruction &Backend::record(uint64_t id) const {
     if (!id || id > records_.size())
@@ -374,6 +490,7 @@ void Backend::rollback(uint64_t id) {
         else
             ++i;
     ++epoch_;
+    audit();
 }
 void Backend::consume_feedback(const Feedback &f, uint64_t cycle) {
     validate_feedback(f, cycle);
@@ -397,55 +514,80 @@ void Backend::consume_feedback(const Feedback &f, uint64_t cycle) {
         resume_cycle_ = cycle + 1;
     }
 }
-void Backend::advance(uint64_t cycle) {
+void Backend::advance(uint64_t cycle, bool retirement_ready) {
+    if (last_advance_ != UINT64_MAX && cycle <= last_advance_)
+        throw std::logic_error("FE17: duplicate/nonmonotonic scheduler edge (excess issue/publication/retirement)");
+    if (!events_.empty() && events_.begin()->first <= cycle)
+        throw std::logic_error("FE17: scheduled feedback was not consumed before scheduler advance");
+    last_advance_ = cycle;
+    audit(false);
+    const auto before = resources();
     if (freeze_id_ && resume_cycle_ && cycle >= resume_cycle_ && records_[freeze_id_ - 1].retired) {
         freeze_id_ = resume_cycle_ = 0;
         ++stats.resumes;
     }
-    if (!freeze_id_) {
-        unsigned occupied = 0;
-        for (const auto &r : records_)
-            if (r.issued && !r.completed && !r.canceled && r.semantic.control)
-                ++occupied;
+    // Scalar IQ -> ROB + destination RS allocation. No pre-edge full lookahead.
+    if (!freeze_id_)
         for (auto &r : records_)
             if (!r.issued && !r.canceled && !r.retired) {
-                if (!r.semantic.control || occupied < cfg_.branch_capacity) {
+                if (cycle <= r.dispatch)
+                    break;
+                if (before.rob == cfg_.rob)
+                    ++stats.rob_blocks;
+                else if (r.semantic.control && before.branch == cfg_.branch_capacity)
+                    ++stats.branch_blocks;
+                else if (!r.semantic.control && before.alu == cfg_.alu_capacity)
+                    ++stats.alu_blocks;
+                else {
                     r.issued = true;
                     r.issue = cycle;
+                    ++stats.issued;
                 }
                 break;
             }
-    }
     uint64_t oldest_branch = 0;
     for (const auto &r : records_)
         if (!r.canceled && !r.completed && r.semantic.control) {
             oldest_branch = r.id;
             break;
         }
-    bool branch_executed = false;
+    // One result capture per unit, one-cycle service. L is the unchanged
+    // dispatch-relative minimum readiness delay, NOT time spent in a busy FU.
+    bool alu_started = false, branch_started = false;
     for (auto &r : records_)
-        if (r.issued && !r.completed && !r.canceled) {
-            const auto dep_ready = [&](uint64_t id) { return !id || records_[id - 1].completed; };
-            if (!dep_ready(r.dep_a) || !dep_ready(r.dep_b))
-                continue;
+        if (r.issued && r.start == UINT64_MAX && !r.canceled) {
             uint64_t dependencies = 0;
+            bool available = true;
             for (auto id : {r.dep_a, r.dep_b})
-                if (id)
-                    dependencies = std::max(dependencies, records_[id - 1].execute + 1);
+                if (id) {
+                    const auto &producer = records_[id - 1];
+                    available &= producer.publication != UINT64_MAX;
+                    if (producer.publication != UINT64_MAX)
+                        dependencies = std::max(dependencies, producer.publication + 1);
+                }
             r.dependency_ready = dependencies;
-            if (cycle < std::max({r.earliest, r.issue + 1, dependencies}))
+            if (!available || cycle < std::max({r.earliest, r.issue + 1, dependencies}))
                 continue;
-            if (r.semantic.control && (freeze_id_ || r.id != oldest_branch || branch_executed)) {
+            if (r.semantic.control && (freeze_id_ || r.id != oldest_branch || branch_started)) {
                 ++r.order_delay;
                 ++stats.order_blocks;
                 continue;
             }
+            if (!r.semantic.control && alu_started)
+                continue;
+            r.start = cycle;
+            ++stats.started;
+            r.semantic.control ? branch_started = true : alu_started = true;
+        }
+    // Independent ALU and branch paths can complete together. Result capture
+    // does not release an RS/ROB entry and does not forward before publication.
+    for (auto &r : records_)
+        if (!r.canceled && !r.completed && r.start != UINT64_MAX && cycle > r.start) {
             r.completed = true;
             r.execute = cycle;
             ++stats.executed;
             if (!r.semantic.control)
                 continue;
-            branch_executed = true;
             ++stats.branch_executions;
             r.wrong ? ++stats.wrong : ++stats.correct;
             Feedback f;
@@ -465,19 +607,29 @@ void Backend::advance(uint64_t cycle) {
                 enqueue(cycle + 1, f);
             }
         }
+    // The production CDB has one result port. Oldest-ready arbitration is a
+    // conservative fair abstraction, not a copy of the physical arbiter.
+    unsigned contenders = 0;
+    for (auto &r : records_)
+        if (!r.canceled && r.completed && r.execute < cycle && r.publication == UINT64_MAX) {
+            if (!contenders++) {
+                r.publication = cycle;
+                ++stats.published;
+            }
+        }
+    stats.publication_blocks += contenders > 1;
     for (auto &r : records_)
         if (!r.retired && !r.canceled) {
-            if (!r.completed || (r.semantic.control && !r.trained))
+            if (!retirement_ready || r.publication == UINT64_MAX || r.publication >= cycle ||
+                (r.semantic.control && !r.trained))
                 break;
             if (r.pc != expected_retire_pc_)
                 throw std::runtime_error("FE19: surviving stream PC " + hex64(r.pc) +
-                                         " differs from independent semantic PC " +
-                                         hex64(expected_retire_pc_));
+                                         " differs from independent semantic PC " + hex64(expected_retire_pc_));
             auto d = early::decode(r.payload.word);
             auto s = evaluate(r.payload.word, r.pc, committed_[d.rs1], committed_[d.rs2]);
             if (s.value != r.semantic.value || s.next != r.semantic.next)
-                throw std::runtime_error("FE16: speculative operand/rollback result "
-                                         "differs from in-order semantics");
+                throw std::runtime_error("FE16: speculative operand/rollback result differs from in-order semantics");
             if (s.writes)
                 committed_[s.rd] = s.value;
             expected_retire_pc_ = s.next;
@@ -486,6 +638,7 @@ void Backend::advance(uint64_t cycle) {
             ++stats.retired;
             break;
         }
+    audit();
 }
 void Backend::cancel_all() {
     rollback(0);

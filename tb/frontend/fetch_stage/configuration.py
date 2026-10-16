@@ -29,7 +29,7 @@ def configuration():
     c=pc.configuration(boot)
     c.update(hlen=literal(source,'BPU_HLEN'),btb_bits=literal(source,'BPU_BTB_BITS'),ras_depth=literal(source,'RAS_DEPTH'),
              metadata_depth=parameter(top,'MEMIF_FIFO_DEPTH'),request_skip=literal(source,'FETCH_REQ_SPILL_SKIP'),answer_skip=literal(source,'FETCH_ANS_SPILL_SKIP'),
-             cause_bits=literal((ROOT/'rtl/packages/len5_pkg.sv').read_text(),'EXCEPT_TYPE_LEN'),iq=literal(source,'IQ_DEPTH'),rob=literal(source,'ROB_DEPTH'),branch_capacity=literal(source,'BU_RS_DEPTH'))
+             cause_bits=literal((ROOT/'rtl/packages/len5_pkg.sv').read_text(),'EXCEPT_TYPE_LEN'),iq=literal(source,'IQ_DEPTH'),rob=literal(source,'ROB_DEPTH'),branch_capacity=literal(source,'BU_RS_DEPTH'),alu_capacity=literal(source,'ALU_RS_DEPTH'))
     pkg=(ROOT/'rtl/packages/fetch_pkg.sv').read_text()
     m=re.search(r'localparam\s+c2b_t\s+INIT_C2B\s*=\s*(SNT|WNT|WT|ST)\s*;',pkg)
     if not m: raise ValueError('unknown integrated predictor initialization')

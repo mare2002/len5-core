@@ -57,6 +57,7 @@ Config read_configuration(const std::string &executable) {
     c.iq = number("iq");
     c.rob = number("rob");
     c.branch_capacity = number("branch_capacity");
+    c.alu_capacity = number("alu_capacity");
     c.boot = std::stoull(fields.at("boot_pc"));
     c.source = fields.at("source");
     c.fingerprint = fields.at("fingerprint");

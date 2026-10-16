@@ -1,3 +1,248 @@
+# Frontend execution/completion policy audit — 2026-10-16
+
+This entry supersedes the earlier exit-policy conclusions below; it does not
+supersede the original architectural findings or claim completed coverage.
+Production sources on entry select **N=4**, SHA256
+`3811d38c7ebb78ad94473fddb9c62a39d497bd6594bab8c7d8a6848337bbd97a`.
+The task's N=2 description and the historical N2 audit are not the active source.
+No configuration selection or RTL change was made.
+
+## Result-policy root cause and defaults
+
+The actual saved report exists at
+`build/fetch-stage/core/ordinary-30hf8h8k/summary.json`. It executed47 native IDs,
+68 variants,42,517 cycles and1,699,257 comparisons with **zero field mismatches,
+zero environment errors and zero framework errors**. All ordinary IDs/variants
+passed except **FE-T15**, variant2, program`interacting`, which missed
+`gshare-public-threshold-up`. Its67 other native variants passed. FE-T54's24
+composite validators passed separately. No excluded characterization scenario
+accidentally entered ordinary scope.
+
+FE15 made116,883 comparisons,114 actual training updates, and reached its program
+marker after3045 cycles within its6000-cycle budget. It had a down-threshold
+witness but no public upward-threshold witness. This was **not a timeout or an RTL
+comparison failure**. The core aggregator returned3 whenever any child exited
+nonzero, discarding the difference between an incomplete result and a hard failure.
+Native reporting also printed TEST FAILED when all comparison errors were zero.
+
+Default latency1–64, repetitions32 and6000-cycle budget were consistent across
+Make/Python/C++; the problem was not a hidden conflicting latency default.
+The previously documented1–8/repetitions8 recipe was N2 evidence, not a guarantee
+for the present N4 training history. Six short causal FE15 profile experiments
+(4,894 cycles total) also missed an upward witness; reducing all execution delays
+would not resolve this goal honestly. The short default8-repetition candidate was
+therefore **discarded**. Final defaults retain the broad1–64 latency and original
+32 repetitions/6000-cycle budget. Missing FE15 coverage remains unexpected and
+prominent, rather than being reclassified as a planned exclusion.
+
+FE34/47 keep their explicit fixed64 causal fixtures; FE37 keeps its seeded older64/
+younger1 fixture; FE38 retains seven distribution variants. Explicit latency
+options now override default34/37/47 fixtures. Reports distinguish requested and
+active settings. Directed event/memory streams restart per episode so full-catalog,
+single-case and parallel invocations have the same relative causal stimulus.
+Random episodes retain continuous independent streams. Marker termination is
+reported separately from a bounded stop. No missing training or RAS probe is
+fabricated, canceled-as-complete, or removed from a gate.
+
+## Status, aggregation and confidence changes
+
+`results.py` is the frontend-specific structured policy shared by run/catalog/core/
+suite/regression. PASS and WARN_INCOMPLETE/WARN_PROVISIONAL return0 by default.
+STRICT_COMPLETION=true returns3 for selected incomplete/provisional obligations.
+Known comparison failures return1; invalid environment/configuration or framework
+failures return2. Precedence is2 then1 then3 then0. A clean bounded cycle stop is
+incomplete; an unexpected native crash/watchdog, malformed/missing report, empty
+suite or zero useful comparisons is a framework error. The native process watchdog
+is120 wall-clock seconds, separate from the cycle limit.
+
+Native reports keep canonical per-variant classifications and typed result counts;
+aggregation no longer searches serialized JSON strings for status. Reports retain
+scenario, variant, program/digest, requirement, cycle/budget, active latency,
+termination, exact missing witnesses, local accepted-event counters and evidence.
+Deferred requirements have named remaining obligations rather than generic blank
+warnings. FE41's matching same-edge EQ07 hypothesis is WARN_PROVISIONAL, without
+approving its ordering. Known field mismatches remain hard even if their legacy
+confidence/provenance count is labeled provisional under I context.
+
+Core validates its predeclared47-ID native scope and all required variants before
+merging executed FE54. It retains exclusions41/43/48/49/50/51 explicitly. Full
+catalog requires all54 IDs and every applicable variant, and replaces only the
+FE54 delegation placeholder. Native errors/aborts, missing variants and absent
+receipts cannot be overwritten by composite success. Parallel workers use distinct
+directories; independent groups continue after warnings or failures. Suite results
+come from structured receipts. Explicit matrix coverage requirements remain
+reported; strict mode gates missing selected coverage, with no deleted goals.
+
+FE54 validates all24 actual executions, matching binary/manifest/configuration,
+independent unit logs, current report files and exact expected failure classes.
+An invalid-feedback test must detect FAIL_ENVIRONMENT, not an unrelated framework
+error. Empty tests detect FAIL_FRAMEWORK. Its timeout/missing-training/unknown
+fixtures deliberately request strict native mode and detect WARN_INCOMPLETE/exit3.
+Injected field failures require actual injected discrepancies, including raised
+cause0. Repeated first failures and public/FST journals match. No stale receipt or
+native placeholder can supply a synthetic confidence PASS.
+
+The composed full report preserves`report.native.json`; native delegation checks
+and external confidence checks are counted once with explicit component totals.
+Expected-negative injected mismatches are kept separate from ordinary DUT errors.
+A successful process never sets incomplete scenarios to PASS or asserts full
+contract sign-off. Strict mode on a known incomplete scenario rejects completion;
+GNU Make reports `Error 3` and itself returns2, while native/Python/report exit is3.
+
+## Focused validation and remaining coverage
+
+Final command receipts, counts, evidence paths and hashes are recorded below and
+in`build/fetch-stage/result-policy-audit/FINAL_RESULT_POLICY_AUDIT.json`.
+No million-cycle regression, mutation campaign or full aggregate was executed.
+The original pure PC/EJU/FM model algorithms and all golden frontend transitions
+remain unchanged.
+
+37 synthetic Python tests cover pass/warnings/strict/hard-failure precedence,
+expected and unexpected incompleteness, variants and comparison conservation,
+empty/crashed/watchdog/malformed results, stale configuration/FE54 receipts,
+missing validators, a negative that did not detect its injection, exact negative
+failure classes, missing training witness and actual catalog composition. These
+fixtures are explicitly synthetic; they are not claimed as24 real RTL validators.
+Pure C++ validation passes70,579 new assertions plus PC341/EJU16,931/FM8,310.
+
+A small ad-hoc expected-framework-negative command initially omitted its injection
+flag. The validator rejected the resulting clean incomplete run, as required.
+`focused-1jl81krl/diagnosis.json` preserves that invalid test-fixture evidence;
+`focused-sleuh3zh/summary.json` records the corrected injection (15 comparisons,
+FAIL_FRAMEWORK/exit2) and byte-identical FE34 replay. Neither is an RTL defect.
+
+The ordinary scope can execute successfully with warnings; full specification
+completion remains false. FE15 upward-threshold coverage is still missing.
+FE43/48/49/50/51 remain deferred/incomplete, FE41 ordering remains provisional,
+EQ08 and the delayed exception window are unfixed, and inherited FEQ/EQ/FQ
+questions and complete per-operation/FEV closure remain unresolved. No full-core,
+CSR/mtval, retirement or predictor-independent completeness is claimed.
+
+## Canonical executed results (final source)
+
+| Command | IDs / variants | PASS | Incomplete / provisional | Hard failures | Cycles | Comparisons | Test exit / Make exit |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `make check-fetch-stage-core JOBS=2` | 48 /69 | 47 | 1 /0 | 0 | 43,449 | 1,728,549 | 0 /0 |
+| `make check-fetch-stage-run` | 54 /75 | 47 | 6 /1 | 0 | 57,459 | 2,139,487 | 0 /0 |
+| `make check-fetch-stage-run SCENARIO=FE-T54` | 1 /1 | 1 | 0 /0 | 0 | 847 | 30,489 | 0 /0 |
+| strict FE-T48,500-cycle budget | 1 /1 | 0 | 1 /0 | 0 | 504 | 19,681 | 3 /2 |
+| strict FE-T01 | 1 /1 | 1 | 0 /0 | 0 | 549 | 39,563 | 0 /0 |
+
+Every ordinary DUT comparison above has zero mismatches. Environment/framework
+failures are zero. FE54 contains11 intentionally injected mismatches, all detected
+with the expected FAIL_MISMATCH classification; these are successful negative
+validators, not ordinary DUT failures. Its24 executions contribute847 cycles and
+30,489 comparisons to the composed totals. Full-catalog FE54 also retains its
+native delegation checks in the actual comparison total, without counting the ID
+twice. Pure C++ units execute96,161 assertions; the separate Python policy suite
+executes37 tests. No exhaustive FEV closure is claimed.
+
+| Canonical evidence | File |
+|---|---|
+| `make check-fetch-stage-core JOBS=2` | [build/fetch-stage/core/ordinary-xmigswzl/summary.json](../../../build/fetch-stage/core/ordinary-xmigswzl/summary.json) |
+| `make check-fetch-stage-run` | [build/fetch-stage/run/all-ebsxv72_/summary.json](../../../build/fetch-stage/run/all-ebsxv72_/summary.json) |
+| `make check-fetch-stage-run SCENARIO=FE-T54` | [build/fetch-stage/confidence/FE-T54-whtf92il/execution-summary.json](../../../build/fetch-stage/confidence/FE-T54-whtf92il/execution-summary.json) |
+| strict FE-T48,500-cycle budget | [build/fetch-stage/run/FE-T48-km5lhu0r/summary.json](../../../build/fetch-stage/run/FE-T48-km5lhu0r/summary.json) |
+| strict FE-T01 | [build/fetch-stage/run/FE-T01-lxpakix8/summary.json](../../../build/fetch-stage/run/FE-T01-lxpakix8/summary.json) |
+
+Warning details:
+
+| ID | Classification | Missing/unresolved requirement |
+|---|---|---|
+| FE-T15 | Unexpected incomplete coverage | FE05/FE08/FEV08 public upward-threshold witness.116,883 comparisons and114 updates passed; down threshold witnessed. The independently indexed1→2 update at cycle257,H5,index3,PC0x18 is not by itself a public before/after witness. |
+| FE-T41 | Provisional interface-stress result | EQ07 same-edge confirmation/restoration approval; compared current hypothesis matches, no ordering decision inferred. |
+| FE-T43 | Deferred incomplete | Full exception-recovery/cold-predictor/intended-history obligations. |
+| FE-T48 | Deferred incomplete | EQ08 delayed older data-fault backend context. |
+| FE-T49 | Deferred incomplete | Complete delayed-redirect/intervening-dispatch surviving-stream obligations. |
+| FE-T50 | Deferred incomplete | Full faulting JAL/RET characterization; exact retained fault transport still checked. |
+| FE-T51 | Deferred incomplete | FQ02/03/04 alternative memory protocols; ordinary active-contract checks still execute. |
+
+Core has one missing required witness and no deferred cases. Full catalog has
+six named missing obligations, including five deferred ones, plus one provisional
+EQ07 result. None becomes PASS merely because the process returns0. The ordinary
+scope remains incomplete in coverage, while all its executed checks succeed.
+
+The final ordinary native runs accepted10,468 memory requests:6,577 delivered and
+3,891 legitimately canceled;14,909 dynamic instructions:7,159 retired in the
+synthetic abstraction and7,750 canceled;2,659 training pulses,763 confirmations
+and374 recoveries. Full native catalog:14,317 requests=8,634 delivered+5,683 canceled;
+15,723 dynamic=7,875 retired+7,848 canceled;2,760 updates,828 confirmations,376
+recoveries. Controlled-stop cancellation is not a missing required witness being
+completed. Original obligation files and unobserved RAS/training records remain.
+
+Additional focused validation:
+
+* Two seeds×64 cycles:128 native cycles,3,496 comparisons,zero mismatches. One seed
+  and three channel-matrix rows remained incomplete; default process returned0
+  with warnings. This is a regression-orchestrator smoke, not matrix closure.
+* FE34 recorded-command replay matches the parallel core-worker journal byte for
+  byte, including its default fixed64 fixture. Explicit override provenance and
+  source fingerprint are replayed; no expected state is repaired.
+* A genuine injected framework failure gives FAIL_FRAMEWORK/exit2 with15 checks;
+  invalid feedback gives FAIL_ENVIRONMENT, and every public field injection gives
+  FAIL_MISMATCH/exit1. FE54 checks their exact classifications.
+* Two explicitly synthetic concurrent group processes demonstrate that a mismatch
+  stays exit1 while an independent warning group still completes. This does not
+  execute the full aggregate.
+
+Final source extra evidence:
+[`acceptance-extra-8ztfgovq/summary.json`](../../../build/fetch-stage/result-policy-audit/acceptance-extra-8ztfgovq/summary.json).
+The earlier extra replay/injection paths above are preserved development evidence.
+
+Development receipts, including superseded report-schema validations and expected
+negatives, are inventoried in FINAL_RESULT_POLICY_AUDIT.json: **417,375 staged
+native cycles** before documentation finalization. Repeated core/catalog runs
+validated successive classification/counting fixes; their cycles are not extra
+distinct functional coverage. The final command rows alone are canonical. The
+original failure, rejected short FE15 candidates and invalid ad-hoc negative remain
+separately labeled. No million-cycle campaign, full mutation sweep or full suite
+was run.
+
+## Files, source integrity and reproduction
+
+All341 protected production/configuration/prior-framework source hashes match
+`protected-before.json`. No production RTL, RTL configuration, existing PC/EJU/FM
+implementation or oracle changed. Only root`makefile` and frontend-specific test
+code/documentation changed. Final compiled-source fingerprint:
+`c2e4497e54b0c52c1653f574340641e31a27eba61bcee4e9334d8aa9bc1da0ee`. All final reports/receipts agree with it. Markdown
+updates do not participate in the compiled fingerprint.
+
+Files changed:
+
+* `makefile`
+* `tb/frontend/fetch_stage/COMPLETION_AUDIT.md`
+* `tb/frontend/fetch_stage/README.md`
+* `tb/frontend/fetch_stage/VERIFICATION.md`
+* `tb/frontend/fetch_stage/catalog.py`
+* `tb/frontend/fetch_stage/confidence.py`
+* `tb/frontend/fetch_stage/core.py`
+* `tb/frontend/fetch_stage/fetch_stage_driver.cpp`
+* `tb/frontend/fetch_stage/fetch_stage_driver.hh`
+* `tb/frontend/fetch_stage/fetch_stage_tb.cpp`
+* `tb/frontend/fetch_stage/regress.py`
+* `tb/frontend/fetch_stage/run.py`
+* `tb/frontend/fetch_stage/suite.py`
+* `tb/frontend/fetch_stage/validate.py`
+* `tb/frontend/fetch_stage/results.py`
+* `tb/frontend/fetch_stage/results_unit.py`
+
+```sh
+source private/init.sh
+make check-fetch-stage-core JOBS=2
+make check-fetch-stage-run
+make check-fetch-stage-run SCENARIO=FE-T54
+STRICT_COMPLETION=true make check-fetch-stage-run SCENARIO=FE-T48 DIRECTED_CYCLES=500
+STRICT_COMPLETION=true make check-fetch-stage-run SCENARIO=FE-T01
+python3 tb/frontend/fetch_stage/results_unit.py
+```
+
+The strict incomplete recipe returns3 (GNU Make exits2). Exact waveform/journal
+and replay commands are in each native report. `make check-fetch-stage` remains
+available with the same warning policy but was deliberately not executed because
+it launches the substantial regression and mutation groups.
+
+---
+
 # Focused frontend completion audit — 2026-10-15
 
 The real frontend compiles and passes the focused supported-contract tests at
@@ -397,3 +642,181 @@ synthesis and longer caller layouts are not claimed.
 
 `DIRECTED_CYCLES`, `DIRECTED_REPETITIONS` and `VARIANT` are included in
 native replay commands. Budget expiration never satisfies a missing witness.
+
+## Final backend/history audit — 2026-10-16
+
+This entry supersedes the earlier FE-T15-incomplete and coarse-backend-resource
+statements for the final source fingerprint below. Earlier timing/validation
+records are retained, not added to unique coverage. See
+[FINAL_FRONTEND_ARCHITECTURE_AUDIT.md](FINAL_FRONTEND_ARCHITECTURE_AUDIT.md)
+for source citations, the complete gshare policy comparison, cycle traces and
+an independently reviewable saved-index interface proposal.
+
+### Findings and changes
+
+* Production/current golden gshare both use **pre-edge resolution-time history**
+  for training. They do not preserve a prediction-time training index. GH01
+  demonstrates two surviving branches sampled with H1, then younger B trains
+  with H2 after older A updates. This is approved Policy A behavior, not a new
+  ISA/approved-contract mismatch. Saved-index Policy B is separately simulated
+  on the same feedback trace and is not substituted into the oracle.
+* Recommendation: retain A for the next issue-stage verification baseline, with
+  explicit attribution semantics; evaluate closed-loop accuracy/recovery costs
+  before approving B. The audit details prediction/IQ/issue/RS/resolution fields
+  that B would need. No speculative GHR or production RTL changes are introduced.
+* FE-T15 now requires original collision/interference and raw threshold witnesses
+  **plus BTB-hit pre/post up/down witnesses**. A persistent four-branch prelude
+  precedes the original interfering body. PHT write generations prevent unrelated
+  updates from satisfying a transition. At N4, PC0x238 is publicly hit/NT at
+  request872/dispatch875, trains index0 1→2 at945, and PC0x22c is publicly hit/T
+  at request1026/dispatch1035 with the same new generation. A separate hit/T→NT
+  witness surrounds index11's2→1 update at416. Strict FE-T15 passes.
+* The earlier cycle257 index3 crossing lacked a retained counter1 pre-read.
+  Base0x20 requests under H11 started at0x24, masking PC0x20. Its physical JAL
+  word therefore supplied no public probe. Increasing the budget was not a fix.
+* Backend IQ admission uses actual V slots, ROB allocates at scalar issue, ALU
+  RS8/BU RS4 persist until publication, ROB32 persists until retirement/squash.
+  One shared result publication and one retirement per edge are enforced.
+  Independent ALU/BU computation can overlap. Wrong-path resources and feedback
+  are canceled by age, with allocation/release conservation.
+* Once-sampled L keeps the specified dispatch-relative minimum-readiness meaning.
+  It is not silently redefined as FU service latency. Issue, dependency readiness,
+  start, one-cycle service capture, publication and retirement are separate.
+  Invalid bundles are rejected transactionally before ID/version/RNG allocation;
+  missed feedback and duplicate scheduler edges are hard framework failures.
+* Admission metrics are credited only after matched consuming edges; high-watermarks
+  exclude the software-only intermediate dispatch-before-issue state. Idle
+  capacity-ready0 and actual held-valid stalls have separate counts. BP01 removes
+  random output stalls; BP07 combines them with resource stalls. BP02 explicitly
+  blocks retirement until200; BP05 uses a short fixed256-readiness fixture so even
+  N1 has actual stalls. Every BP case requires its semantic marker.
+* `history_audit.py` reconstructs H/PHT snapshots from public request/reset/train
+  inputs and checks dispatch identity/metadata before policy comparison. Seven
+  hand-calculated positive/negative units are mandatory in pure validation.
+  Cumulative public-auditor training counts now survive reset; per-window duplicate
+  guards are retained. FE-T54 still executes all24 native validators.
+
+### Canonical final execution evidence
+
+| Command / group | IDs / cases | Cycles | Comparisons | Result |
+|---|---:|---:|---:|---|
+| `make check-fetch-stage-core JOBS=2` |48 IDs /69 cases, including24-validator FE54 composite|44913|1791021|PASS, exit0; no missing selected witnesses|
+| Focused GH01, FE15, BP01–08, FE13/34/37/38/40/47 |16 IDs /22 cases|14081|666528|All PASS, exit0|
+| `STRICT_COMPLETION=true make check-fetch-stage-run SCENARIO=FE-T15` |1|3330|125160|PASS, exit0;118 updates|
+| Real isolated BP05 N1 |1|792|26861|PASS, build0/run0|
+| Real isolated BP05 N2 |1|794|34736|PASS, build0/run0|
+| Real isolated BP05 N4 |1|796|43535|PASS, build0/run0|
+| Real isolated BP05 N8 |1|800|60665|PASS, build0/run0|
+| FE15 explicit100-cycle budget, default |1|104 including reset/stop|2372|WARN_INCOMPLETE, exit0;7 missing witnesses|
+| Same bounded fixture, strict |1|104|2372|WARN_INCOMPLETE, exit3|
+| FE15 deterministic replay |1|3330|125160|PASS; both public and training journals byte-identical|
+
+Groups overlap; their counts must not be summed as unique coverage. There are
+zero ordinary DUT mismatches, invalid environments or framework failures in the
+canonical positive groups. FE54's24 native validators execute830 cycles/29772
+comparisons, including11 deliberate detected injected errors; these are expected
+negative evidence, not ordinary RTL failures. Pure units pass70650 frontend,
+341 PC,16931 EJU and8310 fetch-memory assertions, plus37 result-policy and7 new
+history-attribution tests. No new full random campaign or RTL mutation campaign
+was run. Seven latency distributions are exercised in FE38 and pure samplers.
+
+Canonical native core totals (excluding FE54 negatives):10986 requests =6992
+delivered +3994 legitimately canceled;15848 dynamic instructions =7223 retired
++8625 canceled;2696 actual BPU updates,763 confirmations,8728 result captures,
+377 recoveries. Per-request/backend/training ledgers retain terminal dispositions;
+no unresolved memory/backend lifecycle is silently passed. Unwitnessed individual
+training/RAS operations remain canceled/unobserved rather than claimed observed.
+Full FEV closure is not implied by scenario-gate completion.
+
+Artifacts:
+
+* Core: `build/fetch-stage/core/ordinary-_o09v469/summary.json`.
+* Composite: `build/fetch-stage/core/ordinary-_o09v469/FE-T54/summary.json`.
+* Focused: `build/fetch-stage/final-architecture-audit/accepted/summary.json`.
+* Policy comparison and matched update/request/dispatch histories: each focused
+  GH01/FE13/FE15 directory's `history-policy-comparison.json` and training journal.
+* Strict Make run: `build/fetch-stage/run/FE-T15-siq6aj22/summary.json`.
+* Widths: `build/fetch-stage/widths-smoke/evidence-g_vp0vz6/summary.json`.
+* Bounded completion/replay: `final-architecture-audit/accepted/completion-and-replay.json`.
+* Consolidated final evidence/hashes/changed-file list:
+  `build/fetch-stage/final-architecture-audit/FINAL_EVIDENCE.json`.
+
+Earlier `first`, `sensitive-first`, `stable`, `final` and width
+`evidence-vzylo7cw`/`evidence-fxpijriy` groups are preserved development evidence.
+The early N1 width case honestly warned because a transient full occupancy did
+not coincide with a valid stalled offer. The final saturation setup and metrics
+correct that gap. Prior core `ordinary-da_90bh_` and `ordinary-0b223k00` are
+superseded by the final-source run; repeated runs earn no additional coverage.
+
+### Resource and history observations
+
+| Case | IQ / ROB / BU RS / ALU RS high | Capacity ready-low cycles | Stalled valid offers | Random stalled offers |
+|---|---|---:|---:|---:|
+| BP01 |16 /9 /4 /8|700|682|0|
+| BP02 |16 /32 /2 /3|316|305|0|
+| BP03 |16 /8 /4 /4|256|216|0|
+| BP05 N4 |16 /9 /4 /8|699|684|0|
+| BP07 |16 /11 /4 /8|685|669|204|
+
+BP02 reaches48 total backend entries (IQ16+ROB32). It records158 ROB-block cycles,
+retains completed/unretired entries, then retires the finite marker. Independent
+older64/younger1 tests prove that younger completion does not release ROB behind
+a delayed older branch. BP03 records224 branch-RS blocked cycles. Multiple FU
+results contend for publication without exceeding the single CDB port. BP06 has
+37 canceled dynamic instructions,13 naturally retired surviving instructions and
+three distinguishing restored returns; stale younger feedback is rejected.
+
+At N1/2/4/8, final BP05 has IQ16 and ALU RS8 at every width; actual stalled valid
+offer counts are568/644/684/693 respectively, followed by accepted resumption.
+Source/elaboration agreement is checked for every real private build. The live
+and isolated N4 BP05 public journals are identical (SHA256
+`e6b02c45fd41b0c2f5731930b6fa755c98534bf6ea61d85c3bfdad5fc59b64f4`).
+These are capacity tests, not a new all-width training regression.
+
+GH01's first history discrepancy is B ID3, PC0x44: request29 with H1/index0/
+counter3, dispatch36, execute55, update56 with H2/index3/counter2→1. A ID2 at
+PC0x40 updates54 with NT, changing H1→2 without canceling B. Probe PC0x9c accepts58
+and dispatches70 with raw taken0. Policy B would instead decrement saved index0
+3→2. This is a real implementation-policy difference, not an actual mismatch.
+The final independent audit verifies6/118/114 attributed updates for GH01/FE15/FE13.
+
+FE15 replay SHA256:
+
+* samples: `042f3deb5944aaaa36427af21bc6542ff9eb860006d8d52136c062f51d42ad04`.
+* training: `c7615d74353da6bcb26345bc719207f612a3851d0400ce1f4fc90c300e04e63b`.
+
+### Integrity, changes and remaining scope
+
+All341 protected production and prior PC/EJU/FM files match the entry hashes.
+Original config SHA256 remains
+`3811d38c7ebb78ad94473fddb9c62a39d497bd6594bab8c7d8a6848337bbd97a`.
+Final frontend source/build fingerprint:
+`2699a477916c13b38521a5f4ab6526b03cda4baa757c0eeeac5daaa49427c180`.
+The wrapper and `-fno-dfg` production build option remain unchanged. Width edits
+occurred only in disposable source copies. Existing uncommitted user/prior-task
+changes, including the result-policy implementation, were preserved.
+
+This task changes only frontend-specific components/driver/program/unit logic,
+diagnostic composition snapshots, configuration parsing, auxiliary selection,
+public-auditor counting, width-smoke BP profiles and these documents. New files:
+`history_audit.py`, `history_audit_unit.py`, and the final architecture audit.
+The exact entry-relative file list is in FINAL_EVIDENCE.json; root Make and prior
+standalone behavior were not changed by this task.
+
+The ordinary selected scope is complete and passes. **Full specification remains
+incomplete**: FE-T43/48/49/50/51, EQ07 alternatives, EQ08, delayed exception
+recovery, alternative memory protocols, full precise retirement/CSR/mtval and
+exhaustive/predictor-agnostic FEV checks remain deferred or unresolved. Their
+statuses were not converted to PASS. No new production RTL defect or architectural
+fix is claimed. Default warnings and strict rejection remain tested.
+
+
+The final evidence index also enumerates217841 actual simulated cycles across285
+native reports with cycle metrics, including superseded development attempts and
+expected-negative fixtures. Those repetitions are not extra functional coverage.
+Configuration/startup rejections are separately preserved by the confidence
+receipts. Resource counters in a case describe its final backend reset window;
+per-instruction/learning ledgers retain earlier windows (notably FE47). BP/GH
+measurements above have one live backend window. All source and protected-file
+hashes were rechecked after documentation changes; the build fingerprint is
+unchanged because Markdown is not a compiled input.

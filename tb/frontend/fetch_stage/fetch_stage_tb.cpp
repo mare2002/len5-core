@@ -137,10 +137,13 @@ std::vector<Scenario> scenarios(const Config &c) {
             s.witnesses.push_back("conditional-trained");
         }
         if (k == 14) {
+            s.family = "threshold-interacting";
             s.witnesses.push_back("gshare-opposing-update");
             s.witnesses.push_back("gshare-interference-witness");
             s.witnesses.push_back("gshare-public-threshold-up");
             s.witnesses.push_back("gshare-public-threshold-down");
+            s.witnesses.push_back("gshare-public-hit-threshold-up");
+            s.witnesses.push_back("gshare-public-hit-threshold-down");
         }
         if (k == 23 || k == 32) {
             s.family = "nt-call";
@@ -166,6 +169,7 @@ std::vector<Scenario> scenarios(const Config &c) {
         }
         if (k == 40) {
             s.classification = "interface_stress";
+            s.provisional_contract = "EQ07: same-edge confirmation/restoration ordering remains unapproved";
             s.witnesses.push_back("simultaneous-confirm-restore");
             s.witnesses.push_back("return-witness");
         }
@@ -177,6 +181,14 @@ std::vector<Scenario> scenarios(const Config &c) {
                                          "reproduction"
                                        : "characterization observation does not close "
                                          "all specified temporal obligations";
+            if (k == 42)
+                s.limitation = "FE05/FE15/FE22: complete exception recovery, cold predictor and intended RAS history obligations remain unresolved";
+            if (k == 48)
+                s.limitation = "FE19/FE22/FQ12: delayed exception redirect observations do not close intervening-dispatch and surviving-stream obligations";
+            if (k == 49)
+                s.limitation = "FE13/FE15/FE22/EQ11: faulting JAL/RET characterization is unfinished; exact fault transport remains checked";
+            if (k == 50)
+                s.limitation = "FE13/FE21/FQ02/FQ03/FQ04: alternative memory protocols are not implemented; only the active coordinated-cancellation contract is checked";
         }
         if (k == 45)
             s.witnesses.push_back("early-flush");
@@ -225,8 +237,10 @@ static bool boolean(const std::string &v) {
     return v == "true";
 }
 int main(int argc, char **argv) {
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+    Options o;
+    bool started = false;
     try {
-        Options o;
         o.executable = std::filesystem::canonical(argv[0]);
         o.max_cycles = 1000000;
         o.run_dir = "build/fetch-stage/run/native-" + std::to_string(getpid());
@@ -234,6 +248,8 @@ int main(int argc, char **argv) {
             std::string a = argv[k];
             auto pos = a.find('=');
             std::string key = a.substr(0, pos), v = pos == std::string::npos ? "true" : a.substr(pos + 1);
+            if (key.rfind("--exec_", 0) == 0)
+                o.latency_explicit = true;
             if (key == "--seed")
                 o.seed = number(v);
             else if (key == "--scenario")
@@ -260,6 +276,10 @@ int main(int argc, char **argv) {
                 o.random = boolean(v);
             else if (key == "--guided")
                 o.guided = boolean(v);
+            else if (key == "--strict_completion")
+                o.strict_completion = boolean(v);
+            else if (key == "--latency_override")
+                o.latency_explicit = boolean(v);
             else if (key == "--dump_waves")
                 o.waves = boolean(v);
             else if (key == "--inject_failure")
@@ -319,7 +339,45 @@ int main(int argc, char **argv) {
         if (o.profile != "exact-I" && o.profile != "predictor-agnostic")
             throw std::invalid_argument("profile must be exact-I or predictor-agnostic");
         Simulator sim(o, argc, argv);
+        started = true;
         auto all = scenarios(sim.config());
+        if (o.scenario.size() == 4 && o.scenario.substr(0, 3) == "BP0" && o.scenario[3] >= '1' && o.scenario[3] <= '8') {
+            Scenario pressure;
+            pressure.id = o.scenario;
+            pressure.title = "bounded backend pressure and lifecycle";
+            pressure.family = pressure.id == "BP05" ? "pressure-short"
+                            : pressure.id == "BP03" ? "branch-pressure"
+                            : pressure.id == "BP06" ? "wrong-return-deep" : "sequential";
+            if (pressure.id == "BP02") pressure.classification = "interface_stress";
+            pressure.variant = 0;
+            pressure.budget = 2500;
+            pressure.repetitions = 8;
+            pressure.witnesses = {"FEV01/request", "FEV01/dispatch", "backend-lifecycle-checked", "program-marker"};
+            if (pressure.id == "BP01" || pressure.id == "BP05" || pressure.id == "BP07")
+                pressure.witnesses.insert(pressure.witnesses.end(), {"backend-IQ-full", "backend-resource-stall", "backend-resumed"});
+            if (pressure.id == "BP02")
+                pressure.witnesses.insert(pressure.witnesses.end(), {"backend-ROB-full", "backend-completed-unretired"});
+            if (pressure.id == "BP03")
+                pressure.witnesses.insert(pressure.witnesses.end(), {"backend-branch-RS-full", "backend-branch-RS-block"});
+            if (pressure.id == "BP04")
+                pressure.witnesses.push_back("backend-long-delay");
+            if (pressure.id == "BP06")
+                pressure.witnesses.insert(pressure.witnesses.end(), {"recovery", "RAS-multiple-entry-restoration", "backend-canceled"});
+            if (pressure.id == "BP07")
+                pressure.witnesses.push_back("backend-random-stall");
+            all = {pressure};
+        }
+
+        if (o.scenario == "GH01") {
+            Scenario history;
+            history.id = "GH01";
+            history.title = "two surviving branches: lookup versus resolution history";
+            history.family = "history-pair";
+            history.variant = 0;
+            history.budget = 800;
+            history.witnesses = {"history-index-discrepancy", "history-public-post-probe", "program-marker"};
+            all = {history};
+        }
         if (o.random) {
             std::mt19937_64 program_rng(split_seed(o.seed ^ UINT64_C(0x50524f47)));
             const std::vector<std::string> families = {"loop-a",        "loop-b",   "phase", "alternating",
@@ -403,6 +461,21 @@ int main(int argc, char **argv) {
         }
         return sim.finish();
     } catch (const std::exception &e) {
+        // Even rejected startup/configuration fixtures have structured evidence.
+        // Never overwrite an existing receipt (e.g. a forbidden reused directory).
+        if (!o.run_dir.empty()) {
+            const auto dir = o.run_dir + "/logs";
+            std::filesystem::create_directories(dir);
+            if (!std::filesystem::exists(dir + "/report.json")) {
+                std::ofstream report(dir + "/report.json");
+                report << "{\"status\":\"invalid\",\"verification_status\":"
+                       << len5::pcgen::json_quote(started ? "FAIL_FRAMEWORK" : "FAIL_ENVIRONMENT")
+                       << ",\"execution_status\":\"failed\",\"exit_status\":2,\"specification_complete\":false,"
+                       << "\"field_checks\":0,\"field_errors\":0,\"environment_errors\":" << !started
+                       << ",\"framework_errors\":" << started << ",\"scenarios\":[],\"reason\":"
+                       << len5::pcgen::json_quote(e.what()) << "}\n";
+            }
+        }
         TB_ERR("SCB > configuration/framework failure: %s", e.what());
         std::cerr << "Test failed: fetch_stage startup/framework\n";
         return 2;

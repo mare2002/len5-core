@@ -46,6 +46,7 @@ class Composition {
     struct Snapshot {
         unsigned history = 0;
         std::array<unsigned, MaxLanes> index{}, counter{};
+        std::array<uint64_t, MaxLanes> generation{};
     };
     std::map<uint64_t, Snapshot> snapshots_;
     bool initialized_ = false, released_ = false, in_reset_ = false;

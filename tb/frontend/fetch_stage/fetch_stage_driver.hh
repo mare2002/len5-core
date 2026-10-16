@@ -13,7 +13,7 @@ struct Options {
     std::string expect_fingerprint;
     std::string scenario = "all", program = "", campaign = "all", profile = "exact-I", ras_order = "updated",
                 run_dir, executable, inject, weights, journal = "auto";
-    bool random = false, waves = false, guided = true;
+    bool random = false, waves = false, guided = true, strict_completion = false, latency_explicit = false;
     unsigned expect_issues = 0, repetitions = 64;
     unsigned directed_repetitions = 0, variant = UINT32_MAX;
     uint64_t directed_cycles = 0;
@@ -25,6 +25,7 @@ struct Scenario {
     uint64_t budget = 6000;
     std::vector<std::string> witnesses;
     std::string limitation;
+    std::string provisional_contract;
 };
 std::vector<Scenario> scenarios(const Config &);
 struct RunStats {
@@ -52,6 +53,7 @@ class Simulator {
     LatencyOptions active_latency_;
     uint64_t active_latency_seed_ = 0;
     bool injected_ = false, quarantined_ = false;
+    bool admission_external_ready_ = true, resource_blocked_ = false;
     Program program_;
     Scenario scenario_;
     std::ofstream journal_, training_, characterization_;
@@ -59,6 +61,8 @@ class Simulator {
     std::map<std::string, uint64_t> coverage_, requirements_, assumptions_, unknowns_, dont_cares_;
     std::map<std::string, uint64_t> local_;
     std::vector<std::string> discrepancies_, results_, programs_;
+    unsigned incomplete_results_ = 0, provisional_results_ = 0, invalid_results_ = 0, passed_results_ = 0;
+    unsigned mismatch_results_ = 0, environment_results_ = 0, framework_results_ = 0;
     std::set<uint64_t> executed_, trained_, confirmed_, retired_;
     struct Learning {
         uint64_t id, pc, cycle;
@@ -89,13 +93,20 @@ class Simulator {
     };
     std::map<unsigned, CellUpdate> last_pht_;
     std::map<unsigned, uint64_t> interference_;
+    struct PublicDirection {
+        uint64_t request = 0, dispatch = 0, pc = 0, generation = 0;
+        unsigned counter = 0;
+        bool hit = false;
+    };
     struct Threshold {
-        unsigned index;
-        uint64_t cycle;
-        bool before, after, prior = false, later = false, credited = false;
+        unsigned index, before, after;
+        uint64_t cycle, generation;
+        std::optional<PublicDirection> prior, later;
+        bool credited = false;
     };
     std::vector<Threshold> thresholds_;
-    std::map<unsigned, std::pair<uint64_t, bool>> public_directions_;
+    std::map<std::pair<unsigned, uint64_t>, PublicDirection> public_directions_;
+    void threshold_witnesses();
     uint64_t conflict_cycle_ = 0;
     unsigned grant_weight_ = 80, ready_weight_ = 75, response_weight_ = 90;
     void drive(const Inputs &);

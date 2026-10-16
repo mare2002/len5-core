@@ -13,19 +13,32 @@ import shutil
 import subprocess
 import tempfile
 import configuration as cfg
+import results
 
 def native(binary,root,label,flags=(),expected=0):
     d=root/label;d.mkdir()
     command=[str(binary),'--scenario=FE-T18','--log_level=LOG_LOW','--run_dir='+str(d),*flags]
-    with (d/'console.log').open('w') as f:r=subprocess.run(command,stdout=f,stderr=subprocess.STDOUT)
+    if expected==3:command.append('--strict_completion=true')
+    with (d/'console.log').open('w') as f:status=results.process(command,f)
     p=d/'logs/report.json';report=json.loads(p.read_text()) if p.exists() else {}
-    ok=r.returncode==expected and (expected==2 or report.get('exit_status')==expected)
+    ok=status==expected and report.get('exit_status')==expected
+    classification=report.get('verification_status')
+    expected_class={0:results.PASS,1:results.MISMATCH,2:results.FRAMEWORK if label in ('empty','framework-failure') else results.ENVIRONMENT,3:results.INCOMPLETE}[expected]
+    ok=ok and classification==expected_class
     if expected==0:ok=ok and report.get('field_checks',0)>0 and report.get('updates',0)>0
-    if not ok:raise AssertionError('%s: expected exit%d, got%d; %s'%(label,expected,r.returncode,d))
+    if not ok:raise AssertionError('%s: expected exit%d, got%d; %s'%(label,expected,status,d))
     print('PASS: %s expected_exit=%d comparisons=%d errors=%d'%(label,expected,report.get('field_checks',0),report.get('field_errors',0)),flush=True)
-    return dict(label=label,exit=r.returncode,report=report,artifacts=str(d))
+    return dict(label=label,exit=status,expected_exit=expected,expected_verification_status=expected_class,validator_status='PASS',report=report,artifacts=str(d),command=command)
 
 def units(root):
+    python_tests=subprocess.run(['python3',str(cfg.HERE/'results_unit.py')],capture_output=True,text=True)
+    (root/'results-unit.log').write_text(python_tests.stdout+python_tests.stderr)
+    if python_tests.returncode:raise AssertionError('result-policy units failed: '+python_tests.stderr)
+    print('PASS: frontend result policy/composition synthetic units',flush=True)
+    history_tests=subprocess.run(['python3',str(cfg.HERE/'history_audit_unit.py')],capture_output=True,text=True)
+    (root/'history-unit.log').write_text(history_tests.stdout+history_tests.stderr)
+    if history_tests.returncode:raise AssertionError('history-attribution units failed: '+history_tests.stderr)
+    print('PASS: independent public history-attribution positive/negative units',flush=True)
     includes=[cfg.HERE,cfg.HERE.parent/'pc_gen',cfg.HERE.parent/'early_jump_unit',cfg.HERE.parent/'fetch_mem_if']
     sources=[cfg.HERE/(n+'.cpp') for n in ['fetch_stage_components','fetch_stage_program','fetch_stage_composition','fetch_stage_unit']]
     sources += [cfg.HERE.parent/(n+'.cpp') for n in ['pc_gen/pc_gen_model','early_jump_unit/early_jump_instructions','early_jump_unit/early_jump_model','fetch_mem_if/fetch_mem_model']]
@@ -80,6 +93,7 @@ def reconstruct(directory,n):
     for p in directory.glob('program-*.json'):
         image=json.loads(p.read_text());images[image.get('scenario','FE-T18')]={int(pc,16):w for pc,w in image['words']};fault_maps[image.get('scenario','FE-T18')]={int(pc,16):cause for pc,cause in image['faults']}
     records={};next_id=0;pending=[];sampled=None;count=0;updates=set();confirmations=set();reset=True
+    total_updates=total_confirmations=0
     for line in (directory/'logs/samples.jsonl').open():
         s=json.loads(line)
         if s['phase']=='pre':sampled=s;continue
@@ -100,8 +114,8 @@ def reconstruct(directory,n):
             r=records[ident];assert not r['canceled'],'squashed feedback'
             assert int(i['res_pc'],16)==r['pc'] and int(i['res_target'],16)==r['target'] and bool(i['res_taken'])==r['taken'],'feedback semantic disagreement'
             assert bool(i['res_mispredict'])==r['wrong'],'wrong misprediction decision'
-            if i['train']:assert ident not in updates,'duplicate update';updates.add(ident)
-            if i['call'] or i['ret']:assert ident not in confirmations,'duplicate confirmation';confirmations.add(ident)
+            if i['train']:assert ident not in updates,'duplicate update';updates.add(ident);total_updates+=1
+            if i['call'] or i['ret']:assert ident not in confirmations,'duplicate confirmation';confirmations.add(ident);total_confirmations+=1
             count+=5
         if i['flush']:
             source=i['feedback_id']
@@ -124,7 +138,7 @@ def reconstruct(directory,n):
         if a['request'] and i['grant']:
             assert not flush,'grant on active cancel edge';assert len(pending)<2,'physical overcapacity'
             pending.append((int(a['address'],16),cycle));count+=1
-    return dict(public_checks=count,updates=len(updates),scope='physical ordered words, immutable output tuples, independent integer feedback; internal A/raw rewritten BPU not observed')
+    return dict(public_checks=count,updates=total_updates,confirmations=total_confirmations,scope='physical ordered words, immutable output tuples, independent integer feedback; internal A/raw rewritten BPU not observed')
 
 def audit_obligations(directory,report):
     memory=[];backend=[];learning=[]
@@ -195,4 +209,4 @@ def main():
     (root/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
     print('Test successfully passed: frontend framework; evidence:',root)
     return 0
-if __name__=='__main__':raise SystemExit(main())
+if __name__=='__main__':raise SystemExit(results.run_cli(main))

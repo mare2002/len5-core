@@ -83,7 +83,9 @@ def main():
             row=build(a.output,n,a.optimization);rows.append(row);row['runs']=[]
             if row['build_exit'] or a.build_only:continue
             binary=row['binary'];runs=out/('n%d'%n);runs.mkdir()
-            common=['--expect_issues='+str(n),'--directed_repetitions=8','--exec_latency_max=8']
+            common=['--expect_issues='+str(n)]
+            if not a.scenario.startswith('BP0'):
+                common+=['--directed_repetitions=8','--exec_latency_max=8']
             if a.scenario:
                 row['runs'].append(simulate(binary,runs,a.scenario,[*common,'--scenario='+a.scenario,'--directed_cycles=3000']))
                 continue

@@ -8,11 +8,173 @@ The [specification](VERIFICATION.md) remains the requirement and evidence ledger
 **Implementation status: working closed-loop infrastructure with explicit
 remaining verification gaps.** A successful individual run means its selected
 witnesses and known comparisons passed. It is not complete FE01–FE24/FEV01–FEV22
-sign-off. The full directed command deliberately returns nonzero for catalog
-entries whose required implementation/witness remains incomplete. It does not
-turn an unimplemented scenario into a passing random run.
+sign-off. By default, incomplete verification scenarios are reported as warnings and do not
+cause the test suite to fail. Definitive mismatches, invalid environments and
+framework failures still cause nonzero exits. Use `STRICT_COMPLETION=true` to
+require all selected verification obligations to be completed. Exit0 with warnings
+is successful execution with incomplete verification, never full specification sign-off.
 
-## Focused completion audit (latest)
+
+## Final backend/history audit (2026-10-16)
+
+The current source remains **N=4**. See
+[FINAL_FRONTEND_ARCHITECTURE_AUDIT.md](FINAL_FRONTEND_ARCHITECTURE_AUDIT.md)
+for source evidence, exact cycle traces, resource measurements and the predictor
+architecture recommendation. Historical counts below describe earlier binaries.
+
+* FE-T15 now has matched public **BTB-hit** before/after witnesses for upward and
+  downward PHT threshold crossings. The original interference body is retained;
+  an immutable four-branch prelude supplies controlled history. Strict FE-T15
+  passes. A write-generation ledger prevents unrelated later counter changes
+  from satisfying a threshold witness.
+* GH01 is a101-cycle legal two-in-flight-branch reproducer. B samples H=1/index0;
+  after older A updates H, B trains H=2/index3. A later public conditional probe
+  witnesses the resulting direction. This verifies current resolution-indexed
+  Policy A; saved-index Policy B is a separate fixed-feedback-trace experiment.
+* The backend now allocates ROB at scalar issue, bounds IQ16/ROB32/ALU RS8/BU RS4,
+  holds RS until publication and ROB until retirement, and limits shared CDB
+  publication to one per edge. Independent ALU/BU result capture can overlap.
+  Whole-bundle ready uses the actual valid-lane count; random stalls cannot bypass
+  capacity. Admission/occupancy metrics are credited at matched consuming edges.
+* `EXEC_LATENCY_*` retains its specified once-sampled **dispatch-to-readiness
+  minimum**, not FU service time. Separate issue/start/capture/publication/retire
+  timestamps make this explicit. Modeled service is one cycle; optional real EU
+  bypass and safe ROB lookahead retirement are conservatively omitted.
+* BP01–BP08 are explicit auxiliary cases, not silent additions to the54-ID
+  catalog. They cover IQ/ROB/branch RS saturation, long readiness, whole-bundle
+  admission at real widths, recovery, separate/combined stalls and marker
+  retirement. BP02 explicitly stalls the retirement sink until cycle200;
+  BP05 uses48 ordinary words and fixed256 readiness to saturate even N1. These
+  fixtures do not change ordinary/random uniform1–64 defaults.
+* `history_audit.py` independently reconstructs prediction snapshots from public
+  request/reset/training pins, checks dynamic dispatch association and compares
+  policies. Seven hand-derived positive/negative units run with FE-T54's pure
+  validation, while its24 native confidence validators remain mandatory.
+
+```sh
+make check-fetch-stage-run SCENARIO=GH01
+STRICT_COMPLETION=true make check-fetch-stage-run SCENARIO=FE-T15
+make check-fetch-stage-run SCENARIO=BP02
+make check-fetch-stage-run SCENARIO=BP05
+make check-fetch-stage-run SCENARIO=BP06
+make check-fetch-stage-run SCENARIO=BP07
+make check-fetch-stage-widths-smoke N_VALUES=1,2,4,8 SCENARIO=BP05 SMOKE_SEEDS=0
+make check-fetch-stage-core JOBS=2
+python3 tb/frontend/fetch_stage/history_audit_unit.py
+python3 tb/frontend/fetch_stage/history_audit.py <GH01-or-FE-T15-run-directory>
+```
+
+The recommendation is to retain the approved resolution-indexed implementation
+for the issue-stage verification baseline. Its different-counter attribution is
+now explicit and tested, not mistaken for prediction-index-consistent training.
+A concrete saved-index hardware/interface proposal is documented for separate
+approval; no superiority or performance gain is claimed without a closed-loop
+comparison. No production predictor or oracle update policy changed.
+
+Final ordinary scope: **48 passed IDs /69 cases**,44913 cycles and1791021
+comparisons,zero ordinary mismatches or missing selected witnesses. FE54's24
+validators are included (11 deliberate injected errors correctly detected).
+Strict FE15 passes3330 cycles/125160 comparisons/118 updates. Real isolated BP05
+N1/2/4/8 builds and simulations all pass,3182 cycles/165797 comparisons in total.
+Focused GH01, BP01–08 and the required sensitive FE cases also pass. These groups
+overlap and are not additive unique coverage.
+
+Default core completion does not close deferred FE-T43/48/49/50/51, EQ07/EQ08,
+the exception window, full retirement/CSR/mtval or all FEV crosses. Warnings and
+strict-completion semantics remain in force. No million-cycle regression or RTL
+mutation campaign was rerun. Final execution totals and hashes are in the latest
+completion-audit entry and `build/fetch-stage/final-architecture-audit/FINAL_EVIDENCE.json`.
+
+## Default execution and completion policy (2026-10-16)
+
+The policy remains current. Counts and FE-T15 gaps in this subsection describe
+the earlier result-policy audit and are superseded by the final audit above.
+
+```sh
+make check-fetch-stage-core JOBS=2
+make check-fetch-stage-run
+make check-fetch-stage-run SCENARIO=FE-T54
+STRICT_COMPLETION=true make check-fetch-stage-run SCENARIO=FE-T48 DIRECTED_CYCLES=500
+STRICT_COMPLETION=true make check-fetch-stage-run SCENARIO=FE-T01
+python3 tb/frontend/fetch_stage/results_unit.py
+```
+
+No manual cycle/repetition/latency override is required for successful execution.
+The native/Python result is retained independently of process status:
+
+| Verification status | Default exit | Strict exit |
+|---|---:|---:|
+| PASS: required selected witnesses completed | 0 | 0 |
+| WARN_INCOMPLETE: required evidence missing | 0 | 3 |
+| WARN_PROVISIONAL: explicitly unresolved selected contract | 0 | 3 |
+| FAIL_MISMATCH: known comparison failed | 1 | 1 |
+| FAIL_ENVIRONMENT / FAIL_FRAMEWORK | 2 | 2 |
+
+Precedence is infrastructure2, mismatch1, strict completion3, success0. GNU Make
+reports a failing recipe as `Error 3` and itself returns2; the Python/native
+completion code in JSON is3. `specification_complete` describes the selected
+scope; `full_contract_signoff` remains false. A completed ordinary scope does not
+close the excluded exception/protocol contracts. Every scenario and required
+variant must produce a report. Missing results, stale/unrelated FE-T54 evidence,
+crashes and malformed receipts are hard framework failures, never missing coverage.
+
+Defaults remain uniform sampled execution latency1–64, seed1,32 directed program
+repetitions,6000 cycles per ordinary episode and1000000 total-cycle safety limit.
+Random traffic keeps its broad latency distributions. FE-T34/47 have a documented
+fixed64 causal fixture; FE-T37 selects a reproducible older64/younger1 sequence;
+FE-T38 exercises its seven named distributions. Explicit `EXEC_LATENCY_*` options
+override the default fixtures for34/37/47. Such custom runs can miss the mandatory
+fixture witness and must warn. `DIRECTED_CYCLES`, `DIRECTED_REPETITIONS`, `PROGRAM`,
+`REPETITIONS` and `VARIANT` retain their existing override roles. Reports distinguish
+requested latency from actual active latency, program marker termination from a
+bounded stop, and missing witnesses from canceled residual work.
+
+Directed timing streams restart per episode, independent of catalog ordering and
+worker count. Random episodes keep continuous separate streams. Replay records the
+stream revision, strict flag and whether a latency override was explicit.
+
+The original saved failure had **zero mismatches**, but FE-T15 missed
+`gshare-public-threshold-up`; the old core aggregator returned3 for any nonzero
+child. Its saved configuration was N=4. Contrary to the task's N=2 description,
+the active source at this task's entry also selects **N=4**; it is preserved.
+Shortening all latencies does not reliably obtain the missing gshare witness at
+N=4. The gate remains mandatory for completion and its warning remains prominent.
+The original detailed N2 audit below remains historical evidence, not a claim about
+the current selected configuration.
+
+FE-T54 executes all24 actual validators and checks their structured expected
+outcomes. Its injected failures are successful negative validation, not ordinary
+DUT failures. Empty runs now correctly reject with framework exit2. The timeout,
+missing-training and unknown-dependent fixtures deliberately select strict native
+mode to validate incomplete exit3. A successful receipt replaces only the native
+FE-T54 delegation placeholder. FE-T43/48/49/50/51 stay present and incomplete; their
+limitations are not resolved by warning-only process success. FE-T41's matched
+same-edge hypothesis is provisional, not an approved EQ07 contract.
+
+`logs/report.json` preserves native comparisons, provenance, coverage and
+obligations. `summary.json` adds scenario/variant counts, actionable warning reasons,
+evidence paths and separate execution/completion status; catalog merging retains
+`logs/report.native.json`. Approved exact comparisons remain hard failures even
+when their provenance includes I assumptions. Legacy `provisional_mismatches`
+counters describe evidence confidence, not permission to waive a failed check.
+The full aggregate propagates structured warnings and continues independent
+groups. It must not print an unqualified all-tests-passed message for warning-only
+coverage. Native processes have a120-second wall-clock watchdog; this is separate
+from a clean cycle-budget stop.
+
+See the latest section of [COMPLETION_AUDIT.md](COMPLETION_AUDIT.md) for executed
+commands, current counts, protected-file hashes and outstanding witnesses.
+
+Historical result-policy validation: default core **47 passed IDs,1 incomplete** (48 selected
+IDs including FE54),43,449 cycles and1,728,549 comparisons; full directed **47
+passed,6 incomplete,1 provisional** (54 IDs/75 variants),57,459 cycles and2,139,487
+comparisons. Both exit0 with warnings and zero ordinary mismatches. FE54 alone
+passes all24 validators (847 cycles/30,489 comparisons). Strict FE48 returns3;
+strict FE01 returns0. There are37 passing result-policy unit tests. Detailed
+native/component totals, expected-negative errors, pending requirements, source
+hashes and exact evidence paths are in the latest completion-audit section.
+
+## Historical focused completion audit (2026-10-15)
 
 The [completion audit](COMPLETION_AUDIT.md) records real isolated production
 elaborations and short simulations at **N=1,2,4,8**. The current working tree is
@@ -37,7 +199,7 @@ these obligations. Earlier N4 validation below is historical evidence.
 source private/init.sh
 make check-fetch-stage-widths-smoke N_VALUES=1,2,4,8 SMOKE_SEEDS=3 SMOKE_CYCLES=1500
 make check-fetch-stage-widths-smoke N_VALUES=4 SCENARIO=FE-T19 SMOKE_SEEDS=0
-DIRECTED_CYCLES=2000 DIRECTED_REPETITIONS=8 EXEC_LATENCY_MAX=8 make check-fetch-stage-core JOBS=2
+make check-fetch-stage-core JOBS=2
 make check-fetch-stage-run SCENARIO=FE-T54
 ```
 
@@ -45,8 +207,8 @@ The width workflow edits **disposable source copies only**, reuses cached
 fingerprinted builds and never runs a hidden regression/mutation sweep. Its
 N_VALUES setting does not select N for default builds. `check-fetch-stage-core`
 explicitly excludes FE-T41/43/48/49/50/51 before judging results; FE-T54 executes
-actual independent validators. Incomplete ordinary witnesses remain failures of
-the coverage gate. `DIRECTED_CYCLES`, `DIRECTED_REPETITIONS` and `VARIANT` support
+actual independent validators. Incomplete ordinary witnesses remain visible warnings
+by default and reject completion in strict mode. `DIRECTED_CYCLES`, `DIRECTED_REPETITIONS` and `VARIANT` support
 focused runs and are included in replay metadata.
 
 The simulator discrepancy now has a **54-cycle public-input-only reproducer**.
@@ -83,13 +245,13 @@ Do not use repository-wide `make check` for this task: it formats production RTL
 | `check-fetch-stage-widths-smoke` | Short real isolated N builds and directed/random smoke; selectable width/scenario. |
 | `check-fetch-stage-core` | Declared ordinary scope plus executed FE-T54 confidence; no full regression/mutations. |
 | `fetch-stage-build` | Source-fingerprinted real-DUT build only. |
-| `check-fetch-stage-run` | All FE-T01–54 entries, or selected `SCENARIO`. Incomplete entries return3. |
+| `check-fetch-stage-run` | All FE-T01–54 entries, or selected `SCENARIO`. Incomplete entries warn; strict completion returns3. |
 | `check-fetch-stage-framework` | Independent pure units, native monitor injections, logs, replay/FST and configuration guards. |
 | `check-fetch-stage-random` | One deterministic persistent-program execution budget. |
 | `check-fetch-stage-random-framework` | Public-journal reconstruction, seeded smoke cases and replay/failure confidence. |
 | `check-fetch-stage-regression` | Isolated parallel native processes; merges actual counters and reports handshake-matrix gaps. |
 | `check-fetch-stage-mutations` | Private exported RTL variants, original-before/after and source integrity. `MUTATIONS=name,...` selects a focused audit. |
-| `check-fetch-stage` | All groups; prints `All tests passed` only when every required group exits0. |
+| `check-fetch-stage` | All groups; incomplete coverage is qualified explicitly, even when every group exits0. |
 
 Configuration options follow the existing frameworks: SEED/SEEDS/CYCLES/JOBS/
 TEST_JOBS/SCENARIO/LOG_LEVEL/DUMP_WAVES/JOURNAL/GUIDED/WEIGHTS/BUILD_DIR. Additional
@@ -112,7 +274,7 @@ limited to the public wrapper boundary. The model has no Verilator handle.
 
 The sole issue-width selector is production `rtl/packages/len5_config_pkg.sv`.
 Default targets compile source-selected N only. The explicit widths-smoke audit
-compiled all four N values in independent copies. Current live source is N=2,
+compiled all four N values in independent copies. Current live source for the2026-10-16 result-policy task is N=4,
 XLEN/ALEN64, ILEN32, HLEN4,
 BTB_BITS4, integrated INIT_C2B=WT, RAS depth4, metadata depth2, request bypass and
 registered answer/final-spill buffering. Alternate timing/depth configurations
@@ -279,8 +441,12 @@ TEST SUCCEEDED > errors: <failed checked records>/<checked records>
 TEST FAILED > errors: <failed checked records>/<checked records>
 ```
 
-Exit0 means selected known checks and witnesses passed;1 is a comparison failure;
-2 is invalid environment/configuration/framework;3 is incomplete/empty/timeout.
+Exit0 means execution succeeded, possibly with explicitly incomplete/provisional
+verification. Exit1 is a known-field comparison failure;2 is invalid environment,
+configuration or framework (including empty/no useful checks and wall-clock
+watchdog);3 is an explicitly requested strict completion failure. A clean bounded
+cycle stop with missing witnesses warns by default. Infrastructure2 takes precedence
+over mismatch1, which takes precedence over strict completion3.
 Expected-negative validators succeed only when the intended failure is detected.
 `REQUIRE_MATRIX=true` gates the feasible K/R/A/D handshake matrix, not all training,
 RAS and architectural sign-off. Internal occupancy and raw overwritten predictor

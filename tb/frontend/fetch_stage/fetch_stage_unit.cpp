@@ -175,7 +175,7 @@ int main() {
                   "three-callers",     "nested",      "empty-ret", "indirect",     "wrong-call",
                   "wrong-return",      "lanes",       "stale-ras", "ordered-pair", "call-kind",
                   "multiple-jumps",    "mask-cutoff", "nt-call",   "jal-nt",       "caller-order",
-                  "wrong-return-deep", "reset-loaded"}) {
+                  "wrong-return-deep", "reset-loaded", "threshold-interacting", "branch-pressure", "history-pair"}) {
                 auto program = make_program(x, family, 16, 3);
                 program.validate();
                 check(program.digest() == make_program(x, family, 16, 3).digest(),
@@ -233,7 +233,7 @@ int main() {
             be.consume_feedback(f, cy);
             be.advance(cy);
         }
-        check(recovery == 4 && be.speculative(2) == 0 && be.stats.canceled == 2,
+        check(recovery == be.record(1).execute + 2 && be.speculative(2) == 0 && be.stats.canceled == 2,
               "wrong-path rollback and e+2 recovery");
         rejects(
             [&] {
@@ -311,6 +311,181 @@ int main() {
             check(stopped && b.pending() == 0, "pure executable program completed");
             for (unsigned r = 0; r < 32; ++r)
                 check(b.committed(r) == registers[r], "versioned engine versus in-order register fixture");
+        }
+        {
+            // A changes history after younger B sampled H0. No speculative GHR.
+            Predictor current(c);
+            const auto b_lookup = current.index(4);
+            check(b_lookup == 1 && current.counter(b_lookup) == 2, "B pre-edge H0 lookup");
+            const auto a_update = current.update({0, 4, true, false});
+            check(a_update.index == 0 && current.history() == 1, "A updates before B resolves");
+            const auto b_update = current.update({4, 8, false, false});
+            check(b_update.history == 1 && b_update.index == 0 && b_update.index != b_lookup,
+                  "prediction-time and resolution-time histories cannot be conflated");
+            check(current.counter(0) == 2 && current.counter(1) == 2,
+                  "Policy A trains resolution index, leaving original lookup unchanged");
+            std::array<unsigned, 16> saved;
+            saved.fill(2);
+            saved[0] = 3; // same eligible A update
+            --saved[b_lookup];
+            check(saved[0] == 3 && saved[1] == 1, "Policy B independent saved-index alternative");
+            check(current.generation(0) == 2 && current.generation(1) == 0,
+                  "same-index version accounting distinguishes intervening writes");
+        }
+        {
+            // Source-sized IQ/ROB/RS envelope, not frontend-bundle ROB allocation.
+            for (unsigned n : {1u, 2u, 4u, 8u}) {
+                Config x = c;
+                x.lanes = n;
+                Backend capacity(x, fixed, 1);
+                uint64_t pc = 0;
+                auto feed = [&](uint64_t cycle) {
+                    Bundle input;
+                    static uint64_t id = 100000;
+                    input.id = ++id;
+                    input.mask = (1u << n) - 1;
+                    for (unsigned k = 0; k < n; ++k) {
+                        input.lanes[k].word = immediate(0, 0, 0, 0);
+                        input.lanes[k].prediction.pc = pc + 4 * k;
+                    }
+                    capacity.dispatch(input, cycle);
+                    pc += 4 * n;
+                };
+                for (uint64_t cycle = 0; cycle < 130; ++cycle) {
+                    if (capacity.ready()) feed(cycle);
+                    capacity.advance(cycle, false); // legitimate commit backpressure
+                }
+                check(capacity.resources().iq == x.iq && capacity.resources().rob == x.rob,
+                      "BP01/02/05 IQ and ROB saturate without premature completed-entry release");
+                check(capacity.stats.published >= x.rob && capacity.stats.retired == 0,
+                      "completion/publication does not imply retirement");
+                rejects([&] { feed(130); }, "illegal whole-bundle admission rejected");
+                check(capacity.ready(0) && !capacity.ready(1), "actual valid mask capacity check");
+                rejects([&] { capacity.advance(129); }, "excess per-edge issue/publication rejected");
+                for (uint64_t cycle = 130; cycle < 400; ++cycle) {
+                    capacity.consume_feedback(capacity.feedback(cycle), cycle);
+                    capacity.advance(cycle);
+                }
+                check(capacity.pending() == 0 && capacity.stats.retired == capacity.stats.dispatched,
+                      "BP08 natural drain and allocation/release conservation");
+            }
+            rejects([&] { validate_resources(c, {c.iq+1,0,0,0}); }, "IQ overflow validator");
+            rejects([&] { validate_resources(c, {0,c.rob+1,0,0}); }, "ROB overflow validator");
+            rejects([&] { validate_resources(c, {0,8,c.branch_capacity+1,0}); }, "branch RS overflow validator");
+            rejects([&] { validate_resources(c, {0,16,0,c.alu_capacity+1}); }, "ALU RS overflow validator");
+            rejects([&] { validate_resources(c, {0,0,1,0}); }, "premature ROB release validator");
+            auto lifecycle = be.record(1);
+            auto invalid = lifecycle;
+            invalid.execute = invalid.start;
+            rejects([&] { validate_lifecycle(invalid); }, "completion before execution service rejected");
+            invalid = lifecycle; invalid.start = invalid.issue;
+            rejects([&] { validate_lifecycle(invalid); }, "start before legal issue rejected");
+            invalid = lifecycle; invalid.earliest = invalid.start+1;
+            rejects([&] { validate_lifecycle(invalid); }, "sampled minimum delay cannot be bypassed");
+            invalid = lifecycle; invalid.publication = invalid.execute;
+            rejects([&] { validate_lifecycle(invalid); }, "result publication before capture rejected");
+            invalid = lifecycle; invalid.retire = invalid.publication;
+            rejects([&] { validate_lifecycle(invalid); }, "premature retirement rejected");
+        }
+        {
+            auto valid = be.records();
+            validate_backend_history(valid);
+            check(!valid.empty(), "nonempty lifecycle fixture");
+            auto duplicate = valid;
+            duplicate.push_back(duplicate.front());
+            rejects([&] { validate_backend_history(duplicate); }, "double completion/retirement record rejected");
+            Backend ports(c, fixed, 1);
+            ports.dispatch(bundle(0, {immediate(0,2,0,1), immediate(0,3,0,2)}), 0);
+            for (uint64_t t=0; t<16; ++t) ports.advance(t);
+            auto corrupted = ports.records();
+            corrupted[1].issue = corrupted[0].issue;
+            rejects([&] { validate_backend_history(corrupted); }, "excess scalar issue history rejected");
+            corrupted = ports.records();
+            corrupted[0].publication = corrupted[1].publication;
+            corrupted[0].retire = corrupted[0].publication + 2;
+            corrupted[1].retire = corrupted[0].publication + 3;
+            {
+                bool correct = false;
+                try { validate_backend_history(corrupted); }
+                catch (const std::logic_error &e) { correct = std::string(e.what()).find("excess CDB") != std::string::npos; }
+                check(correct, "excess result publication detected by bandwidth validator");
+            }
+            corrupted = ports.records(); corrupted[0].retire = corrupted[1].retire;
+            {
+                bool correct = false;
+                try { validate_backend_history(corrupted); }
+                catch (const std::logic_error &e) { correct = std::string(e.what()).find("excess retirement") != std::string::npos; }
+                check(correct, "double retirement detected by retirement bandwidth validator");
+            }
+            LatencyOptions long_delay; long_delay.distribution = "fixed"; long_delay.fixed = 64;
+            Backend branches(c, long_delay, 1);
+            uint64_t pc=0;
+            for (uint64_t t=0; t<50; ++t) {
+                if (branches.ready(1)) {
+                    branches.dispatch(bundle(pc, {len5::early::branch(1,0,0,4)}), t);
+                    pc += 4;
+                }
+                branches.advance(t);
+            }
+            check(branches.resources().branch == c.branch_capacity && branches.stats.branch_blocks,
+                  "BP03 allocated branch RS remains full before ordered execution");
+            for (uint64_t t=50; t<400; ++t) {
+                branches.consume_feedback(branches.feedback(t),t);
+                branches.advance(t);
+            }
+            check(branches.pending()==0, "BP03 bounded branch issue and natural retirement resume");
+            validate_backend_history(branches.records());
+        }
+        {
+            Backend held(c, fixed, 1);
+            held.dispatch(bundle(0, {len5::early::branch(1,0,0,4)}), 0);
+            for (uint64_t t=0; t<=3; ++t) held.advance(t);
+            check(held.record(1).completed && held.resources().branch == 1 && held.resources().rob == 1,
+                  "completed branch still owns RS and ROB before CDB publication");
+            held.consume_feedback(held.feedback(4), 4); held.advance(4);
+            check(held.resources().branch == 0 && held.resources().rob == 1 && !held.record(1).retired,
+                  "CDB releases RS but not unretired ROB");
+            held.advance(5);
+            check(held.resources().rob == 0 && held.record(1).retired, "retirement releases ROB exactly once");
+            Backend partial(c, fixed, 1);
+            uint64_t pc=0;
+            for (unsigned k=0; k<14; ++k) {
+                partial.dispatch(bundle(pc, {immediate(0,0,0,0)}), 0); pc+=4;
+            }
+            check(partial.ready(3) && !partial.ready(15), "two free IQ slots admit two lanes, not four");
+            rejects([&] { partial.ready(5); }, "holey whole-bundle admission rejected");
+        }
+        {
+            Backend rejected(c, fixed, 9);
+            auto input = bundle(0, {immediate(0,2,0,7), 0});
+            rejects([&] { rejected.dispatch(input,0); }, "invalid later lane rejected before any allocation");
+            check(rejected.records().empty() && rejected.stats.dispatched == 0,
+                  "invalid bundle cannot partially allocate versions/identities");
+            auto huge = bundle(0, {immediate(0,0,0,0)});
+            rejects([&] { rejected.dispatch(huge,UINT64_MAX); }, "readiness cycle overflow rejected");
+            Backend missed(c, fixed, 1);
+            missed.dispatch(bundle(0, {len5::early::branch(1,0,0,4)}),0);
+            for (uint64_t t=0;t<4;++t) missed.advance(t);
+            rejects([&] { missed.advance(4); }, "missing required feedback consumption is a framework error");
+        }
+        {
+            Backend old_head(c, {}, blocking_seed);
+            old_head.dispatch(bundle(0, {len5::early::branch(1,0,0,4), immediate(0,2,0,7)}),0);
+            for (uint64_t t=0;t<16;++t) old_head.advance(t);
+            check(old_head.record(1).latency == 64 && old_head.record(2).latency == 1 &&
+                  !old_head.record(1).completed && old_head.record(2).completed,
+                  "older delayed branch permits independent younger completion");
+            check(old_head.resources().rob == 2 && old_head.stats.retired == 0,
+                  "completed younger instruction retains ROB behind old head");
+            auto bad_start = old_head.records();
+            for (unsigned k=0;k<2;++k) {
+                auto &r=bad_start[k]; r.semantic.control=false; r.earliest=1; r.start=4;
+                r.completed=true; r.execute=5; r.publication=6+k; r.retired=true; r.retire=8+k;
+            }
+            bool detected=false;
+            try { validate_backend_history(bad_start); }
+            catch (const std::logic_error &e) { detected=std::string(e.what()).find("excess per-unit")!=std::string::npos; }
+            check(detected,"excess execution initiation rejected by per-unit bandwidth validator");
         }
         Composition composition(c);
         Inputs i;

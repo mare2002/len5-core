@@ -332,12 +332,20 @@ void Simulator::cancel_memory_obligations(const std::string &reason, bool younge
 void Simulator::capture_backend_obligations(const std::string &stop) {
     if (!backend_)
         return;
+    validate_backend_history(backend_->records());
     for (const auto &r : backend_->records()) {
         std::ostringstream record;
         record << "{\"window\":" << reset_window_ << ",\"id\":" << r.id << ",\"epoch\":" << r.epoch
                << ",\"bundle\":" << r.bundle << ",\"lane\":" << r.lane
                << ",\"pc\":" << json_quote(hex64(r.pc)) << ",\"control\":" << r.semantic.control
                << ",\"dispatch\":" << r.dispatch << ",\"sampled_latency\":" << r.latency
+               << ",\"issue\":" << r.issue << ",\"start\":" << r.start
+               << ",\"completion\":" << r.execute << ",\"publication\":" << r.publication
+               << ",\"retire\":" << r.retire << ",\"issued\":" << r.issued
+               << ",\"completed\":" << r.completed
+               << ",\"prediction_history\":" << r.payload.prediction_history
+               << ",\"prediction_index\":" << r.payload.prediction_index
+               << ",\"prediction_request\":" << r.payload.request_cycle
                << ",\"trained\":" << r.trained << ",\"confirmed\":" << r.confirmed << ",\"status\":"
                << json_quote(r.retired    ? "retired"
                              : r.canceled ? "canceled-backend-recovery"
@@ -374,6 +382,8 @@ void Simulator::step(Inputs i, bool schedule_backend) {
         throw std::logic_error("FE24: driver/input readback mismatch");
     auto p = model_->plan(i, cycle_);
     const auto actual = outputs();
+    const unsigned admission_mask = p.expected.mask.known ? unsigned(p.expected.mask.value) : (1u << cfg_.lanes) - 1;
+    const bool capacity_ready = backend_->ready(admission_mask);
     if (!sample(i, p, "pre")) {
         quarantined_ = true;
         throw std::runtime_error("comparison failure: dependent physical feedback "
@@ -467,19 +477,6 @@ void Simulator::step(Inputs i, bool schedule_backend) {
                             interference_.count(l.prediction_index) &&
                             l.request_cycle > interference_[l.prediction_index])
                             counter("gshare-interference-witness");
-                        if (scenario_.id == "FE-T15" && !l.rewritten) {
-                            public_directions_[l.prediction_index] = {l.request_cycle, l.raw.taken};
-                            for (auto &t : thresholds_)
-                                if (t.index == l.prediction_index) {
-                                    t.prior |= l.request_cycle < t.cycle && l.raw.taken == t.before;
-                                    t.later |= l.request_cycle > t.cycle && l.raw.taken == t.after;
-                                    if (t.prior && t.later && !t.credited) {
-                                        counter(t.after ? "gshare-public-threshold-up"
-                                                        : "gshare-public-threshold-down");
-                                        t.credited = true;
-                                    }
-                                }
-                        }
                         if (scenario_.id == "FE-T14" && dec.kind == early::Kind::Branch && !l.raw.hit &&
                             conflict_cycle_ && l.request_cycle > conflict_cycle_ &&
                             (l.prediction.pc == cfg_.boot + 0x18 ||
@@ -570,6 +567,8 @@ void Simulator::step(Inputs i, bool schedule_backend) {
     }
     if (i.rst_n && i.commit && p.pi.recovery() && p.pi.early)
         counter("priority-triple");
+    const unsigned lookup_before = i.feedback.id && schedule_backend
+        ? model_->predictor().counter(backend_->record(i.feedback.id).payload.prediction_index) : 0;
     const auto update = model_->edge(i, p);
     context_->timeInc(1);
     dut_->clk_i = 1;
@@ -597,10 +596,8 @@ void Simulator::step(Inputs i, bool schedule_backend) {
     }
     if (update) {
         if (scenario_.id == "FE-T15" && (update->before >= 2) != (update->after >= 2)) {
-            Threshold t{update->index, cycle_, update->before >= 2, update->after >= 2};
-            auto prev = public_directions_.find(t.index);
-            if (prev != public_directions_.end())
-                t.prior = prev->second.first < t.cycle && prev->second.second == t.before;
+            Threshold t{update->index, update->before, update->after, cycle_,
+                        model_->predictor().generation(update->index), {}, {}, false};
             thresholds_.push_back(t);
         }
         const auto pc = i.feedback.resolution.pc;
@@ -617,15 +614,63 @@ void Simulator::step(Inputs i, bool schedule_backend) {
             if (!conflict_cycle_)
                 conflict_cycle_ = cycle_;
         }
+        if (i.feedback.id && schedule_backend) {
+            const auto &r = backend_->record(i.feedback.id);
+            const auto &l = r.payload;
+            training_ << "{\"event\":\"history-attribution\",\"id\":" << r.id
+                      << ",\"instance\":" << instance_ << ",\"window\":" << reset_window_ << ",\"epoch\":" << r.epoch
+                      << ",\"pc\":" << json_quote(hex64(r.pc))
+                      << ",\"request_id\":" << l.request_id << ",\"request_cycle\":" << l.request_cycle
+                      << ",\"answer_cycle\":" << l.accepted_cycle << ",\"dispatch\":" << r.dispatch
+                      << ",\"prediction_history\":" << l.prediction_history
+                      << ",\"prediction_index\":" << l.prediction_index
+                      << ",\"prediction_counter\":" << l.prediction_counter
+                      << ",\"resolution_cycle\":" << r.execute << ",\"update_cycle\":" << cycle_
+                      << ",\"resolution_history\":" << update->history
+                      << ",\"update_index\":" << update->index
+                      << ",\"counter_before\":" << update->before << ",\"counter_after\":" << update->after
+                      << ",\"lookup_counter_before\":" << lookup_before
+                      << ",\"lookup_counter_after\":" << model_->predictor().counter(l.prediction_index)
+                      << ",\"taken\":" << r.semantic.taken << ",\"mispredict\":" << r.wrong << ",\"rewritten\":" << l.rewritten
+                      << ",\"index_differs\":" << (l.prediction_index != update->index) << "}\n";
+            if (l.prediction_index != update->index)
+                counter("gshare-lookup-update-index-differs");
+            if (scenario_.id == "GH01" && r.pc == program_.labels.at("history-B") &&
+                l.prediction_history == 1 && l.prediction_index == 0 && update->history == 2 &&
+                update->index == 3 && update->before == 2 && update->after == 1)
+                counter("history-index-discrepancy");
+        }
         training_ << "{\"scenario\":" << json_quote(scenario_.id)
                   << ",\"event\":\"bpu-update\",\"id\":" << i.feedback.id
                   << ",\"pc\":" << json_quote(hex64(pc)) << ",\"instance\":" << instance_
                   << ",\"cycle\":" << cycle_ << ",\"history_before\":" << update->history
                   << ",\"index\":" << update->index << ",\"counter_before\":" << update->before
                   << ",\"counter_after\":" << update->after << ",\"taken\":" << i.feedback.resolution.taken
+                  << ",\"lookup_counter_at_resolution\":" << lookup_before
                   << ",\"replacement\":" << update->replacement << ",\"deletion\":" << update->deletion
                   << "}\n";
     }
+    if (matched && p.d && (scenario_.id == "FE-T15" || scenario_.id == "GH01")) {
+        for (unsigned k = 0; k < cfg_.lanes; ++k)
+            if (p.dispatched.mask & (1u << k)) {
+                const auto &l = p.dispatched.lanes[k];
+                if (!l.rewritten && early::decode(l.word).kind == early::Kind::Branch) {
+                    if (scenario_.id == "GH01" && l.prediction.pc == program_.labels.at("history-probe") &&
+                        l.prediction_history == 4 && l.prediction_index == 3 && l.prediction_counter == 1 && !l.raw.taken)
+                        counter("history-public-post-probe");
+                    public_directions_[{l.prediction_index, l.prediction_generation}] =
+                        {l.request_cycle, cycle_, l.prediction.pc, l.prediction_generation, l.prediction_counter, l.raw.hit};
+                    training_ << "{\"event\":\"public-direction\",\"cycle\":" << cycle_
+                              << ",\"request_cycle\":" << l.request_cycle << ",\"pc\":" << json_quote(hex64(l.prediction.pc))
+                              << ",\"history\":" << l.prediction_history << ",\"index\":" << l.prediction_index
+                              << ",\"counter\":" << l.prediction_counter << ",\"generation\":" << l.prediction_generation
+                              << ",\"hit\":" << l.raw.hit << ",\"taken\":" << l.raw.taken << "}\n";
+                }
+            }
+        threshold_witnesses();
+    }
+    if (matched && update)
+        threshold_witnesses();
     if (matched && p.a && p.ee.selection.lane >= 0) {
         const auto lane = unsigned(p.ee.selection.lane);
         const auto &raw = p.es.inputs.predictions[lane];
@@ -668,8 +713,29 @@ void Simulator::step(Inputs i, bool schedule_backend) {
                 counter("btb-deletion");
         }
     }
-    if (schedule_backend && i.rst_n) {
-        backend_->advance(cycle_);
+    if (schedule_backend && i.rst_n && matched) {
+        backend_->offered(p.expected.valid.known && p.expected.valid.value && !i.flush,
+                          capacity_ready, admission_external_ready_);
+        if (!capacity_ready) counter("backend-resource-ready-low");
+        if (p.expected.valid.known && p.expected.valid.value && !capacity_ready) {
+            resource_blocked_ = true;
+            counter("backend-resource-stall");
+        }
+        if (resource_blocked_ && p.d) {
+            counter("backend-resumed");
+            resource_blocked_ = false;
+        }
+        backend_->advance(cycle_, scenario_.id != "BP02" || cycle_ >= 200);
+        const auto resources = backend_->resources();
+        if (resources.iq == cfg_.iq) counter("backend-IQ-full");
+        if (resources.rob == cfg_.rob) counter("backend-ROB-full");
+        if (resources.branch == cfg_.branch_capacity) counter("backend-branch-RS-full");
+        if (backend_->stats.branch_blocks) counter("backend-branch-RS-block");
+        if (!admission_external_ready_ && p.expected.valid.known && p.expected.valid.value)
+            counter("backend-random-stall");
+        if (backend_->stats.canceled) counter("backend-canceled");
+        if (backend_->stats.published > backend_->stats.retired) counter("backend-completed-unretired");
+        if (backend_->stats.started) counter("backend-lifecycle-checked");
         collect_backend();
     }
     ++cycle_;
@@ -679,9 +745,36 @@ void Simulator::step(Inputs i, bool schedule_backend) {
         throw std::runtime_error("comparison failure: post-edge divergence; oracle not repaired");
     }
 }
+void Simulator::threshold_witnesses() {
+    for (auto &t : thresholds_) {
+        auto pre = public_directions_.find({t.index, t.generation - 1});
+        auto post = public_directions_.find({t.index, t.generation});
+        if (pre != public_directions_.end() && pre->second.counter == t.before && pre->second.request <= t.cycle)
+            t.prior = pre->second;
+        if (post != public_directions_.end() && post->second.counter == t.after && post->second.request > t.cycle)
+            t.later = post->second;
+        if (t.prior && t.later && !t.credited) {
+            counter(t.after >= 2 ? "gshare-public-threshold-up" : "gshare-public-threshold-down");
+            if (t.prior->hit && t.later->hit)
+                counter(t.after >= 2 ? "gshare-public-hit-threshold-up" : "gshare-public-hit-threshold-down");
+            t.credited = true;
+            training_ << "{\"event\":\"public-threshold-witness\",\"index\":" << t.index
+                      << ",\"update_cycle\":" << t.cycle << ",\"before\":" << t.before
+                      << ",\"after\":" << t.after << ",\"generation\":" << t.generation
+                      << ",\"pre_pc\":" << json_quote(hex64(t.prior->pc))
+                      << ",\"pre_request\":" << t.prior->request << ",\"pre_dispatch\":" << t.prior->dispatch
+                      << ",\"post_pc\":" << json_quote(hex64(t.later->pc))
+                      << ",\"post_request\":" << t.later->request << ",\"post_dispatch\":" << t.later->dispatch
+                      << ",\"pre_hit\":" << t.prior->hit << ",\"post_hit\":" << t.later->hit
+                      << ",\"credit_cycle\":" << cycle_ << "}\n";
+        }
+    }
+}
 void Simulator::collect_backend() {
     for (const auto &r : backend_->records()) {
         if (r.completed && executed_.insert(r.id).second) {
+            if (r.latency >= 64 && r.start >= r.earliest && r.execute > r.start)
+                counter("backend-long-delay");
             ++stats.executions;
             if (scenario_.id == "FE-T37" && r.id == 2 && backend_->record(1).latency == 64 &&
                 r.latency == 1 && r.execute > backend_->record(1).execute)
@@ -735,6 +828,7 @@ void Simulator::collect_backend() {
                           << ",\"mispredict\":" << r.wrong << ",\"dispatch\":" << r.dispatch
                           << ",\"sampled_latency\":" << r.latency << ",\"earliest\":" << r.earliest
                           << ",\"issue\":" << r.issue << ",\"dependency_ready\":" << r.dependency_ready
+                          << ",\"start\":" << r.start << ",\"publication\":" << r.publication
                           << ",\"order_delay\":" << r.order_delay << ",\"execute\":" << r.execute << "}\n";
             }
         }
@@ -757,13 +851,26 @@ void Simulator::collect_backend() {
 void Simulator::reset() {
     ++reset_window_;
     ras_witness_ = RasWitness{};
+    admission_external_ready_ = true;
+    resource_blocked_ = false;
     model_ = std::make_unique<Composition>(cfg_, options_.ras_order);
     active_latency_ = options_.latency;
     active_latency_seed_ = options_.seed;
-    if (scenario_.id == "FE-T47" || scenario_.id == "FE-T34") {
+    if (!options_.latency_explicit && (scenario_.id == "FE-T47" || scenario_.id == "FE-T34")) {
         active_latency_ = LatencyOptions{};
         active_latency_.distribution = "fixed";
         active_latency_.fixed = active_latency_.maximum;
+    }
+    if (!options_.latency_explicit && scenario_.id.rfind("BP0", 0) == 0) {
+        active_latency_.distribution = "fixed";
+        active_latency_.fixed = scenario_.id == "BP02" || scenario_.id == "BP08" ? 2 : 64;
+        if (scenario_.id == "BP05") {
+            active_latency_.maximum = active_latency_.fixed = 256;
+        }
+    }
+    if (!options_.latency_explicit && scenario_.id == "GH01") {
+        active_latency_.distribution = "fixed";
+        active_latency_.fixed = 16;
     }
     if (scenario_.id == "FE-T38") {
         static const char *distributions[] = {"uniform",         "fixed",           "triangular-early",
@@ -771,7 +878,7 @@ void Simulator::reset() {
                                               "bimodal"};
         active_latency_.distribution = distributions[scenario_.variant % 7];
     }
-    if (scenario_.id == "FE-T37") {
+    if (!options_.latency_explicit && scenario_.id == "FE-T37") {
         active_latency_ = LatencyOptions{};
         for (active_latency_seed_ = 0; active_latency_seed_ < 100000; ++active_latency_seed_) {
             LatencySampler sample(active_latency_, active_latency_seed_);
@@ -816,6 +923,12 @@ void Simulator::reset() {
 }
 void Simulator::run(const Scenario &s, uint64_t limit) {
     scenario_ = s;
+    // Directed episodes are reproducible alone, in the catalog and in parallel.
+    // Random episodes intentionally retain their independent continuous streams.
+    if (!options_.random) {
+        events_.seed(split_seed(options_.seed ^ 0x45564e54));
+        memory_rng_.seed(split_seed(options_.seed ^ 0x4d454d));
+    }
     ++instance_;
     local_.clear();
     memory_ledger_.clear();
@@ -824,7 +937,9 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
     learning_archive_.clear();
     learning_.clear();
     quarantined_ = false;
-    const uint64_t checks_before = stats.checks, errors_before = stats.field_errors;
+    const uint64_t checks_before = stats.checks, errors_before = stats.field_errors,
+                   environment_before = stats.environment, framework_before = stats.framework,
+                   cycle_before = stats.cycles;
     std::string problem;
     program_ = make_program(cfg_, s.family, s.repetitions, s.variant);
     if (s.id == "FE-T31")
@@ -860,16 +975,20 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
             b.lanes[0].word = early::jal(1, 8);
             b.lanes[0].prediction.pc = cfg_.boot;
             checker.dispatch(b, 0);
-            for (uint64_t t = 0; t <= 2; ++t)
+            Feedback once;
+            uint64_t accepted_at = 0;
+            for (uint64_t t = 0; t < 32; ++t) {
+                const auto f = checker.feedback(t);
+                checker.consume_feedback(f, t);
+                if (f.flush) { once = f; accepted_at = t; break; }
                 checker.advance(t);
-            checker.consume_feedback(checker.feedback(3), 3);
-            const auto once = checker.feedback(4);
-            checker.consume_feedback(once, 4);
+            }
+            if (!accepted_at) throw std::logic_error("missing independent recovery fixture");
             auto held = once;
             held.train = false;
             bool rejected = false;
             try {
-                checker.validate_feedback(held, 5);
+                checker.validate_feedback(held, accepted_at + 1);
             } catch (const std::invalid_argument &) {
                 rejected = true;
             }
@@ -906,16 +1025,20 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
                 f.train = true;
                 checker.validate_feedback(f, 2);
             });
-            for (uint64_t t = 0; t < 3; ++t)
+            Feedback valid;
+            uint64_t trained_at = 0;
+            for (uint64_t t = 0; t < 32; ++t) {
+                valid = checker.feedback(t);
+                if (valid.train) { trained_at = t; break; }
+                checker.consume_feedback(valid, t);
                 checker.advance(t);
-            auto valid = checker.feedback(3);
-            if (!valid.train)
-                throw std::logic_error("missing independent backend positive fixture");
+            }
+            if (!valid.train) throw std::logic_error("missing independent backend positive fixture");
             auto bad = valid;
             bad.resolution.target += 4;
-            rejects([&] { checker.validate_feedback(bad, 3); });
-            checker.consume_feedback(valid, 3);
-            rejects([&] { checker.validate_feedback(valid, 3); });
+            rejects([&] { checker.validate_feedback(bad, trained_at); });
+            checker.consume_feedback(valid, trained_at);
+            rejects([&] { checker.validate_feedback(valid, trained_at); });
         }
         const uint64_t start = cycle_, budget = limit ? (limit > 4 ? limit - 4 : 0) : s.budget;
         bool held_response = false;
@@ -956,8 +1079,35 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
                 continue;
             }
             Inputs i;
-            i.ready = backend_->ready() && bounded(events_, 100) < ready_weight_;
+            const bool random_ready = bounded(events_, 100) <
+                ((s.id.rfind("BP0", 0) == 0 && s.id != "BP07") ? 100u : ready_weight_);
+            const auto head = model_->plan(i, cycle_);
+            const unsigned mask = head.expected.mask.known ? unsigned(head.expected.mask.value)
+                                                          : (1u << cfg_.lanes) - 1;
+            i.ready = backend_->ready(mask) && random_ready;
+            admission_external_ready_ = random_ready;
             i.grant = physical_.size() < cfg_.depth && bounded(events_, 100) < grant_weight_;
+            if (program_.labels.count("threshold-up")) {
+                const auto pc = model_->cursor();
+                if (pc.known) {
+                    const auto base = pc.value - pc.value % cfg_.bytes();
+                    for (const auto &gate : {std::make_pair(0x40u, "threshold-down"),
+                                            std::make_pair(0x80u, "threshold-up"),
+                                            std::make_pair(0xc0u, "threshold-post")})
+                        if (base >= cfg_.boot + gate.first &&
+                            !site_updates_[program_.labels.at(gate.second)])
+                            i.grant = false;
+                }
+            }
+            if (program_.labels.count("history-seed")) {
+                const auto pc = model_->cursor();
+                if (pc.known) {
+                    const auto base = pc.value - pc.value % cfg_.bytes();
+                    if ((base >= cfg_.boot + 0x40 && !site_updates_[program_.labels.at("history-seed")]) ||
+                        (base >= cfg_.boot + 0x80 && !site_updates_[program_.labels.at("history-B")]))
+                        i.grant = false;
+                }
+            }
             i.feedback = backend_->feedback(cycle_);
             i.flush = i.feedback.flush;
             if (i.flush)
@@ -969,9 +1119,9 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
                 held_response = true;
             }
             if ((s.id == "FE-T04" || s.id == "FE-T25" || s.id == "FE-T39") && step_index % 160 < 96)
-                i.ready = false;
+                i.ready = admission_external_ready_ = false;
             if (s.id == "FE-T47" && !populated_reset && !model_->ras().confirmed.entries.empty())
-                i.ready = false;
+                i.ready = admission_external_ready_ = false;
             if ((s.id == "FE-T52" || (options_.random && s.classification == "interface_stress")) &&
                 step_index == 200)
                 i.flush_bpu = true;
@@ -1060,6 +1210,15 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
     for (const auto &w : s.witnesses)
         if (!local_[w])
             missing.push_back(w);
+    static const std::map<std::string, std::string> unfinished = {
+        {"FE-T43", "FE22:complete-exception-recovery-obligations"},
+        {"FE-T48", "EQ08:delayed-data-fault-backend-context"},
+        {"FE-T49", "FE22:complete-delayed-redirect-obligations"},
+        {"FE-T50", "EQ11:complete-faulting-JAL-RET-characterization"},
+        {"FE-T51", "FQ02/FQ03/FQ04:alternative-memory-protocols"},
+        {"FE-T54", "FE24:external-confidence-validators"}};
+    if (unfinished.count(s.id))
+        missing.push_back(unfinished.at(s.id));
     const bool finite_semantic = !options_.random && s.classification == "architectural" &&
                                  s.id != "FE-T06" && s.id != "FE-T07" && s.id != "FE-T45";
     if (finite_semantic && !local_["program-marker"])
@@ -1163,25 +1322,59 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
             obligations << ',';
         obligations << backend_ledger_[k];
     }
-    obligations << "]}\n";
+    obligations << "],\"resources\":" << backend_->stats.json() << "}\n";
     if (options_.profile == "predictor-agnostic")
         missing.push_back("FEQ01:fully-predictor-agnostic-path-oracle-not-implemented");
     const bool mismatch = stats.field_errors != errors_before;
-    std::string status = mismatch                                    ? "failed"
+    std::string status = stats.environment != environment_before || stats.framework != framework_before ? "invalid"
+                         : mismatch                                  ? "failed"
                          : problem.rfind("incomplete:", 0) == 0      ? "incomplete"
                          : !problem.empty()                          ? "invalid"
                          : !s.limitation.empty() || !missing.empty() ? "incomplete"
+                         : !s.provisional_contract.empty()           ? "provisional"
                                                                      : "passed";
+    const std::string verification = stats.framework != framework_before ? "FAIL_FRAMEWORK"
+                                     : stats.environment != environment_before ? "FAIL_ENVIRONMENT"
+                                     : mismatch ? "FAIL_MISMATCH"
+                                     : status == "invalid" ? "FAIL_FRAMEWORK"
+                                     : status == "incomplete" ? "WARN_INCOMPLETE"
+                                     : status == "provisional" ? "WARN_PROVISIONAL" : "PASS";
+    incomplete_results_ += status == "incomplete";
+    provisional_results_ += status == "provisional";
+    invalid_results_ += status == "invalid";
+    passed_results_ += status == "passed";
+    mismatch_results_ += verification == "FAIL_MISMATCH";
+    environment_results_ += verification == "FAIL_ENVIRONMENT";
+    framework_results_ += verification == "FAIL_FRAMEWORK";
+    const std::string reason = !problem.empty() ? problem : !s.limitation.empty() ? s.limitation
+                               : !missing.empty() ? (local_["program-marker"] ? "Program terminated before required temporal witness was observed"
+                                                                            : "Required temporal witness not reached within cycle budget") : s.provisional_contract;
     std::ostringstream result;
     result << "{\"scenario\":" << json_quote(s.id) << ",\"title\":" << json_quote(s.title)
+           << ",\"variant\":" << s.variant << ",\"instance\":" << instance_
+           << ",\"verification_status\":" << json_quote(verification)
+           << ",\"completion\":" << (status == "passed" ? "true" : "false")
+           << ",\"cycles_executed\":" << stats.cycles - cycle_before
+           << ",\"cycle_budget\":" << (limit ? limit : s.budget)
+           << ",\"program_repetitions\":" << s.repetitions
+           << ",\"termination\":" << json_quote(!problem.empty() ? "interrupted-see-reason" : local_["program-marker"] ? "program-marker" : "bounded-stop")
+           << ",\"requirement\":" << json_quote(s.id == "FE-T15" ? "FE05/FE08/FEV08"
+                                                                 : unfinished.count(s.id) ? unfinished.at(s.id)
+                                                                 : "FE20/FE23; see requirement_checks and witness provenance")
+           << ",\"unresolved_contract\":" << json_quote(s.provisional_contract)
+           << ",\"incomplete_kind\":" << json_quote(status == "provisional" ? "unresolved-contract"
+                                                       : status != "incomplete" ? ""
+                                                       : s.id == "FE-T54" ? "external-validator-delegation"
+                                                       : !s.limitation.empty() ? "deferred-contract" : "unwitnessed-coverage")
            << ",\"status\":" << json_quote(status) << ",\"classification\":" << json_quote(s.classification)
            << ",\"program\":" << json_quote(program_.family)
            << ",\"program_digest\":" << json_quote(program_.digest())
+           << ",\"backend_resources\":" << backend_->stats.json()
            << ",\"execution_latency\":" << active_latency_.json()
            << ",\"execution_latency_seed\":" << active_latency_seed_
            << ",\"comparisons\":" << stats.checks - checks_before
            << ",\"field_errors\":" << stats.field_errors - errors_before
-           << ",\"reason\":" << json_quote(problem.empty() ? s.limitation : problem)
+           << ",\"reason\":" << json_quote(reason)
            << ",\"missing_witnesses\":[";
     for (size_t k = 0; k < missing.size(); ++k) {
         if (k)
@@ -1206,23 +1399,21 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
                    stats.checks - checks_before);
     else
         TB_WARN("%s > %s status=%s missing=%zu reason=%s",
-                status == "incomplete" ? "Test incomplete" : "Test failed", s.id.c_str(), status.c_str(),
-                missing.size(), (problem.empty() ? s.limitation : problem).c_str());
+                status == "incomplete" ? "Test incomplete" : status == "provisional" ? "Test provisional" : "Test failed", s.id.c_str(), status.c_str(),
+                missing.size(), reason.c_str());
 }
 int Simulator::finish() {
-    bool incomplete = false;
-    bool invalid = false;
-    for (const auto &r : results_) {
-        incomplete |= r.find("\"status\":\"incomplete\"") != std::string::npos;
-        invalid |= r.find("\"status\":\"invalid\"") != std::string::npos;
-    }
+    const bool incomplete = incomplete_results_ != 0;
+    const bool warnings = incomplete || provisional_results_;
     if (stats.requests != stats.delivered + stats.canceled)
         error("framework_error", "FE20: frontend request conservation failed");
     if (stats.dynamic != stats.retired + stats.backend_canceled)
         error("framework_error", "FE20: dynamic instruction conservation failed");
-    const int status = stats.environment || stats.framework || invalid   ? 2
+    if (!stats.checks || results_.empty())
+        error("framework_error", "FE24: empty suite or zero useful comparisons");
+    const int status = stats.environment || stats.framework || invalid_results_ ? 2
                        : stats.field_errors                              ? 1
-                       : incomplete || !stats.checks || results_.empty() ? 3
+                       : warnings && options_.strict_completion           ? 3
                                                                          : 0;
     const auto dir = options_.run_dir + "/logs";
     std::ofstream cov(dir + "/coverage.json");
@@ -1245,6 +1436,7 @@ int Simulator::finish() {
         " --max_cycles=" + std::to_string(options_.max_cycles) + " --expect_fingerprint=" + cfg_.fingerprint +
         " --expect_issues=" + std::to_string(cfg_.lanes) + " --profile=" + options_.profile +
         " --ras_order=" + options_.ras_order +
+        " --strict_completion=" + (options_.strict_completion ? "true" : "false") +
         " --exec_latency_min=" + std::to_string(options_.latency.minimum) +
         " --exec_latency_max=" + std::to_string(options_.latency.maximum) +
         " --exec_latency_dist=" + options_.latency.distribution +
@@ -1263,6 +1455,7 @@ int Simulator::finish() {
               " --guided=" + (options_.guided ? "true" : "false") + " --weights='" + options_.weights + "'";
     replay += " --directed_cycles=" + std::to_string(options_.directed_cycles) +
               " --directed_repetitions=" + std::to_string(options_.directed_repetitions);
+    replay += std::string(" --latency_override=") + (options_.latency_explicit ? "true" : "false");
     if (options_.variant != UINT32_MAX)
         replay += " --variant=" + std::to_string(options_.variant);
     if (options_.random)
@@ -1273,12 +1466,25 @@ int Simulator::finish() {
         replay += " --inject_failure=" + options_.inject;
     std::ofstream report(dir + "/report.json");
     report << "{\"status\":"
-           << json_quote(status == 0   ? "passed"
-                         : status == 1 ? "failed"
+           << json_quote(status == 1 ? "failed"
                          : status == 2 ? "invalid"
-                                       : "incomplete")
+                         : incomplete ? "incomplete" : provisional_results_ ? "provisional" : "passed")
+           << ",\"verification_status\":" << json_quote(stats.framework ? "FAIL_FRAMEWORK"
+                                                        : stats.environment ? "FAIL_ENVIRONMENT"
+                                                        : invalid_results_ ? "FAIL_FRAMEWORK"
+                                                        : stats.field_errors ? "FAIL_MISMATCH"
+                                                        : incomplete ? "WARN_INCOMPLETE" : provisional_results_ ? "WARN_PROVISIONAL" : "PASS")
+           << ",\"execution_status\":" << json_quote(status ? "failed" : warnings ? "success_with_warnings" : "success")
+           << ",\"strict_completion\":" << (options_.strict_completion ? "true" : "false")
+           << ",\"specification_complete\":" << (!status && !warnings ? "true" : "false")
+           << ",\"all_required_checks_executed\":" << (!status && !warnings ? "true" : "false")
+           << ",\"variant_counts\":{\"PASS\":" << passed_results_ << ",\"WARN_INCOMPLETE\":" << incomplete_results_
+           << ",\"WARN_PROVISIONAL\":" << provisional_results_
+           << ",\"FAIL_MISMATCH\":" << mismatch_results_
+           << ",\"FAIL_ENVIRONMENT\":" << environment_results_
+           << ",\"FAIL_FRAMEWORK\":" << framework_results_ << "}"
            << ",\"exit_status\":" << status << ",\"full_contract_signoff\":false,\"seed\":" << options_.seed
-           << ",\"policy\":\"fetch-stage-closed-loop-v1\",\"profile\":" << json_quote(options_.profile)
+           << ",\"policy\":\"fetch-stage-closed-loop-v1\",\"directed_stream_policy\":\"episode-isolated-v2\",\"profile\":" << json_quote(options_.profile)
            << ",\"config\":{\"LEN5_MULTIPLE_ISSUES\":" << cfg_.lanes
            << ",\"boot_pc\":" << json_quote(hex64(cfg_.boot))
            << ",\"fingerprint\":" << json_quote(cfg_.fingerprint)
@@ -1342,8 +1548,11 @@ int Simulator::finish() {
               "recovery window\"]}\n";
     if (!report || !cov || !training_ || !journal_)
         throw std::runtime_error("report output failure");
-    if (status)
+    if (status == 1 || status == 2)
         TB_ERR("TEST FAILED > errors: %" PRIu64 "/%" PRIu64, stats.failed_samples, stats.transactions);
+    else if (warnings)
+        TB_WARN("All executed checks passed; verification coverage INCOMPLETE (%u variants); strict=%s exit=%d",
+                incomplete_results_ + provisional_results_, options_.strict_completion ? "true" : "false", status);
     else
         TB_SUCCESS(LOG_LOW, "TEST SUCCEEDED > errors: %" PRIu64 "/%" PRIu64, stats.failed_samples,
                    stats.transactions);

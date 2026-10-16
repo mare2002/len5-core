@@ -448,6 +448,8 @@ check-fetch-mem-if-mutations: fetch-mem-if-build
 	@python3 tb/frontend/fetch_mem_if/mutate.py --binary "$(FETCH_MEM_BINARY)" --output "$(BUILD_DIR)/fetch-mem-if/mutation" --jobs "$(JOBS)"
 
 # Closed-loop complete production frontend. Only source-selected configuration.
+STRICT_COMPLETION ?= false
+export STRICT_COMPLETION
 .PHONY: fetch-stage-build check-fetch-stage check-fetch-stage-run check-fetch-stage-framework check-fetch-stage-random check-fetch-stage-random-framework check-fetch-stage-regression check-fetch-stage-mutations
 FETCH_STAGE_BINARY = $$(python3 tb/frontend/fetch_stage/configuration.py --binary --build-dir '$(BUILD_DIR)')
 fetch-stage-build:

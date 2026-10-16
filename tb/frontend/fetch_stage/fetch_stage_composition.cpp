@@ -180,6 +180,7 @@ CompositionPlan Composition::plan(const Inputs &i, uint64_t cycle) const {
                 l.prediction_history = snapshot->second.history;
                 l.prediction_index = snapshot->second.index[k];
                 l.prediction_counter = snapshot->second.counter[k];
+                l.prediction_generation = snapshot->second.generation[k];
             }
             if (!p.ee.predictions[k].pc.known || !p.ee.predictions[k].hit.known ||
                 !p.ee.predictions[k].taken.known || (l.prediction.hit && !p.ee.predictions[k].target.known))
@@ -258,6 +259,7 @@ std::optional<PredictorUpdate> Composition::edge(const Inputs &i, const Composit
         for (unsigned k = 0; k < cfg_.lanes; ++k) {
             snapshot.index[k] = bpu_.index(p.ms.inputs.predictions[k].pc);
             snapshot.counter[k] = bpu_.counter(snapshot.index[k]);
+            snapshot.generation[k] = bpu_.generation(snapshot.index[k]);
         }
         snapshots_[p.ms.request_id] = snapshot;
     }

@@ -1,7 +1,7 @@
 # Complete frontend: closed-loop verification specification
 
 Architecture findings established 2026-10-15 on `feat-verification`.
-**Implementation and executed evidence are recorded in §21–22, [README.md](README.md)
+**Implementation and executed evidence are recorded in §21–23, [README.md](README.md)
 and [COMPLETION_AUDIT.md](COMPLETION_AUDIT.md).
 Full specification sign-off remains incomplete.** The original architecture findings
 and planned acceptance criteria below are retained; they are not all passing claims.
@@ -1096,9 +1096,10 @@ physical grants, fairly drain accepted responses/outputs and eligible feedback,
 then use a declared final reset/cancellation for residual speculative fetch work.
 If an early flush occurs during draining, apply its normal accounting. A
 deliberately infinite program uses a bounded observation window and explicit end
-cancellation; training/witness goals still need completion before it. Timeout,
-zero meaningful comparisons, zero actual branch training in a training scenario,
-or pending required witnesses is incomplete, not PASS.
+cancellation; training/witness goals still need completion before it. A clean cycle-budget stop, zero actual branch training in a training scenario,
+or pending required witnesses is incomplete, not PASS. Zero meaningful comparisons
+is a framework failure; an unexpected wall-clock watchdog/crash is also a framework
+failure. Incomplete meaningful runs warn by default; strict completion rejects them.
 
 ## 17. Confidence validation and mutation plan
 
@@ -1315,8 +1316,10 @@ All tests passed
 ```
 
 Final aggregate success requires every required group to succeed. Native exits
-retain 0 checked success, 1 comparison failure (confirmed/provisional distinguished),
-2 invalid environment/configuration/harness and 3 empty/incomplete/timeout.
+retain0 successful execution (including explicit completion warnings),1 known
+comparison failure (evidence confidence distinguished),2 invalid environment/configuration/
+harness/empty execution and3 strict completion rejection. Default incompleteness
+does not fail execution. Section23 supersedes historical exit-policy statements.
 Expected-negative validation is explicitly reported as successful detection, never
 mixed with ordinary DUT PASS. Count cycles, samples, field comparisons, accepted
 requests/bundles/lanes, emitted updates, confirmations, canceled IDs and completed
@@ -1583,3 +1586,122 @@ accepted-update/record conservation across reset. Canonical ordinary evidence ha
 updates,183 controlled-stop cancellations and one populated-reset cancellation.
 These773 records do not prove every individual hidden PHT/GHR transition. All45
 architectural-controller lifecycle audits pass.
+
+
+## 23. Execution success versus specification completion (2026-10-16)
+
+This section supersedes the historical policy of automatically returning3 for any
+incomplete case. It changes reporting/orchestration, not golden transitions or
+coverage obligations. Approved FE/EJ/RA/FM comparisons remain active.
+
+* `PASS`: all required selected checks and witnesses completed.
+* `WARN_INCOMPLETE`: meaningful checks executed without a hard failure, but
+  required witnesses, a bounded episode or a deferred feature remain incomplete.
+* `WARN_PROVISIONAL`: a named unresolved contract prevents definitive sign-off.
+  Matched FE-T41 same-edge EQ07 hypotheses fall here; algorithm approval does not
+  approve same-edge RAS ordering. Independent comparison failures remain failures.
+* `FAIL_MISMATCH`: a known comparison failed. Merely carrying I provenance does
+  not demote an exact transport/approved-policy failure to a warning.
+* `FAIL_ENVIRONMENT`: invalid stimulus, configuration or source agreement.
+* `FAIL_FRAMEWORK`: malformed/missing required evidence, wrong merging, unexpected
+  termination, empty/no useful comparisons, or internal verification errors.
+
+Default `STRICT_COMPLETION=false`: PASS and warnings return0; mismatches return1;
+environment/framework failures return2. Strict completion returns3 for selected
+incomplete/provisional obligations. Precedence:2 then1 then3 then0. This does not
+promote Q policies into D: strict mode requires evidence/approval within the selected
+scope, rather than assigning arbitrary golden values. GNU Make propagates a recipe
+failure through its own exit2; reports and Python/native retain completion code3.
+
+Native and composed reports retain `verification_status`, `completion`,
+`execution_status`, `strict_completion`, and `specification_complete`, separately
+from `exit_status`. Full-contract sign-off remains false. Warning-only execution
+prints PASS WITH WARNINGS and INCOMPLETE completion. Required scenario/variant
+manifests, source fingerprints and FE-T54 receipts are validated structurally.
+No missing subprocess/report is relabeled as a mere incomplete test. Deliberate
+negative fixtures PASS only on their intended classification and evidence.
+
+Directed episodes isolate event/memory streams so individual, full-catalog and
+parallel execution use the same episode setup. Default sampled latency remains
+uniform1–64, program repetitions32 and per-episode budget6000;34/47 use fixed64
+fixtures and37 uses an older64/younger1 seed fixture unless explicitly overridden.
+FE38 retains seven distribution variants. Explicit overrides are reported/replayed;
+there is no global latency reduction or blanket budget extension. Program-marker
+completion is distinct from bounded-stop cancellation. Missing training/RAS probes
+survive controlled stop in the reports.
+
+Ordinary scope keeps its declared exclusions FE41/43/48/49/50/51 and executes FE54
+through the24-validator composite. Full directed scope keeps all54 IDs and all
+applicable variants. FE43/48/49/50/51 retain their deferred/unfinished checks;
+FE15's potentially missing upward threshold is unexpected coverage incompleteness,
+not a new exclusion or an RTL failure. Source-selected N on this task's entry is4,
+not the N2 value in the preceding historical audit; neither RTL nor configuration
+is changed. See the new audit entry for actual execution evidence and the original
+zero-mismatch FE15 failure diagnosis.
+
+
+## 24. Final backend and history-index audit (2026-10-16)
+
+[FINAL_FRONTEND_ARCHITECTURE_AUDIT.md](FINAL_FRONTEND_ARCHITECTURE_AUDIT.md)
+records source findings, exact public traces, implementation changes and validation.
+This section supersedes older backend-capacity and FE-T15-incomplete statements,
+without rewriting their historical evidence or promoting unrelated I/Q policies.
+
+FE05 retains approved **Policy A**: pre-edge current GHR XOR resolution word-PC
+index. Fetch does not speculate history. GH01 proves that two surviving in-flight
+branches can have different lookup and update histories even with ordered
+resolution. The independent current predictor remains unchanged except diagnostic
+write generations. **Policy B**, saved-lookup-index training, is an explicitly
+separate architecture experiment, not a new golden requirement. The recommendation
+is to retain A for the present verified baseline and measure closed-loop A/B
+behavior before approving a production redesign. Required packed-record/pipeline
+changes for B are concrete in the audit; no RTL changes are applied.
+
+FE-T15 keeps opposing-outcome collision/interference and raw public threshold
+gates, and additionally requires BTB-hit pre/post up/down witnesses. It uses the
+persistent `threshold-interacting` program: controlled NT/T/NT/NT prelude, then the
+original interacting body with unchanged low-index relationships. The monitor
+requires accepted, matched, non-EJU-rewritten conditional predictions at adjacent
+PHT write generations; future/intervening writes cannot satisfy an old crossing.
+Both raw and BTB-hit thresholds are actually witnessed. Strict FE-T15 can complete;
+custom insufficient budgets/latencies still produce explicit incomplete results.
+
+FE17/FE18/FE20 gain finite source-derived IQ16, ROB32, ALU RS8 and branch RS4
+resource accounting. Bundle admission reserves its actual V valid slots. Scalar
+issue allocates ROB+RS; capture does not release them, publication releases RS,
+retirement/squash releases ROB. Independent ALU/BU captures can overlap, but the
+CDB publishes at most one result/edge and retirement is scalar. Optional production
+EU forwarding/ROB lookahead are conservatively omitted. This is a physically
+bounded environment abstraction, not verification of the real backend pipelines.
+
+The §9 generation contract is preserved: sample L once and require readiness no
+earlier than dispatch+L. L is **not FU service latency**. Execution start also
+requires scalar issue and published dependencies; a separate one-cycle service,
+result capture, bounded publication and subsequent retirement are recorded.
+Normal branch confirmation/training schedules remain capture+1/+2. IQ/ROB/RS
+violations, skipped feedback, duplicate scheduler edges, invalid bundles and
+lifecycle/bandwidth errors are hard framework/environment failures, not warnings.
+
+BP01–BP08 and GH01 are explicitly selected auxiliary tests, outside the54-ID FE
+catalog. Every BP case also requires its finite-program marker. BP02 is an
+explicit retirement-backpressure stress fixture; BP05 is a shorter fixed256
+readiness fixture so even N1 has real full/stall/resume history. BP01 removes
+random output stalls; BP07 combines random stalls with physical capacity. Real
+isolated N1/2/4/8 elaborations check width-sensitive admission, never package
+mixing or live-source mutation. Coverage separates accepted events, matched
+consuming edges, actual stalled valid offers and mere ready-low idle cycles.
+
+`history_audit.py` reconstructs accepted-request H/PHT snapshots from public
+inputs, verifies dynamic branch association and compares A/B on the same feedback
+trace. Counter magnitudes/indexes remain inferred; saved raw direction and valid
+output are public witnesses. Seven independent attribution tests include
+wrong history/index/ID and same-edge old/new substitution. The public journal
+reconstructor now retains cumulative training counts across reset windows while
+keeping per-window duplicate detection. Existing PC/EJU/FM models remain unchanged.
+
+Default/strict result semantics (§23), FE-T54's24 native validators and deferred
+FE-T43/48/49/50/51 remain intact. This audit does not close EQ07/EQ08, the delayed
+exception window, alternative memory protocols, fully predictor-agnostic checking
+or exhaustive FEV sign-off. Final counts are evidence-linked in the completion
+audit; historical million-cycle/mutation results are not new evidence for these
+changes.
