@@ -446,3 +446,38 @@ check-fetch-mem-if-regression: fetch-mem-if-build
 
 check-fetch-mem-if-mutations: fetch-mem-if-build
 	@python3 tb/frontend/fetch_mem_if/mutate.py --binary "$(FETCH_MEM_BINARY)" --output "$(BUILD_DIR)/fetch-mem-if/mutation" --jobs "$(JOBS)"
+
+# Closed-loop complete production frontend. Only source-selected configuration.
+.PHONY: fetch-stage-build check-fetch-stage check-fetch-stage-run check-fetch-stage-framework check-fetch-stage-random check-fetch-stage-random-framework check-fetch-stage-regression check-fetch-stage-mutations
+FETCH_STAGE_BINARY = $$(python3 tb/frontend/fetch_stage/configuration.py --binary --build-dir '$(BUILD_DIR)')
+fetch-stage-build:
+	@BUILD_DIR="$(BUILD_DIR)" FUSESOC="$(FUSESOC)" python3 tb/frontend/fetch_stage/run.py --build-only
+
+check-fetch-stage: fetch-stage-build
+	@python3 tb/frontend/fetch_stage/suite.py --binary "$(FETCH_STAGE_BINARY)" --output "$(BUILD_DIR)/fetch-stage/suite" --jobs "$(JOBS)" --test-jobs "$(or $(TEST_JOBS),3)"
+
+check-fetch-stage-run:
+	@BUILD_DIR="$(BUILD_DIR)" FUSESOC="$(FUSESOC)" LOG_LEVEL="$(LOG_LEVEL)" python3 tb/frontend/fetch_stage/run.py
+
+check-fetch-stage-framework: fetch-stage-build
+	@python3 tb/frontend/fetch_stage/validate.py --binary "$(FETCH_STAGE_BINARY)" --output "$(BUILD_DIR)/fetch-stage/validation"
+
+check-fetch-stage-random:
+	@BUILD_DIR="$(BUILD_DIR)" FUSESOC="$(FUSESOC)" LOG_LEVEL="$(LOG_LEVEL)" python3 tb/frontend/fetch_stage/run.py --random
+
+check-fetch-stage-random-framework: fetch-stage-build
+	@python3 tb/frontend/fetch_stage/validate.py --random --binary "$(FETCH_STAGE_BINARY)" --output "$(BUILD_DIR)/fetch-stage/validation"
+
+check-fetch-stage-regression: fetch-stage-build
+	@python3 tb/frontend/fetch_stage/regress.py --binary "$(FETCH_STAGE_BINARY)" --output "$(BUILD_DIR)/fetch-stage/regression" --seed "$(or $(SEED),1)" --seeds "$(or $(SEEDS),100)" --cycles "$(or $(CYCLES),10000)" --jobs "$(JOBS)" $(if $(filter true,$(REQUIRE_MATRIX)),--require-matrix)
+
+check-fetch-stage-mutations: fetch-stage-build
+	@python3 tb/frontend/fetch_stage/mutate.py --binary "$(FETCH_STAGE_BINARY)" --output "$(BUILD_DIR)/fetch-stage/mutation" --jobs "$(or $(JOBS),2)" $(if $(MUTATIONS),--only=$(MUTATIONS))
+
+# Focused audit workflows: private production configurations and explicit scope.
+.PHONY: check-fetch-stage-widths-smoke check-fetch-stage-core
+check-fetch-stage-widths-smoke:
+	@FUSESOC="$(FUSESOC)" python3 tb/frontend/fetch_stage/widths_smoke.py --output "$(BUILD_DIR)/fetch-stage/widths-smoke"
+
+check-fetch-stage-core: fetch-stage-build
+	@python3 tb/frontend/fetch_stage/core.py --binary "$(FETCH_STAGE_BINARY)" --output "$(BUILD_DIR)/fetch-stage/core" --jobs "$(or $(JOBS),2)"

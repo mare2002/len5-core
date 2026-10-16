@@ -1,0 +1,102 @@
+CAPI=2:
+name: polito:len5:fetch-stage-tb:0.1.0
+description: Closed-loop production fetch_stage verification, composed independent
+  models
+filesets:
+  dut:
+    depend:
+    - polito:len5:packages
+    files:
+    - ../../../rtl/common/modn_counter.sv
+    - ../../../rtl/common/fifo_nohs.sv
+    - ../../../rtl/common/spill_cell_flush_cu.sv
+    - ../../../rtl/common/spill_cell_flush.sv
+    - ../../../rtl/common/prio_enc.sv
+    - ../../../rtl/frontend/pc_gen.sv
+    - ../../../rtl/frontend/bpu.sv
+    - ../../../rtl/frontend/btb.sv
+    - ../../../rtl/frontend/gshare.sv
+    - ../../../rtl/frontend/gen_valid_instr.sv
+    - ../../../rtl/frontend/fetch_mem_if.sv
+    - ../../../rtl/frontend/ras.sv
+    - ../../../rtl/frontend/early_jump_unit.sv
+    - ../../../rtl/frontend/instr_mixer.sv
+    - ../../../rtl/frontend/fetch_stage.sv
+    - fetch_stage_tb.sv
+    file_type: systemVerilogSource
+  harness:
+    depend:
+    - polito:len5:verilator-common
+    files:
+    - fetch_stage_components.hh:
+        is_include_file: true
+    - fetch_stage_components.cpp
+    - fetch_stage_program.cpp
+    - fetch_stage_composition.hh:
+        is_include_file: true
+    - fetch_stage_composition.cpp
+    - fetch_stage_driver.hh:
+        is_include_file: true
+    - fetch_stage_ras_witness.hh:
+        is_include_file: true
+    - fetch_stage_driver.cpp
+    - fetch_stage_configuration.cpp
+    - fetch_stage_tb.cpp
+    - ../pc_gen/pc_gen_model.hh:
+        is_include_file: true
+    - ../pc_gen/pc_gen_model.cpp
+    - ../early_jump_unit/early_jump_model.hh:
+        is_include_file: true
+    - ../early_jump_unit/early_jump_model.cpp
+    - ../early_jump_unit/early_jump_instructions.hh:
+        is_include_file: true
+    - ../early_jump_unit/early_jump_instructions.cpp
+    - ../fetch_mem_if/fetch_mem_model.hh:
+        is_include_file: true
+    - ../fetch_mem_if/fetch_mem_model.cpp
+    file_type: cppSource
+  waivers:
+    files:
+    - ../../../rtl/misc/frontend-waivers.vlt
+    - fetch_stage_waivers.vlt
+    file_type: vlt
+targets:
+  sim:
+    default_tool: verilator
+    toplevel: fetch_stage_tb
+    filesets:
+    - dut
+    - harness
+    - waivers
+    parameters:
+    - MEM_DEPTH
+    - BOOT_PC
+    tools:
+      verilator:
+        mode: cc
+        verilator_options:
+        - --assert
+        - -fno-dfg
+        - --trace-fst
+        - --trace-depth 1
+        - --x-assign unique
+        - --x-initial unique
+        - -Wall
+        - -Wpedantic
+        make_options:
+        - OBJCACHE=
+        - CXX=/usr/bin/g++
+        - -j4
+        - OPT_FAST=-O2
+        - OPT_GLOBAL=-O2
+        - CXXFLAGS+=-std=c++17
+parameters:
+  MEM_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    default: 2
+    description: Source-derived production metadata-depth default; verified at startup
+  BOOT_PC:
+    datatype: int
+    paramtype: vlogparam
+    default: 0

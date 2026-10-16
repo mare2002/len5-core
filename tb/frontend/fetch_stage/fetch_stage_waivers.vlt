@@ -1,0 +1,19 @@
+`verilator_config
+// The DUT deliberately transports all prediction fields; common packages contain
+// additional constants/types. Keep functional width/loop warnings visible.
+lint_off -rule DECLFILENAME -file "*/fetch_stage_tb.sv"
+lint_off -rule UNUSEDSIGNAL -file "*/fetch_mem_if.sv"
+lint_off -rule UNUSEDPARAM -file "*/fetch_mem_if.sv"
+// Deliberately unused terminal count and assertion-only validity bookkeeping.
+lint_off -rule PINCONNECTEMPTY -file "*/fifo_nohs.sv" -match "*tc_o*"
+lint_off -rule UNUSEDSIGNAL -file "*/fifo_nohs.sv" -match "*data_valid*"
+// The source-selected request SKIP=1 bypass intentionally does not use these pins.
+lint_off -rule UNUSEDSIGNAL -file "*/spill_cell_flush.sv" -match "*clk_i*"
+lint_off -rule UNUSEDSIGNAL -file "*/spill_cell_flush.sv" -match "*rst_ni*"
+lint_off -rule UNUSEDSIGNAL -file "*/spill_cell_flush.sv" -match "*flush_i*"
+
+// RAS deliberately leaves priority encoder valid unused.
+lint_off -rule PINCONNECTEMPTY -file "*/ras.sv" -match "*valid_o*"
+// Coarse combinational-block dependency: registered answer-valid is independent
+// of same-cycle flush, whereas ready is gated by it. Settle is checked natively.
+lint_off -rule UNOPTFLAT -file "*/fetch_mem_if.sv" -match "*flush_i*"
