@@ -3,8 +3,11 @@
 module tc_sram_config_tb #(
     parameter int TEST_CASE = 0
 );
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned TEST_LATENCY = TEST_CASE == 1 ? 0 : TEST_CASE == 2 ? 2 : TEST_CASE == 12 ? 8 : 1;
   tc_sram_adapter #(
-      .LATENCY(TEST_CASE == 1 ? 0 : TEST_CASE == 2 ? 2 : 1),
+      .LATENCY(TEST_LATENCY),
+      .RESPONSE_DEPTH(TEST_CASE == 13 ? 1 : TEST_LATENCY + 1),
       .BASE_ADDR(TEST_CASE == 3 ? 64'h2000_0000 :
                  TEST_CASE == 4 ? 64'h1001 :
                  TEST_CASE == 5 ? 64'hffff_ffff_ffff_fff8 : 64'h1000),
@@ -15,6 +18,7 @@ module tc_sram_config_tb #(
       .clk_i(1'b0),
       .rst_ni(1'b0),
       .instr_flush_i(1'b0),
+      .load_flush_i(1'b0),
       .initialized_i(1'b0),
       .instr_req_i(1'b0),
       .instr_ready_i(1'b0),

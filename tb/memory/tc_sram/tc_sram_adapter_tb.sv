@@ -4,11 +4,13 @@ module tc_sram_adapter_tb;
   import len5_config_pkg::*;
   import memory_backend_pkg::*;
   localparam int N = LEN5_MULTIPLE_ISSUES;
+  localparam int LATENCY = SRAM_LATENCY;
+  localparam int CAPACITY = SRAM_RESPONSE_DEPTH;
   localparam logic [63:0] BASE = 64'h1000;
   localparam int SIZE = 256;
   localparam int AW = $clog2(SIZE / 8);
   localparam logic [63:0] SERIAL = 64'h3000_0000, EXIT = 64'h3000_0100;
-  bit clk = 0, rst = 0, flush = 0;
+  bit clk = 0, rst = 0, flush = 0, load_flush = 0;
   bit [2:0] req = 0, ready = 0;
   logic [2:0][63:0] addr, wdata, rdata;
   logic [2:0][7:0] be;
@@ -17,7 +19,7 @@ module tc_sram_adapter_tb;
   logic [2:0][AW-1:0] sr_addr;
   logic [2:0][63:0] sr_wdata;
   logic [2:0][7:0] sr_be;
-  logic [2:0][1:0] outstanding, occupancy;
+  logic [2:0][SRAM_COUNT_WIDTH-1:0] outstanding, occupancy;
   logic initialized, mmio;
   memory_response_t rsp;
   tc_sram_adapter #(
@@ -29,6 +31,7 @@ module tc_sram_adapter_tb;
       .clk_i(clk),
       .rst_ni(rst),
       .instr_flush_i(flush),
+      .load_flush_i(load_flush),
       .initialized_i(initialized),
       .instr_req_i(req[0]),
       .instr_ready_i(ready[0]),
@@ -162,6 +165,15 @@ module tc_sram_adapter_tb;
         fetch_beat = -1;
         flush_count++;
       end
+      if (LATENCY > 1 && load_flush) begin
+        loads.delete();
+        assert (!valid[1] && !grant[1])
+        else $fatal(1, "Load activity during cancellation");
+      end
+      // Results must be visible as soon as their fixed-latency operation reaches the queue head.
+      if (loads.size() != 0 && cycle_no >= loads[0].due) assert (valid[1]);
+      if (stores.size() != 0 && cycle_no >= stores[0].due) assert (valid[2]);
+      if (fetches.size() != 0 && cycle_no >= fetches[0].due) assert (valid[0]);
       // Validate every visible response, including every stalled cycle.
       if (valid[1]) begin
         assert (loads.size() != 0)
@@ -183,7 +195,7 @@ module tc_sram_adapter_tb;
           );
         if (ready[1]) begin
           e = loads.pop_front();
-          latency_sum[1] += cycle_no - e.due + 1;
+          latency_sum[1] += cycle_no - e.due + LATENCY;
         end
       end
       if (valid[2]) begin
@@ -217,7 +229,7 @@ module tc_sram_adapter_tb;
         if (ready[0]) begin
           f = fetches.pop_front();
           fetch_slot--;
-          latency_sum[0] += cycle_no - f.due + (N + 1) / 2;
+          latency_sum[0] += cycle_no - f.due + (N + 1) / 2 + LATENCY - 1;
         end
       end
       accepted_now = req & grant;
@@ -242,7 +254,7 @@ module tc_sram_adapter_tb;
         fetch_beat = 0;
         fetch_slot = fetches.size();
         f = '0;
-        f.due = cycle_no + (N + 1) / 2;
+        f.due = cycle_no + (N + 1) / 2 + LATENCY - 1;
         fetches.push_back(f);
       end
       if (fetch_beat != -1) begin
@@ -265,7 +277,7 @@ module tc_sram_adapter_tb;
       end else assert (!sr_req[0]);
       for (int p = 1; p < 3; p++) begin
         size = size_of(be[p]);
-        e = '{data: 0, tag: tag[p], code: fault(addr[p], size, p), due: cycle_no + 1};
+        e = '{data: 0, tag: tag[p], code: fault(addr[p], size, p), due: cycle_no + (p == 1 ? LATENCY : 1)};
         expected_native = accepted_now[p] && e.code == E_UNKNOWN && addr[p] != SERIAL && addr[p] != EXIT;
         assert (sr_req[p] == expected_native)
         else $fatal(1, "Native request mismatch port %0d", p);
@@ -297,7 +309,8 @@ module tc_sram_adapter_tb;
     req   = 0;
     ready = 7;
     flush = 0;
-    repeat (10) tick();
+    load_flush = 0;
+    repeat (LATENCY + CAPACITY + (N + 1) / 2 + 5) tick();
     assert (loads.size() == 0 && stores.size() == 0 && fetches.size() == 0)
     else $fatal(1, "Drain failed");
   endtask
@@ -374,10 +387,24 @@ module tc_sram_adapter_tb;
     addr[2] = BASE + 8;
     be[1] = 255;
     be[2] = 255;
-    repeat (12) tick();
+    repeat ((CAPACITY + 1) * ((N + 1) / 2) + LATENCY + 2) tick();
     drain();
+    // A canceled read must never complete a post-flush request reusing the same LSU tag.
+    if (LATENCY > 1) begin
+      req = 2;
+      addr[1] = BASE;
+      tag[1] = 0;
+      tick();
+      load_flush = 1;
+      tick();
+      load_flush = 0;
+      addr[1] = BASE + 8;
+      tick();
+      drain();
+    end
     for (int i = 0; i < cycles; i++) begin
       flush = random32() % 40 == 0;
+      if (LATENCY > 1) load_flush = random32() % 53 == 0;
       for (int p = 0; p < 3; p++) begin
         req[p] = random32() % 10 != 0;
         ready[p] = random32() % 4 != 0;
@@ -412,7 +439,7 @@ module tc_sram_adapter_tb;
     drain();
     assert (all_three > 0 && collision > 0 && mmio_count > 0 && flush_count > 0);
     for (int p = 0; p < 3; p++) begin
-      assert (errors[p] > 0 && max_out[p] == 2 && stalled[p] > 0 && blocked[p] > 0);
+      assert (errors[p] > 0 && max_out[p] == CAPACITY && max_occ[p] == CAPACITY && stalled[p] > 0 && blocked[p] > 0);
       $display(
           "PORT %0d accepted=%0d completed=%0d native=%0d errors=%0d latency=%f max_out=%0d avg_out=%f max_occ=%0d avg_occ=%f req_stall=%0d rsp_stall=%0d",
           p, accepted[p], completed[p], native_count[p], errors[p],

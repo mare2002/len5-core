@@ -7,6 +7,12 @@ package memory_backend_pkg;
   // verilog_lint: waive parameter-name-style
   localparam int unsigned SRAM_ADDR_WIDTH = SRAM_SIZE_BYTES / 8 > 1 ? $clog2(SRAM_SIZE_BYTES / 8) : 1;
 
+  // One extra reservation avoids a full-buffer bubble during steady one-request-per-cycle reads.
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned SRAM_RESPONSE_DEPTH = SRAM_LATENCY + 1;
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned SRAM_COUNT_WIDTH = $clog2(SRAM_RESPONSE_DEPTH + 1);
+
   // Preserve channel and field order: this packed type is the shared backend interface.
   typedef struct packed {
     // Instruction bundle response.

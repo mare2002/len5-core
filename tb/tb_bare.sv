@@ -46,7 +46,8 @@ module tb_bare #(
   // the output spill cell, if implemented. The fetch stage must buffer the
   // same number of requests.
   localparam bit MemEmuSkipInstrOutReg = 1'b0;
-  localparam int unsigned FetchMemIfFifoDepth = MemPipeNum + ((MemEmuSkipInstrOutReg) ? 0 : 2);
+  localparam int unsigned FetchMemIfFifoDepth = MEMORY_BACKEND == MEM_BACKEND_TC_SRAM ?
+      memory_backend_pkg::SRAM_RESPONSE_DEPTH : MemPipeNum + ((MemEmuSkipInstrOutReg) ? 0 : 2);
 
   // INTERNAL SIGNALS
   // ----------------
@@ -119,7 +120,8 @@ module tb_bare #(
   logic [2:0][memory_backend_pkg::SRAM_ADDR_WIDTH-1:0] sram_addr;
   logic [2:0][63:0] sram_wdata, sram_rdata;
   logic [2:0][7:0] sram_be;
-  logic [2:0][1:0] memory_outstanding, memory_occupancy;
+  logic [2:0][memory_backend_pkg::SRAM_COUNT_WIDTH-1:0] memory_outstanding, memory_occupancy;
+  logic memory_load_flush;
   memory_backend_pkg::memory_response_t memory_response;
   logic monitor_store;
   assign monitor_store = MEMORY_BACKEND == MEM_BACKEND_LEGACY ?
@@ -317,7 +319,7 @@ module tb_bare #(
     .data_store_except_code_i  (mem2dp_store_except_code),
     .sram_initialized_i(sram_initialized), .sram_req_o(sram_req), .sram_we_o(sram_we),
     .sram_addr_o(sram_addr), .sram_wdata_o(sram_wdata), .sram_be_o(sram_be), .sram_rdata_i(sram_rdata),
-    .memory_response_o(memory_response), .mmio_write_o(mmio_write),
+    .memory_response_o(memory_response), .mmio_write_o(mmio_write), .memory_load_flush_o(memory_load_flush),
     .memory_outstanding_o(memory_outstanding), .memory_occupancy_o(memory_occupancy),
     .irq_i                     (),
     .irq_ack_o                 (),
@@ -327,7 +329,8 @@ module tb_bare #(
   );
 
   memory_protocol_monitor u_memory_monitor (
-    .clk_i, .rst_ni, .flush_i(dp2mem_flush), .stop_i(exit_code_recv), .retire_i(tb_len5_get_committing()),
+    .clk_i, .rst_ni, .flush_i(dp2mem_flush), .load_flush_i(memory_load_flush),
+    .stop_i(exit_code_recv), .retire_i(tb_len5_get_committing()),
     .req_i({dp2mem_store_valid, dp2mem_load_valid, dp2mem_instr_valid}),
     .gnt_i({memory_response.store_gnt, memory_response.load_gnt, memory_response.instr_gnt}),
     .valid_i({memory_response.store_valid, memory_response.load_valid, memory_response.instr_valid}),

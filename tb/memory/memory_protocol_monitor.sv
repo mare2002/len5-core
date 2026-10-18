@@ -4,13 +4,14 @@ module memory_protocol_monitor (
     input logic clk_i,
     rst_ni,
     flush_i,
+    load_flush_i,
     stop_i,
     retire_i,
     input logic [2:0] req_i,
     gnt_i,
     valid_i,
     ready_i,
-    input logic [2:0][1:0] occupancy_i
+    input logic [2:0][memory_backend_pkg::SRAM_COUNT_WIDTH-1:0] occupancy_i
 );
   // Separate queues avoid Verilator 5.040's indexed queue mutation bug.
   longint unsigned instr_times[$], load_times[$], store_times[$];
@@ -70,6 +71,7 @@ module memory_protocol_monitor (
       end
     end else if (!finished) begin
       if (flush_i) clear_queue(0);
+      if (load_flush_i) clear_queue(1);
       cycles++;
       retired += 64'(retire_i);
       for (int p = 0; p < 3; p++) begin
@@ -83,11 +85,11 @@ module memory_protocol_monitor (
         if (buffer_count > max_occ[p]) max_occ[p] = buffer_count;
         req_stall[p] += 64'(req_i[p] && !gnt_i[p]);
         rsp_stall[p] += 64'(valid_i[p] && !ready_i[p]);
-        if (req_i[p] && gnt_i[p] && !(p == 0 && flush_i)) begin
+        if (req_i[p] && gnt_i[p] && !(p == 0 && flush_i) && !(p == 1 && load_flush_i)) begin
           accepted[p]++;
           push_time(p, cycles);
         end
-        if (valid_i[p] && ready_i[p] && !(p == 0 && flush_i) && queue_size(p) != 0) begin
+        if (valid_i[p] && ready_i[p] && !(p == 0 && flush_i) && !(p == 1 && load_flush_i) && queue_size(p) != 0) begin
           start_cycle = pop_time(p);
           completed[p]++;
           latency[p] += cycles - start_cycle;

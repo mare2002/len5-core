@@ -1,5 +1,7 @@
 module datapath #(
-  parameter int unsigned FETCH_MEMIF_FIFO_DEPTH = 2,
+  parameter int unsigned FETCH_MEMIF_FIFO_DEPTH =
+      len5_config_pkg::MEMORY_BACKEND == len5_config_pkg::MEM_BACKEND_TC_SRAM ?
+      memory_backend_pkg::SRAM_RESPONSE_DEPTH : 2,
   parameter longint unsigned BOOT_PC = '0,
   parameter logic [63:0] SERIAL_ADDR = len5_config_pkg::SERIAL_ADDR,
   parameter logic [63:0] EXIT_ADDR = len5_config_pkg::EXIT_ADDR
@@ -61,7 +63,8 @@ module datapath #(
   input logic [2:0][63:0] sram_rdata_i,
   output memory_backend_pkg::memory_response_t memory_response_o /* verilator split_var */,
   output logic mmio_write_o,
-  output logic [2:0][1:0] memory_outstanding_o, memory_occupancy_o,
+  output logic memory_load_flush_o,
+  output logic [2:0][memory_backend_pkg::SRAM_COUNT_WIDTH-1:0] memory_outstanding_o, memory_occupancy_o,
 
   // Interrupt inputs ---> TODO: implement
   input  logic [31:0] irq_i,      // CLINT interrupts + CLINT extension interrupts
@@ -103,6 +106,10 @@ module datapath #(
   logic         [XLEN-1:0] be_fe_except_pc;
   logic                    fe_be_bu_pcgen_ready;
   logic                    early_jump_mem_flush;
+  logic                    backend_load_flush;
+
+  assign memory_load_flush_o = len5_config_pkg::MEMORY_BACKEND == len5_config_pkg::MEM_BACKEND_TC_SRAM &&
+                               len5_config_pkg::SRAM_LATENCY > 1 && backend_load_flush;
 
   // ---------
   // FRONT-END
@@ -149,6 +156,7 @@ module datapath #(
   // BACK-END
   // --------
   backend u_backend (
+    .mem_load_flush_o(backend_load_flush),
     .clk_i (clk_i),
     .rst_ni(rst_ni),
 
@@ -232,7 +240,8 @@ module datapath #(
   end else if (len5_config_pkg::MEMORY_BACKEND == len5_config_pkg::MEM_BACKEND_TC_SRAM) begin : gen_tc_sram
     wire unused_legacy = &{1'b0, instr_gnt_i, instr_rvalid_i, instr_rdata_i, instr_except_raised_i, instr_except_code_i, data_load_gnt_i, data_load_rvalid_i, data_load_rdata_i, data_load_tag_i, data_load_except_raised_i, data_load_except_code_i, data_store_gnt_i, data_store_rvalid_i, data_store_tag_i, data_store_except_raised_i, data_store_except_code_i};
     tc_sram_adapter #(.SERIAL_ADDR(SERIAL_ADDR), .EXIT_ADDR(EXIT_ADDR)) u_adapter (
-      .clk_i, .rst_ni, .instr_flush_i(mem_flush_o), .initialized_i(sram_initialized_i),
+      .clk_i, .rst_ni, .instr_flush_i(mem_flush_o), .load_flush_i(backend_load_flush),
+      .initialized_i(sram_initialized_i),
       .instr_req_i(instr_req_o), .instr_ready_i(instr_rready_o), .instr_addr_i(instr_addr_o),
       .load_req_i(data_load_req_o), .load_ready_i(data_load_rready_o),
       .load_addr_i(data_load_addr_o), .load_be_i(data_load_be_o), .load_tag_i(data_load_tag_o),

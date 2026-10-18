@@ -153,7 +153,7 @@ class Checker {
     }
     void source_at_dispatch(uint32_t rob, uint64_t value, Stamp);
     void flush_frontend(Stamp);
-    void flush_backend(Stamp);
+    void flush_backend(Stamp, bool cancel_load_responses = false);
     void redirect(uint64_t pc, Stamp);
     void resolve_branch(uint32_t rob, uint64_t next_pc, bool mispredicted, Stamp);
     void tick(Stamp);

@@ -92,7 +92,7 @@ style and unused initialization metadata; the source is not edited for warnings.
 | `MEMORY_BACKEND` | `MEM_BACKEND_LEGACY` | Select one backend |
 | `SRAM_BASE_ADDR` | `64'h0001_0000` | Byte address, eight-byte aligned |
 | `SRAM_SIZE_BYTES` | `1024 * 1024` | At least eight, multiple of eight, no address-space wrap |
-| `SRAM_LATENCY` | `1` | Only 1 is supported by this adapter |
+| `SRAM_LATENCY` | `1` | Positive fixed read latency; zero is rejected |
 | `SRAM_SIM_INIT` | `"none"` | Native `none`, `zeros`, `ones`, or `random` |
 | `SERIAL_ADDR` | `64'h2000_0000` | Output-only device base |
 | `EXIT_ADDR` | `64'h2000_0100` | Output-only device base |
@@ -105,13 +105,20 @@ is `-GBOOT_PC=65920` (`0x10180`), not `0x80000000` or the package's `0x180`.
 Non-power-of-two capacities are allowed; validation precedes index truncation.
 
 The SRAM uses `DataWidth=64`, `ByteWidth=8`, `NumPorts=3`, and `NumWords=SIZE_BYTES/8`.
-The adapter rejects latency zero and values above one. Inspection of upstream
+The adapter supports positive fixed read latencies and rejects latency zero. Inspection of upstream
 latency zero showed an asynchronous read mux whose output can change on both
 request changes and writes to the held address. Reusing the latency-one metadata
 path would return mismatched data; a zero-latency implementation would need its
 own acceptance/response path, stall capture and frontend combinational-path
-validation. It is not enabled or presented as verified. Higher latency similarly
-needs a matching validity/metadata pipeline and more reservation accounting.
+validation. It is not enabled or presented as verified. Read validity, load tags,
+byte offsets, masks, exceptions and fetch-beat metadata all use `SRAM_LATENCY`
+pipeline stages. Store writes and completions retain their original timing.
+
+Each response FIFO defaults to `SRAM_LATENCY + 1` entries. Pointer and count widths
+are derived from its capacity, including non-power-of-two depths. The frontend's
+prediction FIFO uses the same capacity in the TC_SRAM configuration, so accepted
+fetch requests always have matching prediction metadata. Diagnostic count ports
+use `memory_backend_pkg::SRAM_COUNT_WIDTH`.
 
 `LEN5_C_EN=1` is already unsupported by this CPU and is explicitly rejected here.
 `ONLY_DOUBLEWORD_MEM_ACCESSES=1` is also explicitly rejected: it discards the
@@ -151,14 +158,14 @@ in one SRAM access; no duplicate instruction storage is introduced to hide this.
 
 ## Acceptance, timing, reservations, and backpressure
 
-Each channel has two reserved response slots. A grant requires free credit and
+Each channel has `SRAM_LATENCY + 1` reserved response slots. A grant requires free credit and
 completed initialization. Acceptance is `request && grant`; SRAM `req_i` only
 asserts for accepted, decoded accesses. Fetch reserves one slot for the whole
 bundle and issues its remaining beats internally. Channels do not share credit.
 A rejected operation still reserves a slot and returns an ordered exception
 response, without accessing SRAM.
 
-For loads/stores and a one-beat fetch, the request/write is sampled at E0, the
+At latency one, for loads/stores and a one-beat fetch, the request/write is sampled at E0, the
 registered result is available after E0, and response acceptance is sampled at
 E1. The monitor calls this one-cycle latency. No extra response pipeline stage
 is inserted:
@@ -172,7 +179,7 @@ store written                W0       W1       W2       W3
 store completion consumed    -        W0       W1       W2
 ```
 
-For the local four-instruction configuration:
+For the local four-instruction configuration at latency one:
 
 ```text
 rising edge                  E0       E1       E2       E3       E4
@@ -189,7 +196,14 @@ are stored together; no idle SRAM output is treated as a response. Store tags
 are not retired until the registered completion; a stalled completion cannot
 reissue the write. MMIO uses the same acceptance/completion accounting.
 
-The two-entry reservation count includes pending native reads and buffered
+For read latency L, loads and one-beat fetches complete no earlier than L cycles
+after acceptance. A B-beat fetch bundle completes after `B + L - 1` cycles when
+the consumer is ready. Native fetch beats still issue consecutively. Stores,
+including MMIO writes and faults, retain one-cycle completion; read latency does
+not delay or replay their side effects. Faulting loads follow the same L-cycle
+response pipeline as ordinary reads.
+
+The reservation count includes pending native reads and buffered
 responses. Actual buffer occupancy counts only captured results. Independent
 ordered channels preserve tag order while allowing concurrent load/store/fetch
 activity. Store tag allocation/reuse remains in the LSU.
@@ -200,23 +214,29 @@ that became completely full regains request credit on the cycle after a response
 is consumed, giving one recovery bubble. Continuously ready loads and stores
 still accept one request per clock, and fetch issues one **native beat** per
 clock. The directed test checks 32 consecutive cycles of native traffic with all
-three ports, and two outstanding requests under backpressure. Full-core LSU
+three ports, and full configured reservation/occupancy counts under backpressure. Full-core LSU
 ready is always high; measured load/store stalls were zero.
 
 ## Flush and reset
 
 Instruction flush immediately gates response-valid and native fetch issuance,
-then clears the fetch assembly state, pending validity and both response slots.
+then clears the fetch assembly state, every fetch-valid pipeline stage and all fetch response slots.
 An already sampled SRAM read may still update the native output, but its validity
 is discarded. No old bundle can be associated with a post-flush request. The
 post-flush stream starts when flush deasserts and a new request is accepted.
 
 Reset clears all adapter reservations, metadata, valid bits and assembly state;
 no requests or responses are active while reset is asserted. It does not undo
-an already accepted store. Data responses are not flushed by the instruction
-flush signal. The current LSU always accepts them, and the one-cycle response
-path drains old load tags before newly allocated entries can issue after a core
-flush; extending latency requires revisiting that constraint.
+an already accepted store. Instruction flush does not cancel loads or stores.
+At latency one, data responses retain the original drain-on-flush behavior.
+For higher latencies, `backend.mem_load_flush_o` exposes the actual execution/LSU
+flush separately from frontend redirects. The adapter gates load grants/valid,
+clears every load-valid pipeline stage and frees load response reservations on
+that event. This prevents an old read from completing a new LSU entry that reuses
+the same tag. Native SRAM reads can still finish internally; their validity has
+been discarded. Early-jump/frontend-only flushes leave load responses intact.
+Stores are never canceled by either memory flush signal. The performance monitor
+and Spike checker cancel the corresponding load observations on an LSU flush.
 
 `tc_sram_storage` has a separate one-time power-on reset, not the CPU reset.
 Native initialization runs first, firmware is deposited on the following falling
@@ -305,7 +325,7 @@ Random initialization uses upstream `$urandom`; its sequence is simulator-specif
 
 ## Collision semantics
 
-At latency one, upstream samples read data before its nonblocking byte writes.
+For positive latency, upstream samples read data before its nonblocking byte writes.
 Simultaneous instruction/load reads and a store of the same SRAM word see the
 old word; subsequent reads see the updated enabled bytes. Upstream loops through
 ports in ascending order, so later ports win overlapping simultaneous writes.
@@ -409,7 +429,24 @@ termination, successful Spike reports, matching serial strings and matching
 retirement counts at exit; a simulator that merely times out is not a pass.
 Each report records the exact command and firmware SHA-256.
 
-## Executed verification
+## Configurable-latency verification
+
+The relocation and latency extension were checked with 100 seeds of 10,000 random
+cycles for every combination of fetch widths 1/2/4/8 and read latencies 1/2/3/4/8.
+Directed cases require full reservation and captured-response occupancy at every
+capacity, exact result timing, uninterrupted native traffic, collisions, reset,
+fetch cancellation, and canceled-load tag reuse. Latency one also passed a
+side-by-side output/state comparison against the pre-extension adapter.
+
+Full-core Spike runs passed hello_world, load_store, shift and CRC32 at latencies
+1, 2, 3 and 8. Serial output and retirement counts at program exit agree across
+latencies; latency-one cycle counts, traces and memory metrics match the original.
+Load response latency follows the selected setting while store completion remains
+one cycle. Configuration, loader, standalone LSU, lint and backend-selection checks
+also passed. Evidence is under `build/tc-sram-latency/`; these simulation results do
+not establish formal equivalence, four-state behavior or full-core trap recovery.
+
+## Executed verification of the original latency-one implementation
 
 Results below were collected on the local four-issue checkout, with ordinary
 forwarding enabled and the default SRAM window. Logs/artifacts stay under `build/`.
@@ -436,7 +473,7 @@ No generated binaries or firmware are part of the source change.
 | Excluded applications / all benchmark suite entries | NOT RUN | Existing exclusions are timer, alu_mult, alu_div; only CRC32 from Embench was executed |
 | Full-core trap/exception differential comparison | NOT SUPPORTED | Existing checker stops at exception/interrupt recovery; adapter exception generation is independently tested |
 | Four-state unknown propagation | NOT RUN | Verilator is two-state; no four-state simulator result claimed |
-| SRAM latency 0 or >1 functional tests | NOT SUPPORTED | Explicitly rejected and rejection tested |
+| Original latency restrictions | HISTORICAL | The initial implementation rejected latency 0 and >1; positive-latency support supersedes this restriction |
 
 The adapter scoreboard is independent byte-level reference storage used only in
 the testbench. It checks native request addresses, masks and data, then predicts
@@ -494,7 +531,7 @@ python3 scripts/sim/check-memory-backend-selection.py \
 bash scripts/sim/check-load-store.sh
 make check  # currently fails at the existing ALU width mismatch
 verible-verilog-lint --rules=line-length=length:160 \
-  --waiver_files=rtl/misc/verible-lint.waiver rtl/memory_interface/*.sv \
+  --waiver_files=rtl/misc/verible-lint.waiver tb/memory/tc_sram/*.sv \
   tb/memory/tc_sram_storage.sv tb/memory/memory_protocol_monitor.sv tb/memory/tc_sram/*.sv
 python3 -m py_compile scripts/gen-memory-map.py scripts/sim/*tc-sram*.py \
   scripts/sim/prepare-memory-backend.py scripts/sim/compare-memory-backends.py \
@@ -510,7 +547,7 @@ all CPU widths. Configuration and loader scripts report each tested case and
 preserve its build/run log. Expected `$fatal` rejections may produce a nonzero
 simulator exit; the scripts explicitly require those failures.
 
-## Performance measurements
+## Performance measurements of the original latency-one implementation
 
 Both models used identical firmware, Verilator 5.040, N=4, no caches or prefetcher,
 and the same simulator flags. Cycles and retired instructions are sampled by
@@ -560,7 +597,7 @@ one documented buffer-full recovery bubble, but no steady-state response bubble.
 
 ## Limitations and adding AXI later
 
-* Latency one, uncompressed instructions, and original load offsets are required.
+* Positive read latency, uncompressed instructions, and original load offsets are required.
   Rejected configurations do not silently fall back to legacy behavior.
 * SRAM bounds and native untouched-memory behavior intentionally differ from the
   sparse legacy emulator's uninitialized-byte access faults.
@@ -570,9 +607,10 @@ one documented buffer-full recovery bubble, but no steady-state response bubble.
   are not signed off by this work. The pre-existing ALU regression failure remains.
 * The adapter is synthesizable protocol logic; storage/firmware loading is a
   simulation integration. A physical macro wrapper would replace `tc_sram_storage`
-  and supply appropriate initialization readiness.
+  and supply appropriate initialization readiness. The backend sources now reside
+  together in `tb/memory/tc_sram/`; the datapath/package manifests reference that location.
 
-For AXI, add a new adapter under `rtl/memory_interface/` using the same existing
+For AXI, add a separate simulation adapter using the same existing
 LEN5 request/response channels. Instantiate it in the currently rejected generate
 branch and connect its own simulation storage/interconnect only in that branch.
 Reuse byte-range checks/MMIO policy where appropriate, but implement AXI-specific
@@ -586,8 +624,8 @@ new backend to the same directed, randomized, loader and full-core comparisons.
 
 Added:
 
-* `rtl/memory_interface/{memory_backend_pkg,memory_access_check,memory_response_buffer,tc_sram_adapter}.sv`
-* `rtl/memory_interface/MEMORY_BACKEND_INTEGRATION.md`
+* `tb/memory/tc_sram/{memory_backend_pkg,memory_access_check,memory_response_buffer,tc_sram_adapter}.sv`
+* `tb/memory/tc_sram/MEMORY_BACKEND_INTEGRATION.md`
 * `rtl/vendor/tech_cells_generic/{tc_sram.sv,LICENSE,README.md}`
 * `tb/memory/{tc_sram_storage.sv,tc_sram_loader.svh,memory_protocol_monitor.sv}`
 * `tb/memory/tc_sram/{tc_sram_adapter_tb.sv,tc_sram_loader_tb.sv,tc_sram_config_tb.sv,waivers.vlt}`

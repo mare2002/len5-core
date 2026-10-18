@@ -35,6 +35,7 @@ module backend (
   output logic                   [len5_pkg::XLEN-1:0] fetch_except_pc_o,
 
   /* Memory system */
+  output logic                                                mem_load_flush_o,
   output logic                                                mem_load_valid_o,
   input  logic                                                mem_load_ready_i,
   input  logic                                                mem_load_valid_i,
@@ -588,5 +589,6 @@ module backend (
 
   // Fetch stage and memory flush
   assign fetch_except_flush_o = except_flush;
+  assign mem_load_flush_o = ex_mis_flush;
 
 endmodule

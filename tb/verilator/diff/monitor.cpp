@@ -196,7 +196,8 @@ struct Monitor::Impl {
                                  top_signals.get("dp2mem_load_addr"),
                                  top_signals.get("dp2mem_load_be"), t);
         if (back_flush)
-            checker.flush_backend(t);
+            checker.flush_backend(t, constants.at("len5_config_pkg.MEMORY_BACKEND") == 1 &&
+                                  constants.at("len5_config_pkg.SRAM_LATENCY") > 1);
         if (front_flush)
             checker.flush_frontend(t);
         if (comm_signals.get("cu_except_flush")) {

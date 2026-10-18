@@ -511,8 +511,8 @@ void Checker::load_response(uint32_t index, uint64_t data, bool exception, Stamp
     if (it->second.empty())
         load_transactions_.erase(it);
     auto p = transaction.instruction;
-    // Memory pipelines are NOT flushed by a backend flush. Keep transaction
-    // tombstones until the response, independently of reuse of the LQ index.
+    // Backends which drain flushed reads retain tombstones until their responses arrive.
+    // Canceling backends clear these transactions in flush_backend instead.
     if (p->squashed)
         return;
     capture_load(p, data, exception, t);
@@ -663,7 +663,10 @@ void Checker::flush_frontend(Stamp t) {
         divergence_start_ = t;
     prune();
 }
-void Checker::flush_backend(Stamp t) {
+void Checker::flush_backend(Stamp t, bool cancel_load_responses) {
+    // The long-latency SRAM adapter cancels responses when the LSU resets its tags.
+    if (cancel_load_responses)
+        load_transactions_.clear();
     std::vector<Ptr> victims;
     for (auto &[rob, p] : active_rob_)
         victims.push_back(p);
