@@ -17,9 +17,10 @@ struct SpikeReference::Impl final : simif_t {
     std::unique_ptr<processor_t> cpu;
     FILE *sink = nullptr;
     uint64_t sequence = 0;
+    MemoryMap map;
     std::string boundary, violation;
     explicit Impl(const std::string &hex, uint64_t pc, const std::string &isa,
-                  const std::map<uint32_t, uint64_t> &csrs) {
+                  const std::map<uint32_t, uint64_t> &csrs, MemoryMap memory_map) : map(memory_map) {
         std::ifstream in(hex);
         if (!in)
             throw std::runtime_error("cannot open identical Spike/RTL firmware: " + hex);
@@ -73,10 +74,12 @@ struct SpikeReference::Impl final : simif_t {
         return nullptr;
     } // sparse memory, no unchecked host pointers
     bool mmio_load(reg_t addr, size_t len, uint8_t *bytes) override {
-        if (addr >= 0x20000000) {
+        if (addr == map.serial || addr == map.exit || (!map.size && (addr & map.mmio_mask))) {
             violation = "MMIO reads are unsupported (no deterministic input model)";
             return false;
         }
+        if (map.size && (len > map.size || addr < map.base || addr-map.base > map.size-len))
+            return false;
         for (size_t i = 0; i < len; ++i) {
             auto it = memory.find(addr + i);
             if (it == memory.end())
@@ -87,10 +90,13 @@ struct SpikeReference::Impl final : simif_t {
     }
     bool mmio_store(reg_t addr, size_t len, const uint8_t *bytes) override {
         // These are the existing testbench's output-only serial and exit sinks.
-        if (addr >= 0x20000000 && addr != 0x20000000 && addr != 0x20000100) {
+        if (!map.size && (addr & map.mmio_mask) && addr != map.serial && addr != map.exit) {
             violation = "unsupported MMIO store";
             return false;
         }
+        if (map.size && addr != map.serial && addr != map.exit &&
+            (len > map.size || addr < map.base || addr-map.base > map.size-len))
+            return false;
         for (size_t i = 0; i < len; ++i)
             if (executed_bytes.count(addr + i)) {
                 violation = "self-modifying code is unsupported";
@@ -106,8 +112,8 @@ struct SpikeReference::Impl final : simif_t {
     const char *get_symbol(uint64_t) override { return nullptr; }
 };
 SpikeReference::SpikeReference(const std::string &hex, uint64_t pc, const std::string &isa,
-                               const std::map<uint32_t, uint64_t> &csrs)
-    : impl_(std::make_unique<Impl>(hex, pc, isa, csrs)) {}
+                               const std::map<uint32_t, uint64_t> &csrs, MemoryMap memory_map)
+    : impl_(std::make_unique<Impl>(hex, pc, isa, csrs, memory_map)) {}
 SpikeReference::~SpikeReference() = default;
 ReferenceRecord SpikeReference::step() {
     auto &m = *impl_;

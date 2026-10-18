@@ -32,6 +32,10 @@ filesets:
     - polito:len5:packages
     files:
     - tb/memory/memory_class.svh: {is_include_file : true}
+    - rtl/vendor/tech_cells_generic/tc_sram.sv
+    - tb/memory/tc_sram_storage.sv
+    - tb/memory/tc_sram_loader.svh: {is_include_file: true}
+    - tb/memory/memory_protocol_monitor.sv
     - tb/memory/memory_if.sv
     - tb/memory/memory_bare_emu.sv
     - tb/len5_utils.svh: {is_include_file: true}
@@ -65,6 +69,7 @@ filesets:
 
   verilator-waivers:
     files:
+    - tb/memory/tc_sram/waivers.vlt
     - tb/misc/tb-waivers.vlt
     file_type: vlt
 
@@ -124,6 +129,8 @@ targets:
       - "!tool_verilator ? (tb_len5)"
     parameters:
     - firmware
+    - firmware_base
+    - memory_report
     - tool_verilator ? (max_cycles)
     - tool_verilator ? (log_level)
     - tool_verilator ? (dump_waves)
@@ -150,6 +157,8 @@ targets:
         mode: cc
         verilator_options:
         - '--cc'
+        # Existing Verilator 5.040 DFG metadata bug: tb/frontend/RTL_VERIFICATION_FINDINGS.md T01.
+        - '-fno-dfg'
         - '--assert'
         - '--trace'
         - '--trace-fst'
@@ -159,8 +168,6 @@ targets:
         - '--x-initial unique'
         - '--report-unoptflat'
         - '-GBOOT_PC=65920' # 0x10180
-        - '-GSERIAL_ADDR=536870912' # 0x20000000
-        - '-GEXIT_ADDR=536871168' # 0x20000100
         - '-Wall'
         - '-Wpedantic'
 
@@ -275,6 +282,14 @@ parameters:
     description: If 'true', generate instruction execution trace
     default: "false"
     paramtype: cmdlinearg
+  firmware_base:
+    datatype: str
+    description: Hexadecimal byte address for raw binary firmware (default zero, legacy convention).
+    paramtype: plusarg
+  memory_report:
+    datatype: str
+    description: Output path for memory performance JSON (default memory-performance.json).
+    paramtype: plusarg
   firmware:
     datatype: str
     description: Firmware (in HEX format) to load into the system SRAM.

@@ -488,3 +488,8 @@ check-fetch-stage-widths-smoke:
 
 check-fetch-stage-core: fetch-stage-build
 	@python3 tb/frontend/fetch_stage/core.py --binary "$(FETCH_STAGE_BINARY)" --output "$(BUILD_DIR)/fetch-stage/core" --jobs "$(or $(JOBS),2)"
+
+# Independent SRAM protocol, lane conversion, exception and randomized tests.
+.PHONY: check-tc-sram
+check-tc-sram:
+	@SEEDS="$(or $(SEEDS),10)" CYCLES="$(or $(CYCLES),10000)" JOBS="$(JOBS)" bash scripts/sim/check-tc-sram.sh

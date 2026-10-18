@@ -12,6 +12,7 @@ filesets:
     - packages/util_pkg.sv
     - packages/len5_config_pkg.sv
     - packages/len5_pkg.sv
+    - memory_interface/memory_backend_pkg.sv
     - packages/instr_pkg.sv
     - packages/csr_pkg.sv
     - packages/fetch_pkg.sv

@@ -11,19 +11,19 @@
 /* ---- MACROS ---- */
 /********************/
 /* Peripherals base address */
-// NOTE: only powers of 2 are supported. This value must be consistent with
-// MMAP_MASK in `len5_config_pkg.sv`.
-#define PERI_BASE ((unsigned char *) 0x20000000) // 512MB
+// Generated len5_memory_map.h supplies these addresses from len5_config_pkg.sv.
+// MMAP_MASK must exclude both devices from store-to-load forwarding.
+#define PERI_BASE ((unsigned char *) LEN5_SERIAL_ADDR)
 
 /* Serial interface registers */
-#define UART_BASE ((unsigned char *) (PERI_BASE + 0x00))
+#define UART_BASE ((unsigned char *) LEN5_SERIAL_ADDR)
 #define UART_WRITE_REG (*(UART_BASE + 0x00))
 #define UART_WRITE_FLAG (*(UART_BASE + 0x01))
 #define UART_READ_REG (*(UART_BASE + 0x02))
 #define UART_READ_FLAG (*(UART_BASE + 0x03))
 
 /* Exit code register */
-#define EXIT_REG_BASE ((unsigned char *) (PERI_BASE + 0x100))
+#define EXIT_REG_BASE ((unsigned char *) LEN5_EXIT_ADDR)
 #define EXIT_REG (*(EXIT_REG_BASE + 0x00))
 
 /*********************************/

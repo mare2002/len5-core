@@ -66,6 +66,11 @@ LIB_OBJS		:= $(filter %.o,\
 # Include directories
 INC_DIRS_GCC 	+= $(addprefix -I ,$(INC_DIRS))
 
+# Share simulation MMIO addresses with the RTL package. Explicit CDEFS can override
+# these for a testbench parameter override, but normal builds have one source.
+MEMORY_MAP_HEADER := $(abspath $(BUILD_DIR)/len5_memory_map.h)
+CFLAGS += -include $(MEMORY_MAP_HEADER)
+
 # Export all the variables to sub-makefiles
 export
 
@@ -101,6 +106,11 @@ $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf
 $(BUILD_DIR)/%.elf: $(OBJS) $(LIB_OBJS)
 	echo $(LIB_OBJS)
 	$(RISCV_EXE_PREFIX)-gcc $(CFLAGS) $(LDFLAGS_PRE) $(INC_DIRS_GCC) $^ $(LDFLAGS_POST) -o $@
+
+$(MEMORY_MAP_HEADER): ../rtl/packages/len5_config_pkg.sv ../scripts/gen-memory-map.py
+	python3 ../scripts/gen-memory-map.py $@
+
+$(OBJS) $(LIB_OBJS): $(MEMORY_MAP_HEADER)
 
 # Implicit compilation rules
 $(BUILD_DIR)/%.o: ./%.c | $(BUILD_DIR)/applications/$(PROJECT)/

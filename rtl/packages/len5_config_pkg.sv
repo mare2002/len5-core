@@ -27,6 +27,20 @@ package len5_config_pkg;
   // Boot program counter
   localparam logic [63:0] BOOT_PC = 64'h180;
 
+  // Select exactly one memory implementation. AXI is reserved, not implemented.
+  typedef enum logic [1:0] {
+    MEM_BACKEND_LEGACY,
+    MEM_BACKEND_TC_SRAM,
+    MEM_BACKEND_AXI_SIM
+  } memory_backend_t;
+  localparam memory_backend_t MEMORY_BACKEND = MEM_BACKEND_LEGACY;
+  localparam logic [63:0] SRAM_BASE_ADDR = 64'h0001_0000;
+  localparam int unsigned SRAM_SIZE_BYTES = 1024 * 1024;
+  localparam int unsigned SRAM_LATENCY = 1;
+  localparam string SRAM_SIM_INIT = "none";
+  localparam logic [63:0] SERIAL_ADDR = 64'h2000_0000;
+  localparam logic [63:0] EXIT_ADDR = 64'h2000_0100;
+
 
   // -----------------
   // FEATURES SWITCHES
@@ -34,7 +48,7 @@ package len5_config_pkg;
 
   // Multi-issue architecture
   // ------------------------
-  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd8;//maximum number of issues per cycle
+  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd4;//maximum number of issues per cycle
 
   // Enable M extension support
   // --------------------------

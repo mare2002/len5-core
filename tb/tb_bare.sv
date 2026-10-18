@@ -17,8 +17,8 @@ module tb_bare #(
   parameter string           MEM_DUMP_FILE = "mem_dump.txt",
   parameter string           TRACE_FILE    = "logs/sim-trace.log",
   parameter longint unsigned BOOT_PC       = 64'h0,
-  parameter longint unsigned SERIAL_ADDR   = 64'h20000000,
-  parameter longint unsigned EXIT_ADDR     = 64'h20000100,
+  parameter longint unsigned SERIAL_ADDR   = len5_config_pkg::SERIAL_ADDR,
+  parameter longint unsigned EXIT_ADDR     = len5_config_pkg::EXIT_ADDR,
   parameter int unsigned     EXIT_TIMEOUT  = 50                     // cycles
 ) (
   input logic clk_i,      // simulation clock
@@ -114,6 +114,17 @@ module tb_bare #(
   logic                               mem2dp_store_except_raised;
   except_code_t                       mem2dp_store_except_code;
 
+  logic sram_initialized, mmio_write;
+  logic [2:0] sram_req, sram_we;
+  logic [2:0][memory_backend_pkg::SRAM_ADDR_WIDTH-1:0] sram_addr;
+  logic [2:0][63:0] sram_wdata, sram_rdata;
+  logic [2:0][7:0] sram_be;
+  logic [2:0][1:0] memory_outstanding, memory_occupancy;
+  memory_backend_pkg::memory_response_t memory_response;
+  logic monitor_store;
+  assign monitor_store = MEMORY_BACKEND == MEM_BACKEND_LEGACY ?
+                         dp2mem_store_valid && mem2dp_store_ready : mmio_write;
+
   // ----
   // BODY
   // ----
@@ -174,7 +185,7 @@ module tb_bare #(
   // --------------
   always_ff @(posedge clk_i) begin : serial_monitor
     // Sniff SERIAL ADDRESS and print content
-    if (dp2mem_store_valid && mem2dp_store_ready && dp2mem_store_addr == SERIAL_ADDR) begin
+    if (monitor_store && dp2mem_store_addr == SERIAL_ADDR) begin
       serial_recv <= 1'b1;
       serial_char <= dp2mem_store_wdata[7:0];
     end else begin
@@ -205,7 +216,7 @@ module tb_bare #(
   // ------------
   // Stop the simulation after a certain memory location is written
   always_ff @(posedge clk_i) begin : exit_monitor
-    if (dp2mem_store_valid && dp2mem_store_addr == EXIT_ADDR) begin
+    if ((MEMORY_BACKEND == MEM_BACKEND_LEGACY ? dp2mem_store_valid : monitor_store) && dp2mem_store_addr == EXIT_ADDR) begin
       exit_code_q    <= dp2mem_store_wdata[7:0];
       exit_code_recv <= 1'b1;
     end else begin
@@ -265,7 +276,8 @@ module tb_bare #(
   // -----------------------
   datapath #(
     .FETCH_MEMIF_FIFO_DEPTH(FetchMemIfFifoDepth),
-    .BOOT_PC               (BOOT_PC)
+    .BOOT_PC               (BOOT_PC),
+    .SERIAL_ADDR(SERIAL_ADDR), .EXIT_ADDR(EXIT_ADDR)
   ) u_datapath (
     .clk_i                     (clk_i),
     .rst_ni                    (rst_ni),
@@ -303,6 +315,10 @@ module tb_bare #(
     .data_store_tag_i          (mem2dp_store_tag),
     .data_store_except_raised_i(mem2dp_store_except_raised),
     .data_store_except_code_i  (mem2dp_store_except_code),
+    .sram_initialized_i(sram_initialized), .sram_req_o(sram_req), .sram_we_o(sram_we),
+    .sram_addr_o(sram_addr), .sram_wdata_o(sram_wdata), .sram_be_o(sram_be), .sram_rdata_i(sram_rdata),
+    .memory_response_o(memory_response), .mmio_write_o(mmio_write),
+    .memory_outstanding_o(memory_outstanding), .memory_occupancy_o(memory_occupancy),
     .irq_i                     (),
     .irq_ack_o                 (),
     .irq_id_o                  (),
@@ -310,8 +326,20 @@ module tb_bare #(
     .core_sleep_o              ()
   );
 
+  memory_protocol_monitor u_memory_monitor (
+    .clk_i, .rst_ni, .flush_i(dp2mem_flush), .stop_i(exit_code_recv), .retire_i(tb_len5_get_committing()),
+    .req_i({dp2mem_store_valid, dp2mem_load_valid, dp2mem_instr_valid}),
+    .gnt_i({memory_response.store_gnt, memory_response.load_gnt, memory_response.instr_gnt}),
+    .valid_i({memory_response.store_valid, memory_response.load_valid, memory_response.instr_valid}),
+    .ready_i({dp2mem_store_ready, dp2mem_load_ready, dp2mem_instr_ready}), .occupancy_i(memory_occupancy)
+  );
+
   // MEMORY EMULATOR
   // ---------------
+  if (MEMORY_BACKEND == MEM_BACKEND_LEGACY) begin : gen_legacy
+  wire unused_native = &{1'b0, sram_req, sram_we, sram_addr, sram_wdata, sram_be, memory_outstanding, memory_response};
+  assign sram_initialized = 1'b0;
+  assign sram_rdata = '0;
   memory_bare_emu #(
     .DUMP_PERIOD      (MemDumpT),
     .PIPE_NUM         (MemPipeNum),
@@ -355,4 +383,33 @@ module tb_bare #(
     .data_store_except_raised_o(mem2dp_store_except_raised),
     .data_store_except_code_o  (mem2dp_store_except_code)
   );
+  end else begin : gen_native_memory
+    wire unused_observation = &{1'b0, dp2mem_instr_addr, dp2mem_load_addr, dp2mem_load_be, dp2mem_load_tag,
+      dp2mem_store_we, dp2mem_store_tag, dp2mem_store_be, dp2mem_store_wdata, memory_outstanding};
+    assign mem2dp_instr_ready = memory_response.instr_gnt;
+    assign mem2dp_instr_valid = memory_response.instr_valid;
+    assign mem2dp_instr_rdata = memory_response.instr_data;
+    assign mem2dp_instr_except_raised = memory_response.instr_except;
+    assign mem2dp_instr_except_code = memory_response.instr_code;
+    assign mem2dp_load_ready = memory_response.load_gnt;
+    assign mem2dp_load_valid = memory_response.load_valid;
+    assign mem2dp_load_rdata = memory_response.load_data;
+    assign mem2dp_load_tag = memory_response.load_tag;
+    assign mem2dp_load_except_raised = memory_response.load_except;
+    assign mem2dp_load_except_code = memory_response.load_code;
+    assign mem2dp_store_ready = memory_response.store_gnt;
+    assign mem2dp_store_valid = memory_response.store_valid;
+    assign mem2dp_store_tag = memory_response.store_tag;
+    assign mem2dp_store_except_raised = memory_response.store_except;
+    assign mem2dp_store_except_code = memory_response.store_code;
+    if (MEMORY_BACKEND == MEM_BACKEND_TC_SRAM) begin : gen_storage
+      tc_sram_storage u_storage (
+        .clk_i, .req_i(sram_req), .we_i(sram_we), .addr_i(sram_addr),
+        .wdata_i(sram_wdata), .be_i(sram_be), .rdata_o(sram_rdata), .initialized_o(sram_initialized)
+      );
+    end else begin : gen_no_storage
+      assign sram_initialized = 1'b0;
+      assign sram_rdata = '0;
+    end
+  end
 endmodule

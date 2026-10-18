@@ -7,10 +7,18 @@ Spike. The FS/fcsr support described below is implemented in the processor RTL
 and therefore also applies to ordinary simulation.
 
 The supported instruction scope is **RV64IMFD and CSR operations on mstatus, fcsr,
-frm, fflags, mtvec, mscratch, mepc, mcause and mtval**, in machine mode with the bare memory emulator. This is
+frm, fflags, mtvec, mscratch, mepc, mcause and mtval**, in machine mode with the legacy or TC_SRAM memory backend. This is
 limited to ordinary instruction execution: traps/interrupts, other CSRs,
 fences, atomics, compressed instructions, MMIO reads and self-modifying code
 terminate with an explicit unsupported result. See the limitations below.
+
+The checker reads the configured serial/exit addresses and SRAM bounds from RTL
+metadata. TC_SRAM writes are observed at their rising-edge acceptance; legacy
+writes retain falling-edge observation. Use byte-addressed `.hex` firmware for
+checked runs. Spike's sparse reference does not assign values to untouched SRAM
+bytes, so architectural reads of uninitialized SRAM remain outside the checked
+scope. See [memory backend integration](../../../rtl/memory_interface/MEMORY_BACKEND_INTEGRATION.md)
+for backend selection, measurements, and the executed verification matrix.
 
 ## Build and run
 

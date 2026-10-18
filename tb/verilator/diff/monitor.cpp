@@ -140,16 +140,17 @@ struct Monitor::Impl {
         return values;
     }
     Impl(const std::string &image, const std::string &output, Config cfg, const std::string &f)
-        : spike(image, constants.at("tb_bare.BOOT_PC"), isa(), csr_state()),
+        : spike(image, constants.at("tb_bare.BOOT_PC"), isa(), csr_state(),
+                MemoryMap{constants.at("tb_bare.SERIAL_ADDR"), constants.at("tb_bare.EXIT_ADDR"),
+                          constants.at("len5_config_pkg.SRAM_BASE_ADDR"),
+                          constants.at("len5_config_pkg.MEMORY_BACKEND") == 1 ? constants.at("len5_config_pkg.SRAM_SIZE_BYTES") : 0,
+                          constants.at("len5_config_pkg.MMAP_MASK")} ),
           checker(spike, output, cfg), fault(f) {
         if (constants.at("len5_config_pkg.LEN5_C_EN") ||
             constants.at("len5_config_pkg.LEN5_A_EN") ||
             constants.at("len5_config_pkg.ONLY_DOUBLEWORD_MEM_ACCESSES"))
             throw std::runtime_error(
                 "unsupported compressed/atomic/aligned-doubleword-memory configuration");
-        if (constants.at("tb_bare.SERIAL_ADDR") != 0x20000000 ||
-            constants.at("tb_bare.EXIT_ADDR") != 0x20000100)
-            throw std::runtime_error("unsupported testbench MMIO map");
         if (!f.empty() && f != "operand" && f != "cdb" && f != "register" && f != "store")
             throw std::runtime_error("unknown --diff-fault");
         for (const auto &[path, l] : layouts)
@@ -190,7 +191,7 @@ struct Monitor::Impl {
                    front_flush = issue_signals.get("iq_flush");
         // The emulator also captures requests on a flush edge. Save identity
         // before invalidating the LQ so the later response drains a tombstone.
-        if (top_signals.get("dp2mem_load_valid"))
+        if (top_signals.get("dp2mem_load_valid") && top_signals.get("mem2dp_load_ready"))
             checker.load_request(top_signals.get("dp2mem_load_tag"),
                                  top_signals.get("dp2mem_load_addr"),
                                  top_signals.get("dp2mem_load_be"), t);
@@ -302,6 +303,15 @@ struct Monitor::Impl {
                     checker.fetch(issue_signals.get("new_instr", "curr_pc", lane),
                                   issue_signals.get("new_instr", "instruction.raw", lane), t);
         }
+        if (constants.at("len5_config_pkg.MEMORY_BACKEND") == 1 &&
+            top_signals.get("dp2mem_store_valid") && top_signals.get("mem2dp_store_ready") &&
+            top_signals.get("dp2mem_store_we")) {
+            auto tag = top_signals.get("dp2mem_store_tag");
+            if (inject("store")) tag = no_index;
+            checker.external_store(tag, top_signals.get("dp2mem_store_addr"),
+                                   top_signals.get("dp2mem_store_be"),
+                                   top_signals.get("dp2mem_store_wdata"), t);
+        }
         checker.tick(t);
     }
 };
@@ -336,7 +346,8 @@ void Monitor::after_rising(Stamp t) {
 void Monitor::before_falling(Stamp t) {
     try {
         // memory_bare_emu writes on negedge(valid && we), independent of ready.
-        if (impl_->top_signals.get("dp2mem_store_valid") &&
+        if (constants.at("len5_config_pkg.MEMORY_BACKEND") == 0 &&
+            impl_->top_signals.get("dp2mem_store_valid") &&
             impl_->top_signals.get("dp2mem_store_we")) {
             auto tag = impl_->top_signals.get("dp2mem_store_tag");
             if (impl_->inject("store"))

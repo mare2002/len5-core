@@ -1,0 +1,13 @@
+`verilator_config
+// Keep the pinned upstream file unchanged. These are style/constant-loop diagnostics.
+lint_off -rule DECLFILENAME -file "*tech_cells_generic/tc_sram.sv" -match "*tc_sram_blackbox*"
+lint_off -rule GENUNNAMED -file "*tech_cells_generic/tc_sram.sv"
+lint_off -rule UNSIGNED -file "*tech_cells_generic/tc_sram.sv" -match "*Comparison is constant*"
+// The simulation power-on reset is intentionally observed by the loader.
+lint_off -rule SYNCASYNCNET -file "*tc_sram_storage.sv" -match "*storage_reset_n*"
+// Implementation keys and greeting parameters are synthesis/non-Verilator metadata.
+lint_off -rule UNUSEDPARAM -file "*tech_cells_generic/tc_sram.sv" -match "*'PrintSimCfg'*"
+lint_off -rule UNUSEDPARAM -file "*tech_cells_generic/tc_sram.sv" -match "*'ImplKey'*"
+lint_off -rule UNUSEDPARAM -file "*tech_cells_generic/tc_sram.sv" -match "*'FPGAImplKey'*"
+// Native SimInit="none" deliberately leaves the upstream initialization array unused.
+lint_off -rule UNUSEDSIGNAL -file "*tech_cells_generic/tc_sram.sv" -match "Signal is not used: 'init_val'"
