@@ -11,3 +11,6 @@ lint_off -rule UNUSEDPARAM -file "*tech_cells_generic/tc_sram.sv" -match "*'Impl
 lint_off -rule UNUSEDPARAM -file "*tech_cells_generic/tc_sram.sv" -match "*'FPGAImplKey'*"
 // Native SimInit="none" deliberately leaves the upstream initialization array unused.
 lint_off -rule UNUSEDSIGNAL -file "*tech_cells_generic/tc_sram.sv" -match "Signal is not used: 'init_val'"
+
+// Exported interface width can be unused by standalone test targets.
+lint_off -rule UNUSEDPARAM -file "*/memory_backend_pkg.sv" -match "*'SRAM_ADDR_WIDTH'*"

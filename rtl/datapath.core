@@ -9,9 +9,6 @@ description: "LEN5 CPU datapath"
 filesets:
   rtl-bare:
     files:
-    - ../tb/memory/tc_sram/memory_access_check.sv
-    - ../tb/memory/tc_sram/memory_response_buffer.sv
-    - ../tb/memory/tc_sram/tc_sram_adapter.sv
     - datapath.sv
     file_type: systemVerilogSource
     depend:

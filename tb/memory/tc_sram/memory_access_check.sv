@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Byte-address decoder shared by memory backends; alignment has priority.
 module memory_access_check #(
-    parameter logic [63:0] BASE_ADDR = len5_config_pkg::SRAM_BASE_ADDR,
-    parameter int unsigned SIZE_BYTES = len5_config_pkg::SRAM_SIZE_BYTES,
-    parameter logic [63:0] SERIAL_ADDR = len5_config_pkg::SERIAL_ADDR,
-    parameter logic [63:0] EXIT_ADDR = len5_config_pkg::EXIT_ADDR,
+    parameter logic [63:0] BASE_ADDR = tb_config_pkg::SRAM_BASE_ADDR,
+    parameter int unsigned SIZE_BYTES = tb_config_pkg::SRAM_SIZE_BYTES,
+    parameter logic [63:0] SERIAL_ADDR = tb_config_pkg::SERIAL_ADDR,
+    parameter logic [63:0] EXIT_ADDR = tb_config_pkg::EXIT_ADDR,
     parameter int unsigned KIND = 0  // 0 instruction, 1 load, 2 store
 ) (
     input logic [63:0] addr_i,

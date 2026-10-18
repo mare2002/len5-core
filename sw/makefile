@@ -107,7 +107,7 @@ $(BUILD_DIR)/%.elf: $(OBJS) $(LIB_OBJS)
 	echo $(LIB_OBJS)
 	$(RISCV_EXE_PREFIX)-gcc $(CFLAGS) $(LDFLAGS_PRE) $(INC_DIRS_GCC) $^ $(LDFLAGS_POST) -o $@
 
-$(MEMORY_MAP_HEADER): ../rtl/packages/len5_config_pkg.sv ../scripts/gen-memory-map.py
+$(MEMORY_MAP_HEADER): ../tb/packages/tb_config_pkg.sv ../scripts/gen-memory-map.py
 	python3 ../scripts/gen-memory-map.py $@
 
 $(OBJS) $(LIB_OBJS): $(MEMORY_MAP_HEADER)

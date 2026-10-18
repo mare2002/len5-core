@@ -44,37 +44,40 @@ The active backend is in `rtl/expipe/`, not `rtl/backend/`.
 
 ## Architecture and selection
 
-`len5_config_pkg::MEMORY_BACKEND` is the only backend selector:
+`tb_config_pkg::MEMORY_BACKEND` is the only backend selector:
 
 ```systemverilog
-localparam memory_backend_t MEMORY_BACKEND = MEM_BACKEND_LEGACY;
-// Or: MEM_BACKEND_TC_SRAM
+localparam memory_backend_t MEMORY_BACKEND = MEM_BACKEND_TC_SRAM;
+// Or: MEM_BACKEND_LEGACY
 // MEM_BACKEND_AXI_SIM is reserved and produces an elaboration error.
 ```
 
 Invalid enum selections also produce an explicit elaboration error. Generate
-branches instantiate only the selected backend. The legacy emulator and memory
-class are unmodified. The fetch-stage and LSU module ports and CPU RTL are
-unchanged. `datapath` selects their responses and instantiates the SRAM protocol
-adapter; `tb_bare` instantiates storage only for TC_SRAM:
+branches instantiate only the selected backend in `tb_bare`. The legacy emulator
+and memory class are unmodified. `datapath` connects the fetch stage and LSU to
+its external instruction, load, and store channels; it has no testbench package
+or native SRAM dependency.
 
 ```text
-fetch / LSU -- existing request, grant, response, ready, tag, exception signals
-                    |
-                datapath generate
-                    +-- LEGACY: original external memory ports -> memory_bare_emu
+CPU datapath: fetch / LSU -- external memory channels + instruction/load flush
+                                      |
+                              tb_bare generate
+                    +-- LEGACY: memory_bare_emu
                     +-- TC_SRAM: tc_sram_adapter -> three native ports
                     |                              |
-                    |                    tb_bare / tc_sram_storage
+                    |                        tc_sram_storage
                     |                              |
                     |                      one shared tc_sram
                     +-- AXI_SIM: explicit elaboration error (future adapter)
 ```
 
-The extra datapath ports carry native SRAM signals, initialization-ready, a
-response observation struct, MMIO acceptance, and diagnostic occupancy. Legacy
-input/output names remain available; native outputs are inactive in that branch.
-The observation struct avoids hierarchical references in the simulation monitor.
+Backend selection, SRAM timing and window, initialization mode, and serial/exit
+addresses are defined in `tb/packages/tb_config_pkg.sv`. CPU feature settings,
+boot translation mode, and the LSU forwarding policy (`MMAP_MASK`) remain in
+`len5_config_pkg`. The generic datapath `data_load_flush_o` output carries the
+backend's load invalidation event; the adapter retains its existing latency-one
+draining and longer-latency cancellation behavior. Native SRAM signals, the
+response observation struct, MMIO acceptance, and occupancy stay in `tb_bare`.
 There is no cache, arbiter, interconnect, AXI dependency, or storage shadow array.
 `memory_access_check` and the byte-range helper are separate from SRAM timing.
 
@@ -89,10 +92,10 @@ style and unused initialization metadata; the source is not edited for warnings.
 
 | Package setting | Default | Meaning / constraints |
 |---|---|---|
-| `MEMORY_BACKEND` | `MEM_BACKEND_LEGACY` | Select one backend |
+| `MEMORY_BACKEND` | `MEM_BACKEND_TC_SRAM` | Select one backend |
 | `SRAM_BASE_ADDR` | `64'h0001_0000` | Byte address, eight-byte aligned |
 | `SRAM_SIZE_BYTES` | `1024 * 1024` | At least eight, multiple of eight, no address-space wrap |
-| `SRAM_LATENCY` | `1` | Positive fixed read latency; zero is rejected |
+| `SRAM_LATENCY` | `4` | Positive fixed read latency; zero is rejected |
 | `SRAM_SIM_INIT` | `"none"` | Native `none`, `zeros`, `ones`, or `random` |
 | `SERIAL_ADDR` | `64'h2000_0000` | Output-only device base |
 | `EXIT_ADDR` | `64'h2000_0100` | Output-only device base |
@@ -357,7 +360,7 @@ Existing UNOPTFLAT waiver text was made compatible with the changed diagnostic
 prefix; scopes and signal patterns were preserved. New logic does not disable
 width, latch, multidriver, or protocol warnings.
 
-Build and run legacy (the checked-in default):
+Build and run the selected backend (TC_SRAM in the checked-in configuration):
 
 ```sh
 make verilator-build
@@ -365,8 +368,8 @@ make app PROJECT=hello_world
 make verilator-sim FIRMWARE=build/main.hex MAX_CYCLES=100000 DUMP_WAVES=false
 ```
 
-To select TC_SRAM in place, change **only** `MEMORY_BACKEND` in
-`rtl/packages/len5_config_pkg.sv` to `MEM_BACKEND_TC_SRAM`, then use those same
+To select legacy in place, change **only** `MEMORY_BACKEND` in
+`tb/packages/tb_config_pkg.sv` to `MEM_BACKEND_LEGACY`, then use those same
 commands. To keep a simultaneous legacy build without changing the working
 configuration, use an isolated snapshot:
 
@@ -542,6 +545,8 @@ git diff --check
 For another bundle width, copy `len5_config_pkg.sv` to a generated configuration,
 change only `LEN5_MULTIPLE_ISSUES`, then run
 `TC_SRAM_CONFIG=/absolute/config.sv TC_SRAM_BUILD_DIR=/absolute/builddir SEEDS=3 CYCLES=10000 bash scripts/sim/check-tc-sram.sh`.
+For a different latency, separately copy `tb/packages/tb_config_pkg.sv`, change
+`SRAM_LATENCY`, and pass it with `TC_SRAM_TB_CONFIG=/absolute/tb_config_pkg.sv`.
 This tests the adapter configuration; it does not claim full-core verification of
 all CPU widths. Configuration and loader scripts report each tested case and
 preserve its build/run log. Expected `$fatal` rejections may produce a nonzero

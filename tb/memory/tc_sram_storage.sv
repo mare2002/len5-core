@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Simulation storage/initialization only. Protocol and MMIO live outside this module.
 module tc_sram_storage #(
-    parameter logic [63:0] BASE_ADDR = len5_config_pkg::SRAM_BASE_ADDR,
-    parameter int unsigned SIZE_BYTES = len5_config_pkg::SRAM_SIZE_BYTES,
-    parameter int unsigned LATENCY = len5_config_pkg::SRAM_LATENCY,
-    parameter string SIM_INIT = len5_config_pkg::SRAM_SIM_INIT,
+    parameter logic [63:0] BASE_ADDR = tb_config_pkg::SRAM_BASE_ADDR,
+    parameter int unsigned SIZE_BYTES = tb_config_pkg::SRAM_SIZE_BYTES,
+    parameter int unsigned LATENCY = tb_config_pkg::SRAM_LATENCY,
+    parameter string SIM_INIT = tb_config_pkg::SRAM_SIM_INIT,
     parameter bit LOAD_FIRMWARE = 1,
     parameter int unsigned ADDR_WIDTH = SIZE_BYTES / 8 > 1 ? $clog2(SIZE_BYTES / 8) : 1
 ) (

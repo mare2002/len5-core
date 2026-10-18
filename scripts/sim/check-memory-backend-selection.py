@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check datapath's elaboration errors using a FuseSoC source list."""
+"""Check testbench's elaboration errors using a FuseSoC source list."""
 import argparse
 import json
 import os
@@ -18,7 +18,7 @@ for line in file_list.read_text().splitlines():
         sources.append("+incdir+" + str((file_list.parent / line[8:]).resolve()))
     elif line.endswith((".sv", ".v", ".vlt")) and not line.startswith("-"):
         sources.append(str((file_list.parent / line).resolve()))
-config_index = next(i for i, s in enumerate(sources) if s.endswith("/len5_config_pkg.sv"))
+config_index = next(i for i, s in enumerate(sources) if s.endswith("/tb_config_pkg.sv"))
 original = Path(sources[config_index]).read_text()
 build = root / "build/memory-backend-selection"
 results = []
@@ -26,7 +26,7 @@ for name, setting, message in (("axi", "MEM_BACKEND_AXI_SIM", "not implemented")
                                ("invalid", "memory_backend_t'(2'd3)", "Invalid MEMORY_BACKEND")):
     out = build / name
     out.mkdir(parents=True, exist_ok=True)
-    config = out / "len5_config_pkg.sv"
+    config = out / "tb_config_pkg.sv"
     config.write_text(re.sub(r"(localparam memory_backend_t MEMORY_BACKEND = )[^;]+;",
                              r"\g<1>" + setting + ";", original))
     sources[config_index] = str(config)

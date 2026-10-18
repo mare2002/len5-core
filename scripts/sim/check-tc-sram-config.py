@@ -24,7 +24,7 @@ for index, name in enumerate(cases):
         config = out / "len5_config_pkg.sv"
         config.write_text(content)
     sources = ["rtl/packages/util_pkg.sv", str(config), "rtl/packages/len5_pkg.sv",
-               "tb/memory/tc_sram/memory_backend_pkg.sv", "tb/memory/tc_sram/memory_access_check.sv",
+               "tb/packages/tb_config_pkg.sv", "tb/memory/tc_sram/memory_backend_pkg.sv", "tb/memory/tc_sram/memory_access_check.sv",
                "tb/memory/tc_sram/memory_response_buffer.sv", "tb/memory/tc_sram/tc_sram_adapter.sv",
                "tb/memory/tc_sram/tc_sram_config_tb.sv"]
     cmd = [os.environ.get("VERILATOR", "verilator"), "--binary", "--timing", "--assert", "-j", "4",

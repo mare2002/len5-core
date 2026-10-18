@@ -24,7 +24,7 @@ for name, data in images.items():
 (build / "image.bin").write_bytes(bytes.fromhex("1122334455667788"))
 sources = ["rtl/misc/packages-waivers.vlt", "tb/memory/tc_sram/waivers.vlt",
            "rtl/packages/util_pkg.sv", "rtl/packages/len5_config_pkg.sv", "rtl/packages/len5_pkg.sv",
-           "tb/memory/tc_sram/memory_backend_pkg.sv", "rtl/vendor/tech_cells_generic/tc_sram.sv",
+           "tb/packages/tb_config_pkg.sv", "tb/memory/tc_sram/memory_backend_pkg.sv", "rtl/vendor/tech_cells_generic/tc_sram.sv",
            "+incdir+tb/memory", "tb/memory/tc_sram_storage.sv", "tb/memory/tc_sram/tc_sram_loader_tb.sv"]
 for mode in ("ones", "zeros", "none", "random"):
     out = build / mode

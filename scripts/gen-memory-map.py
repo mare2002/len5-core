@@ -6,10 +6,10 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("output", type=Path)
-parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parents[1] / "rtl/packages/len5_config_pkg.sv")
+parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parents[1] / "tb/packages/tb_config_pkg.sv")
 args = parser.parse_args()
 source = args.config.read_text()
-lines = ["/* Generated from len5_config_pkg.sv; do not edit. */"]
+lines = ["/* Generated from tb_config_pkg.sv; do not edit. */"]
 for name in ("SERIAL_ADDR", "EXIT_ADDR"):
     match = re.search(r"localparam\s+logic\s*\[63:0\]\s+" + name + r"\s*=\s*64'h([0-9a-fA-F_]+)\s*;", source)
     if not match:

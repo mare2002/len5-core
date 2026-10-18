@@ -39,11 +39,11 @@ module tc_sram_loader_tb #(
     else $fatal(1, "Loader did not finish");
     req = 1;
     addr[0] = 0;
-    repeat (len5_config_pkg::SRAM_LATENCY) tick();
+    repeat (tb_config_pkg::SRAM_LATENCY) tick();
     assert (data[0] === 64'h8877665544332211)
     else $fatal(1, "Loaded endian/address mismatch %h", data[0]);
     addr[0] = 2;
-    repeat (len5_config_pkg::SRAM_LATENCY) tick();
+    repeat (tb_config_pkg::SRAM_LATENCY) tick();
     if (!binary_image)
       assert (data[0][31:0] === 32'hddccbbaa)
       else $fatal(1, "Sparse load mismatch");

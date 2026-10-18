@@ -2,6 +2,7 @@
 package memory_backend_pkg;
   import len5_pkg::*;
   import len5_config_pkg::*;
+  import tb_config_pkg::*;
 
   // Native SRAM addresses index 64-bit words; CPU addresses remain byte addresses.
   // verilog_lint: waive parameter-name-style

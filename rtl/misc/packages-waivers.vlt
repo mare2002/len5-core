@@ -23,6 +23,3 @@ lint_off -rule UNUSED -file "*/len5_config_pkg.sv" -match "Parameter is not used
 lint_off -rule UNUSED -file "*/len5_pkg.sv" -match "Parameter is not used: '*'"
 lint_off -rule UNUSED -file "*/memory_pkg.sv" -match "Parameter is not used: '*'"
 lint_off -rule UNUSED -file "*/utility_pkg.sv" -match "Parameter is not used: '*'"
-
-// Exported interface width is unused in standalone execution-unit test targets.
-lint_off -rule UNUSEDPARAM -file "*/memory_backend_pkg.sv" -match "*'SRAM_ADDR_WIDTH'*"

@@ -2,6 +2,7 @@
 module tc_sram_adapter_tb;
   import len5_pkg::*;
   import len5_config_pkg::*;
+  import tb_config_pkg::*;
   import memory_backend_pkg::*;
   localparam int N = LEN5_MULTIPLE_ISSUES;
   localparam int LATENCY = SRAM_LATENCY;

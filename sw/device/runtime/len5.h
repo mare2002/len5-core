@@ -11,7 +11,7 @@
 /* ---- MACROS ---- */
 /********************/
 /* Peripherals base address */
-// Generated len5_memory_map.h supplies these addresses from len5_config_pkg.sv.
+// Generated len5_memory_map.h supplies these addresses from tb_config_pkg.sv.
 // MMAP_MASK must exclude both devices from store-to-load forwarding.
 #define PERI_BASE ((unsigned char *) LEN5_SERIAL_ADDR)
 

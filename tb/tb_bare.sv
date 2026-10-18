@@ -17,8 +17,8 @@ module tb_bare #(
   parameter string           MEM_DUMP_FILE = "mem_dump.txt",
   parameter string           TRACE_FILE    = "logs/sim-trace.log",
   parameter longint unsigned BOOT_PC       = 64'h0,
-  parameter longint unsigned SERIAL_ADDR   = len5_config_pkg::SERIAL_ADDR,
-  parameter longint unsigned EXIT_ADDR     = len5_config_pkg::EXIT_ADDR,
+  parameter longint unsigned SERIAL_ADDR   = tb_config_pkg::SERIAL_ADDR,
+  parameter longint unsigned EXIT_ADDR     = tb_config_pkg::EXIT_ADDR,
   parameter int unsigned     EXIT_TIMEOUT  = 50                     // cycles
 ) (
   input logic clk_i,      // simulation clock
@@ -32,6 +32,7 @@ module tb_bare #(
   import memory_pkg::*;
   import csr_pkg::*;
   import len5_config_pkg::*;
+  import tb_config_pkg::*;
 
   // ----------------
   // TB CONFIGURATION
@@ -91,6 +92,7 @@ module tb_bare #(
   except_code_t [LEN5_MULTIPLE_ISSUES-1:0] mem2dp_instr_except_code;
 
   logic                               dp2mem_load_valid;
+  logic                               dp2mem_load_flush;
   logic                               mem2dp_load_ready;
   logic                               mem2dp_load_valid;
   logic                               dp2mem_load_ready;
@@ -124,6 +126,7 @@ module tb_bare #(
   logic memory_load_flush;
   memory_backend_pkg::memory_response_t memory_response;
   logic monitor_store;
+  assign memory_load_flush = MEMORY_BACKEND == MEM_BACKEND_TC_SRAM && SRAM_LATENCY > 1 && dp2mem_load_flush;
   assign monitor_store = MEMORY_BACKEND == MEM_BACKEND_LEGACY ?
                          dp2mem_store_valid && mem2dp_store_ready : mmio_write;
 
@@ -278,8 +281,7 @@ module tb_bare #(
   // -----------------------
   datapath #(
     .FETCH_MEMIF_FIFO_DEPTH(FetchMemIfFifoDepth),
-    .BOOT_PC               (BOOT_PC),
-    .SERIAL_ADDR(SERIAL_ADDR), .EXIT_ADDR(EXIT_ADDR)
+    .BOOT_PC               (BOOT_PC)
   ) u_datapath (
     .clk_i                     (clk_i),
     .rst_ni                    (rst_ni),
@@ -294,6 +296,7 @@ module tb_bare #(
     .instr_except_raised_i     (mem2dp_instr_except_raised),
     .instr_except_code_i       (mem2dp_instr_except_code),
     .data_load_req_o           (dp2mem_load_valid),
+    .data_load_flush_o         (dp2mem_load_flush),
     .data_load_gnt_i           (mem2dp_load_ready),
     .data_load_rvalid_i        (mem2dp_load_valid),
     .data_load_rready_o        (dp2mem_load_ready),
@@ -317,10 +320,6 @@ module tb_bare #(
     .data_store_tag_i          (mem2dp_store_tag),
     .data_store_except_raised_i(mem2dp_store_except_raised),
     .data_store_except_code_i  (mem2dp_store_except_code),
-    .sram_initialized_i(sram_initialized), .sram_req_o(sram_req), .sram_we_o(sram_we),
-    .sram_addr_o(sram_addr), .sram_wdata_o(sram_wdata), .sram_be_o(sram_be), .sram_rdata_i(sram_rdata),
-    .memory_response_o(memory_response), .mmio_write_o(mmio_write), .memory_load_flush_o(memory_load_flush),
-    .memory_outstanding_o(memory_outstanding), .memory_occupancy_o(memory_occupancy),
     .irq_i                     (),
     .irq_ack_o                 (),
     .irq_id_o                  (),
@@ -343,6 +342,30 @@ module tb_bare #(
   wire unused_native = &{1'b0, sram_req, sram_we, sram_addr, sram_wdata, sram_be, memory_outstanding, memory_response};
   assign sram_initialized = 1'b0;
   assign sram_rdata = '0;
+  assign sram_req = '0;
+  assign sram_we = '0;
+  assign sram_addr = '0;
+  assign sram_wdata = '0;
+  assign sram_be = '0;
+  assign mmio_write = 1'b0;
+  assign memory_outstanding = '0;
+  assign memory_occupancy = '0;
+  assign memory_response.instr_gnt = mem2dp_instr_ready;
+  assign memory_response.instr_valid = mem2dp_instr_valid;
+  assign memory_response.instr_data = mem2dp_instr_rdata;
+  assign memory_response.instr_except = mem2dp_instr_except_raised;
+  assign memory_response.instr_code = mem2dp_instr_except_code;
+  assign memory_response.load_gnt = mem2dp_load_ready;
+  assign memory_response.load_valid = mem2dp_load_valid;
+  assign memory_response.load_data = mem2dp_load_rdata;
+  assign memory_response.load_tag = mem2dp_load_tag;
+  assign memory_response.load_except = mem2dp_load_except_raised;
+  assign memory_response.load_code = mem2dp_load_except_code;
+  assign memory_response.store_gnt = mem2dp_store_ready;
+  assign memory_response.store_valid = mem2dp_store_valid;
+  assign memory_response.store_tag = mem2dp_store_tag;
+  assign memory_response.store_except = mem2dp_store_except_raised;
+  assign memory_response.store_code = mem2dp_store_except_code;
   memory_bare_emu #(
     .DUMP_PERIOD      (MemDumpT),
     .PIPE_NUM         (MemPipeNum),
@@ -406,6 +429,41 @@ module tb_bare #(
     assign mem2dp_store_except_raised = memory_response.store_except;
     assign mem2dp_store_except_code = memory_response.store_code;
     if (MEMORY_BACKEND == MEM_BACKEND_TC_SRAM) begin : gen_storage
+      tc_sram_adapter #(
+        .SERIAL_ADDR(SERIAL_ADDR),
+        .EXIT_ADDR(EXIT_ADDR)
+      ) u_adapter (
+        .clk_i,
+        .rst_ni,
+        .instr_flush_i(dp2mem_flush),
+        .load_flush_i(dp2mem_load_flush),
+        .initialized_i(sram_initialized),
+        .instr_req_i(dp2mem_instr_valid),
+        .instr_ready_i(dp2mem_instr_ready),
+        .instr_addr_i(dp2mem_instr_addr),
+        .load_req_i(dp2mem_load_valid),
+        .load_ready_i(dp2mem_load_ready),
+        .load_addr_i(dp2mem_load_addr),
+        .load_be_i(dp2mem_load_be),
+        .load_tag_i(dp2mem_load_tag),
+        .store_req_i(dp2mem_store_valid),
+        .store_ready_i(dp2mem_store_ready),
+        .store_we_i(dp2mem_store_we),
+        .store_addr_i(dp2mem_store_addr),
+        .store_data_i(dp2mem_store_wdata),
+        .store_be_i(dp2mem_store_be),
+        .store_tag_i(dp2mem_store_tag),
+        .response_o(memory_response),
+        .sram_req_o(sram_req),
+        .sram_we_o(sram_we),
+        .sram_addr_o(sram_addr),
+        .sram_wdata_o(sram_wdata),
+        .sram_be_o(sram_be),
+        .sram_rdata_i(sram_rdata),
+        .mmio_write_o(mmio_write),
+        .outstanding_o(memory_outstanding),
+        .occupancy_o(memory_occupancy)
+      );
       tc_sram_storage u_storage (
         .clk_i, .req_i(sram_req), .we_i(sram_we), .addr_i(sram_addr),
         .wdata_i(sram_wdata), .be_i(sram_be), .rdata_o(sram_rdata), .initialized_o(sram_initialized)
@@ -413,6 +471,20 @@ module tb_bare #(
     end else begin : gen_no_storage
       assign sram_initialized = 1'b0;
       assign sram_rdata = '0;
+      assign sram_req = '0;
+      assign sram_we = '0;
+      assign sram_addr = '0;
+      assign sram_wdata = '0;
+      assign sram_be = '0;
+      assign memory_response = '0;
+      assign mmio_write = 1'b0;
+      assign memory_outstanding = '0;
+      assign memory_occupancy = '0;
+      if (MEMORY_BACKEND == MEM_BACKEND_AXI_SIM) begin : gen_axi_error
+        $fatal(1, "MEM_BACKEND_AXI_SIM is reserved and not implemented");
+      end else begin : gen_selection_error
+        $fatal(1, "Invalid MEMORY_BACKEND selection");
+      end
     end
   end
 endmodule

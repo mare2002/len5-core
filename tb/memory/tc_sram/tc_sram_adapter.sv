@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 module tc_sram_adapter #(
     parameter int unsigned N = len5_config_pkg::LEN5_MULTIPLE_ISSUES,
-    parameter logic [63:0] BASE_ADDR = len5_config_pkg::SRAM_BASE_ADDR,
-    parameter int unsigned SIZE_BYTES = len5_config_pkg::SRAM_SIZE_BYTES,
-    parameter int unsigned LATENCY = len5_config_pkg::SRAM_LATENCY,
-    parameter logic [63:0] SERIAL_ADDR = len5_config_pkg::SERIAL_ADDR,
-    parameter logic [63:0] EXIT_ADDR = len5_config_pkg::EXIT_ADDR,
+    parameter logic [63:0] BASE_ADDR = tb_config_pkg::SRAM_BASE_ADDR,
+    parameter int unsigned SIZE_BYTES = tb_config_pkg::SRAM_SIZE_BYTES,
+    parameter int unsigned LATENCY = tb_config_pkg::SRAM_LATENCY,
+    parameter logic [63:0] SERIAL_ADDR = tb_config_pkg::SERIAL_ADDR,
+    parameter logic [63:0] EXIT_ADDR = tb_config_pkg::EXIT_ADDR,
     parameter int unsigned ADDR_WIDTH = SIZE_BYTES / 8 > 1 ? $clog2(SIZE_BYTES / 8) : 1,
     parameter int unsigned RESPONSE_DEPTH = LATENCY + 1,
     parameter int unsigned COUNT_WIDTH = $clog2(RESPONSE_DEPTH + 1)

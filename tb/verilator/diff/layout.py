@@ -113,7 +113,8 @@ def generate(source, target):
                     pass
     out += ['{"%s",%dULL},'%(k,v) for k,v in sorted(seen.items())]
     out += ['};', 'inline const std::map<std::string,uint64_t> constants = {']
-    for mod in (root.find("netlist/module[@name='tb_bare']"),root.find("netlist/package[@name='len5_config_pkg']")):
+    for mod in (root.find("netlist/module[@name='tb_bare']"),root.find("netlist/package[@name='len5_config_pkg']"),
+                root.find("netlist/package[@name='tb_config_pkg']")):
         for v in mod.findall('var'):
             c=v.find('const')
             if c is not None and (v.get('param') or v.get('localparam')):

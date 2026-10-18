@@ -79,7 +79,7 @@ module memory_protocol_monitor (
         if (64'(queue_size(p)) > max_out[p]) max_out[p] = 64'(queue_size(p));
         // Legacy PIPE_NUM=0: every pending response resides in the spill/output
         // registers. TC_SRAM reports only occupied skid slots, excluding in-flight reads.
-        buffer_count = len5_config_pkg::MEMORY_BACKEND == len5_config_pkg::MEM_BACKEND_LEGACY ?
+        buffer_count = tb_config_pkg::MEMORY_BACKEND == tb_config_pkg::MEM_BACKEND_LEGACY ?
                        64'(queue_size(p)) : 64'(occupancy_i[p]);
         sum_occ[p] += buffer_count;
         if (buffer_count > max_occ[p]) max_occ[p] = buffer_count;
@@ -104,7 +104,7 @@ module memory_protocol_monitor (
         fd = $fopen(report_path, "w");
         if (fd == 0) $fatal(1, "Cannot write memory performance report");
         $fdisplay(fd, "{\"backend\":%0d,\"cycles\":%0d,\"retired\":%0d,\"ipc\":%f,\"ports\":[",
-                  int'(len5_config_pkg::MEMORY_BACKEND), cycles, retired,
+                  int'(tb_config_pkg::MEMORY_BACKEND), cycles, retired,
                   real'(retired) / real'(cycles));
         for (int p = 0; p < 3; p++) begin
           $fwrite(

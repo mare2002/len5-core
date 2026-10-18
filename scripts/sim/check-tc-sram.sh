@@ -8,6 +8,7 @@ mkdir -p "$test_build_dir"
   -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY \
   tb/memory/tc_sram/waivers.vlt rtl/misc/packages-waivers.vlt \
   rtl/packages/util_pkg.sv "${TC_SRAM_CONFIG:-rtl/packages/len5_config_pkg.sv}" rtl/packages/len5_pkg.sv \
+  "${TC_SRAM_TB_CONFIG:-tb/packages/tb_config_pkg.sv}" \
   tb/memory/tc_sram/memory_backend_pkg.sv tb/memory/tc_sram/memory_access_check.sv \
   tb/memory/tc_sram/memory_response_buffer.sv tb/memory/tc_sram/tc_sram_adapter.sv \
   rtl/vendor/tech_cells_generic/tc_sram.sv +incdir+tb/memory tb/memory/tc_sram_storage.sv \

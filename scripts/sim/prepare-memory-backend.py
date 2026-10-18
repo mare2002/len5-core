@@ -24,7 +24,7 @@ for name in ("rtl", "tb", "scripts", "sw"):
     shutil.copytree(root / name, dest / name, ignore=shutil.ignore_patterns("__pycache__", "build", ".git"))
 for name in ("len5.core", "fusesoc.conf", "makefile"):
     shutil.copy2(root / name, dest / name)
-config = dest / "rtl/packages/len5_config_pkg.sv"
+config = dest / "tb/packages/tb_config_pkg.sv"
 config.write_text(re.sub(r"(localparam memory_backend_t MEMORY_BACKEND = )\w+;",
                          r"\g<1>MEM_BACKEND_" + a.backend + ";", config.read_text()))
 print(dest)
