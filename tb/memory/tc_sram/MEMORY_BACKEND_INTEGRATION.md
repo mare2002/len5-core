@@ -7,7 +7,7 @@ from 8 to 4 and `tb/frontend/RTL_VERIFICATION_FINDINGS.md`. Both are preserved.
 The active backend is in `rtl/expipe/`, not `rtl/backend/`.
 
 * Fetch requests are accepted on valid/ready, responses are ordered, and a
-  prediction FIFO records each accepted bundle. Flush discards the whole FIFO;
+  frontend completion queue records each accepted bundle. Flush discards the whole queue;
   the memory must discard outstanding instruction responses at the same time.
 * This tree fetches N 32-bit instructions per request. For N > 1 the emulator
   aligns the request down to N*4 bytes, returning lanes in address order. The
@@ -117,11 +117,16 @@ validation. It is not enabled or presented as verified. Read validity, load tags
 byte offsets, masks, exceptions and fetch-beat metadata all use `SRAM_LATENCY`
 pipeline stages. Store writes and completions retain their original timing.
 
-Each response FIFO defaults to `SRAM_LATENCY + 1` entries. Pointer and count widths
-are derived from its capacity, including non-power-of-two depths. The frontend's
-prediction FIFO uses the same capacity in the TC_SRAM configuration, so accepted
-fetch requests always have matching prediction metadata. Diagnostic count ports
-use `memory_backend_pkg::SRAM_COUNT_WIDTH`.
+The load/store response FIFOs default to `SRAM_LATENCY + 1` entries and support
+non-power-of-two depths. The CPU's `len5_config_pkg::FETCH_MEMIF_FIFO_DEPTH` sets
+the frontend completion FIFO depth independently of the testbench backend and
+latency. Its default is eight entries and must be a positive power of two.
+At latency four, each data-response buffer has five entries. The standalone
+adapter test rounds `SRAM_LATENCY + 1` up to a power of two for its frontend
+queue model. Instruction metadata and completed bundles share frontend reservations;
+the adapter has no instruction-response FIFO. Its instruction diagnostics count
+in-flight bundles and report zero local response occupancy. These metrics no
+longer measure time spent waiting inside the frontend queue.
 
 `LEN5_C_EN=1` is already unsupported by this CPU and is explicitly rejected here.
 `ONLY_DOUBLEWORD_MEM_ACCESSES=1` is also explicitly rejected: it discards the
@@ -161,12 +166,25 @@ in one SRAM access; no duplicate instruction storage is introduced to hide this.
 
 ## Acceptance, timing, reservations, and backpressure
 
-Each channel has `SRAM_LATENCY + 1` reserved response slots. A grant requires free credit and
-completed initialization. Acceptance is `request && grant`; SRAM `req_i` only
-asserts for accepted, decoded accesses. Fetch reserves one slot for the whole
-bundle and issues its remaining beats internally. Channels do not share credit.
-A rejected operation still reserves a slot and returns an ordered exception
-response, without accessing SRAM.
+Each channel has independent response reservations. Loads and stores reserve
+adapter FIFO slots; fetch reserves frontend completion-queue slots. The frontend
+suppresses memory requests when its queue is full. The adapter grants instruction
+requests only after initialization, outside reset/flush, and when its beat issuer
+is idle. Acceptance remains `request && grant`; decoded SRAM operations and MMIO
+side effects retain their original timing. Faults complete their reserved entries
+without accessing SRAM.
+
+`rtl/common/completion_fifo.sv` has allocation, fill, and read pointers. Allocation
+writes metadata; each ordered response fills the next pending entry; consumption
+frees the oldest completed entry. Pending and completed entries both retain
+credit. An arriving head bypasses result storage into the existing answer spill
+cell when that cell is ready, preserving response-to-issue latency. Otherwise its
+instructions and exceptions are stored alongside the reserved metadata. Separate
+metadata/result banks permit allocation, completion, and consumption on one edge.
+Registered credit preserves the full-queue recovery bubble. Reset/flush clears
+all pointers; payload banks need no reset. The adapter still
+cancels flushed reads and assembles multi-beat bundles, and asserts that each live
+instruction completion is accepted by its pre-reserved frontend slot.
 
 At latency one, for loads/stores and a one-beat fetch, the request/write is sampled at E0, the
 registered result is available after E0, and response acceptance is sampled at
@@ -192,7 +210,7 @@ bundle response consumed     -        -        A        -        B
 ```
 
 The result falls through directly from the SRAM output register when ready.
-If stalled, the response buffer captures data and metadata before the upstream
+If stalled, the frontend instruction queue or adapter data response buffer captures the result before the upstream
 output can change. SRAM re-reads its held read address even without `req_i`, so
 holding only a valid bit would be incorrect. Tags, data, exception flags and codes
 are stored together; no idle SRAM output is treated as a response. Store tags
@@ -551,6 +569,14 @@ This tests the adapter configuration; it does not claim full-core verification o
 all CPU widths. Configuration and loader scripts report each tested case and
 preserve its build/run log. Expected `$fatal` rejections may produce a nonzero
 simulator exit; the scripts explicitly require those failures.
+
+The shared queue is exercised through the existing fetch-memory and full-frontend
+black-box testbenches. The head, fill, and tail counters count modulo `2*DEPTH`. The FIFO supports positive power-of-two depths using an MSB/address split.
+The CPU configuration sets the frontend capacity (`FETCH_MEMIF_FIFO_DEPTH`);
+load/store response capacities remain `SRAM_LATENCY + 1`. Reservation
+checks and counts are maintained by testbench monitors, without FIFO diagnostic ports.
+Full completion, bypass, wraparound, recovery credit, reset, and cancellation
+are checked through public request, response, and issue handshakes.
 
 ## Performance measurements of the original latency-one implementation
 

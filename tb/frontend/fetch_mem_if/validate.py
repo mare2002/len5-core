@@ -57,7 +57,12 @@ def main():
     def run(label,flags=(),status=0):
         r,d,c=case(binary,root,label,flags,status);cases.append(c);return r,d
     baseline,d=run('integrated')
-    assert len(baseline['scenario_samples'])==40
+    assert len(baseline['scenario_samples'])==44
+    coverage=json.loads((d/'logs/coverage.json').read_text())['counters']
+    for event in ('reserved-full','completed-full','arriving-head-bypass',
+                  'older-result-with-return','full-release-bubble',
+                  'flush-mixed-with-return','reset-mixed'):
+        assert coverage.get('architectural/FV23/'+event,0)>0, event
     assert baseline['requirement_checks']['FM05/D']>0 and baseline['requirement_checks']['FM11/D']>0
     assert baseline['obligations']['fault_deliveries']>0 and baseline['obligations']['fault_cancellations']>0
     assert baseline['unknown_output_samples'] and baseline['dont_care_output_samples']

@@ -7,6 +7,8 @@ module tc_sram_adapter_tb;
   localparam int N = LEN5_MULTIPLE_ISSUES;
   localparam int LATENCY = SRAM_LATENCY;
   localparam int CAPACITY = SRAM_RESPONSE_DEPTH;
+  localparam int FetchCapacity = 32'd1 << $clog2(SRAM_RESPONSE_DEPTH);
+  localparam int StatsWidth = $clog2(FetchCapacity + 1);
   localparam logic [63:0] BASE = 64'h1000;
   localparam int SIZE = 256;
   localparam int AW = $clog2(SIZE / 8);
@@ -20,9 +22,90 @@ module tc_sram_adapter_tb;
   logic [2:0][AW-1:0] sr_addr;
   logic [2:0][63:0] sr_wdata;
   logic [2:0][7:0] sr_be;
-  logic [2:0][SRAM_COUNT_WIDTH-1:0] outstanding, occupancy;
+  logic [2:0][StatsWidth-1:0] outstanding, occupancy;
   logic initialized, mmio;
-  memory_response_t rsp;
+  typedef struct packed {
+    logic [N-1:0][31:0] data;
+    logic [N-1:0] except;
+    except_code_t [N-1:0] code;
+  } fetch_response_t;
+  memory_response_t rsp, adapter_rsp;
+  fetch_response_t arriving_fetch, completed_fetch;
+  logic fetch_credit, fetch_result_ready;
+  logic [63:0] completed_pc;
+  int unsigned fetch_reserved_count, fetch_completed_count;
+  logic [2:0][SRAM_COUNT_WIDTH-1:0] adapter_outstanding, adapter_occupancy;
+
+  // Model the frontend's reservation boundary; ready[0] stalls its consumer, not SRAM returns.
+  assign arriving_fetch = '{
+          data: adapter_rsp.instr_data,
+          except: adapter_rsp.instr_except,
+          code: adapter_rsp.instr_code
+      };
+  completion_fifo #(
+      .META_T(logic [63:0]),
+      .DATA_T(fetch_response_t),
+      .DEPTH (FetchCapacity)
+  ) u_fetch_queue (
+      .clk_i(clk),
+      .rst_ni(rst),
+      .flush_i(flush),
+      .allocate_i(req[0] && rsp.instr_gnt),
+      .credit_o(fetch_credit),
+      .metadata_i(addr[0]),
+      .result_valid_i(adapter_rsp.instr_valid),
+      .result_ready_o(fetch_result_ready),
+      .result_i(arriving_fetch),
+      .valid_o(rsp.instr_valid),
+      .ready_i(ready[0]),
+      .metadata_o(completed_pc),
+      .data_o(completed_fetch)
+  );
+  // Public handshakes provide queue statistics and ownership checks outside the DUT.
+  assign outstanding[0] = StatsWidth'(fetch_reserved_count);
+  assign occupancy[0]   = StatsWidth'(fetch_completed_count);
+  always_ff @(posedge clk or negedge rst) begin : check_fetch_reservations
+    if (!rst) begin
+      fetch_reserved_count  <= 0;
+      fetch_completed_count <= 0;
+    end else if (flush) begin
+      fetch_reserved_count  <= 0;
+      fetch_completed_count <= 0;
+    end else begin
+      assert (fetch_completed_count <= fetch_reserved_count && fetch_reserved_count <= FetchCapacity);
+      assert (!(req[0] && rsp.instr_gnt) || fetch_reserved_count < FetchCapacity);
+      assert (!adapter_rsp.instr_valid || (fetch_result_ready && fetch_reserved_count > fetch_completed_count));
+      assert (!rsp.instr_valid || fetch_reserved_count != 0);
+      fetch_reserved_count <= fetch_reserved_count + int'(req[0] && rsp.instr_gnt) -
+          int'(rsp.instr_valid && ready[0]);
+      fetch_completed_count <= fetch_completed_count + int'(adapter_rsp.instr_valid && fetch_result_ready) -
+          int'(rsp.instr_valid && ready[0]);
+    end
+  end
+  assign rsp.instr_gnt = adapter_rsp.instr_gnt && fetch_credit;
+  assign rsp.instr_data = completed_fetch.data;
+  assign rsp.instr_except = completed_fetch.except;
+  assign rsp.instr_code = completed_fetch.code;
+  assign {rsp.load_gnt, rsp.load_valid, rsp.load_data, rsp.load_tag, rsp.load_except, rsp.load_code,
+          rsp.store_gnt, rsp.store_valid, rsp.store_tag, rsp.store_except, rsp.store_code} =
+         {
+    adapter_rsp.load_gnt,
+    adapter_rsp.load_valid,
+    adapter_rsp.load_data,
+    adapter_rsp.load_tag,
+    adapter_rsp.load_except,
+    adapter_rsp.load_code,
+    adapter_rsp.store_gnt,
+    adapter_rsp.store_valid,
+    adapter_rsp.store_tag,
+    adapter_rsp.store_except,
+    adapter_rsp.store_code
+  };
+  for (genvar port_id = 1; port_id < 3; port_id++) begin : gen_data_statistics
+    assign outstanding[port_id] = StatsWidth'(adapter_outstanding[port_id]);
+    assign occupancy[port_id] = StatsWidth'(adapter_occupancy[port_id]);
+  end
+  wire unused_adapter_metrics = &{1'b0, adapter_outstanding[0], adapter_occupancy[0], completed_pc};
   tc_sram_adapter #(
       .BASE_ADDR  (BASE),
       .SIZE_BYTES (SIZE),
@@ -34,8 +117,8 @@ module tc_sram_adapter_tb;
       .instr_flush_i(flush),
       .load_flush_i(load_flush),
       .initialized_i(initialized),
-      .instr_req_i(req[0]),
-      .instr_ready_i(ready[0]),
+      .instr_req_i(req[0] && fetch_credit),
+      .instr_ready_i(fetch_result_ready),
       .instr_addr_i(addr[0]),
       .load_req_i(req[1]),
       .load_ready_i(ready[1]),
@@ -49,7 +132,7 @@ module tc_sram_adapter_tb;
       .store_data_i(wdata[2]),
       .store_be_i(be[2]),
       .store_tag_i(tag[2]),
-      .response_o(rsp),
+      .response_o(adapter_rsp),
       .sram_req_o(sr_req),
       .sram_we_o(sr_we),
       .sram_addr_o(sr_addr),
@@ -57,8 +140,8 @@ module tc_sram_adapter_tb;
       .sram_be_o(sr_be),
       .sram_rdata_i(rdata),
       .mmio_write_o(mmio),
-      .outstanding_o(outstanding),
-      .occupancy_o(occupancy)
+      .outstanding_o(adapter_outstanding),
+      .occupancy_o(adapter_occupancy)
   );
   tc_sram_storage #(
       .BASE_ADDR(BASE),
@@ -278,7 +361,12 @@ module tc_sram_adapter_tb;
       end else assert (!sr_req[0]);
       for (int p = 1; p < 3; p++) begin
         size = size_of(be[p]);
-        e = '{data: 0, tag: tag[p], code: fault(addr[p], size, p), due: cycle_no + (p == 1 ? LATENCY : 1)};
+        e = '{
+            data: 0,
+            tag: tag[p],
+            code: fault(addr[p], size, p),
+            due: cycle_no + (p == 1 ? LATENCY : 1)
+        };
         expected_native = accepted_now[p] && e.code == E_UNKNOWN && addr[p] != SERIAL && addr[p] != EXIT;
         assert (sr_req[p] == expected_native)
         else $fatal(1, "Native request mismatch port %0d", p);
@@ -307,16 +395,18 @@ module tc_sram_adapter_tb;
     cycle_no++;
   endtask
   task automatic drain;
-    req   = 0;
+    req = 0;
     ready = 7;
     flush = 0;
     load_flush = 0;
-    repeat (LATENCY + CAPACITY + (N + 1) / 2 + 5) tick();
+    repeat (LATENCY + FetchCapacity + (N + 1) / 2 + 5) tick();
     assert (loads.size() == 0 && stores.size() == 0 && fetches.size() == 0)
     else $fatal(1, "Drain failed");
   endtask
 
   initial begin
+    if (FetchCapacity == 0 || (FetchCapacity & (FetchCapacity - 1)) != 0)
+      $fatal(1, "Fetch completion queue requires a positive power-of-two capacity");
     void'($value$plusargs("seed=%d", seed));
     void'($value$plusargs("cycles=%d", cycles));
     rng = 32'(seed);
@@ -388,7 +478,7 @@ module tc_sram_adapter_tb;
     addr[2] = BASE + 8;
     be[1] = 255;
     be[2] = 255;
-    repeat ((CAPACITY + 1) * ((N + 1) / 2) + LATENCY + 2) tick();
+    repeat ((FetchCapacity + 1) * ((N + 1) / 2) + LATENCY + 2) tick();
     drain();
     // A canceled read must never complete a post-flush request reusing the same LSU tag.
     if (LATENCY > 1) begin
@@ -440,7 +530,8 @@ module tc_sram_adapter_tb;
     drain();
     assert (all_three > 0 && collision > 0 && mmio_count > 0 && flush_count > 0);
     for (int p = 0; p < 3; p++) begin
-      assert (errors[p] > 0 && max_out[p] == CAPACITY && max_occ[p] == CAPACITY && stalled[p] > 0 && blocked[p] > 0);
+      assert (errors[p] > 0 && max_out[p] == (p == 0 ? FetchCapacity : CAPACITY) &&
+              max_occ[p] == (p == 0 ? FetchCapacity : CAPACITY) && stalled[p] > 0 && blocked[p] > 0);
       $display(
           "PORT %0d accepted=%0d completed=%0d native=%0d errors=%0d latency=%f max_out=%0d avg_out=%f max_occ=%0d avg_occ=%f req_stall=%0d rsp_stall=%0d",
           p, accepted[p], completed[p], native_count[p], errors[p],

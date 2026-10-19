@@ -94,7 +94,7 @@ void Simulator::probe(Stimulus s) {
 }
 void Simulator::tick(const Offer* o,bool response,bool ready,bool grant,const std::string& reason) {step(environment_->compose(o,cycle_,response,ready,grant,reason,campaign_));}
 void Simulator::reset(){Stimulus s;s.inputs.rst_n=false;s.inputs.consumer_ready=false;probe(s);step(s);step(s);s.inputs=Inputs{};step(s);}
-void Simulator::drain(unsigned limit){for(unsigned k=0;k<limit;++k){if(environment_->empty()&&state().outstanding.empty()&&state().answers.empty())return;tick();}throw Timeout("unfulfilled temporal obligations after bounded fair drain");}
+void Simulator::drain(unsigned limit){for(unsigned k=0;k<limit;++k){if(environment_->empty()&&state().outstanding.empty()&&state().completed.empty()&&state().answers.empty())return;tick();}throw Timeout("unfulfilled temporal obligations after bounded fair drain");}
 Offer Simulator::offer(uint64_t p,unsigned v,unsigned e,unsigned c){return make_offer(cfg_,environment_->allocate(),p,v,e,c);}
 int Simulator::finish(const std::string& reason,bool all,const std::string& selection){scoreboard_->final_state(model_->state());return scoreboard_->finish(reason,all,selection);}
 } // namespace len5::fetchmem

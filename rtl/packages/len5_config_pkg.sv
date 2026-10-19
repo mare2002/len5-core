@@ -118,6 +118,8 @@ package len5_config_pkg;
   localparam int unsigned RAS_DEPTH = 32'd4;
 
   // Fetch memory interface
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned FETCH_MEMIF_FIFO_DEPTH = 32'd8;  // completion queue entries (positive power of two)
   // NOTE: if the memory is 0-latency, at least one of the fetch unit registers
   // must be enabled (i.e., not skipped). Therefore, at least one of the
   // following switches must be commented in this case.

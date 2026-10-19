@@ -39,11 +39,10 @@ void Composition::input_change(const Inputs &i) {
     eju_.input_change(ei);
     fetchmem::Stimulus ms;
     ms.inputs.rst_n = i.rst_n;
-    memory_.input_change(ms);
     if (!i.rst_n) {
         if (!in_reset_) {
             stats.canceled +=
-                output_.size() + memory_.state().outstanding.size() + memory_.state().answers.size();
+                output_.size() + memory_.state().outstanding.size() + memory_.state().completed.size() + memory_.state().answers.size();
             output_.clear();
             snapshots_.clear();
             ++epoch_;
@@ -52,6 +51,7 @@ void Composition::input_change(const Inputs &i) {
         released_ = false;
         bpu_.reset();
     }
+    memory_.input_change(ms);
     in_reset_ = !i.rst_n;
 }
 CompositionPlan Composition::plan(const Inputs &i, uint64_t cycle) const {
@@ -94,7 +94,10 @@ CompositionPlan Composition::plan(const Inputs &i, uint64_t cycle) const {
     pi.taken = i.feedback.resolution.taken;
     pi.branch_pc = i.feedback.resolution.pc;
     pi.branch_target = i.feedback.resolution.target;
-    pi.ready = i.grant;
+    // Request credit now belongs to the frontend queue, including returned-but-blocked bundles.
+    const auto reserved = memory_.state().outstanding.size() + memory_.state().completed.size();
+    const bool memory_flush = i.flush || (es.inputs.valid && p.ee.mem_flush.known && p.ee.mem_flush.value);
+    pi.ready = i.grant && i.rst_n && !memory_flush && reserved < cfg_.depth;
     const auto cursor = pc_.cursor();
     const auto pc = cursor.value;
     std::array<Prediction, MaxLanes> predictions{};
@@ -195,8 +198,11 @@ CompositionPlan Composition::plan(const Inputs &i, uint64_t cycle) const {
     e.response_ready = me.response_ready;
     // Cancellation is a dependency of memory readiness. Unknown early control
     // must not be converted to numerical false by the FM stimulus adapter.
-    if (es.inputs.valid && !p.ee.mem_flush.known && !i.flush && live && p.answers < 2)
+    if (es.inputs.valid && !p.ee.mem_flush.known && !i.flush) {
         e.response_ready = fetchmem::unknown("FE21:memory-ready-depends-on-unknown-early-flush");
+        if (e.request.known && e.request.value)
+            e.request = fetchmem::unknown("FE21:request-credit-depends-on-unknown-early-flush");
+    }
     e.valid = known(live && !output_.empty(), "FE12", "I", "registered-final-spill (I)");
     e.early_flush = es.inputs.valid ? p.ee.mem_flush : known(0, "FE10", "I", "no-applicable-answer (I)");
     e.branch_ready = po.branch_ready;

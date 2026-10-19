@@ -14,7 +14,7 @@
 
 module modn_counter #(
   parameter int unsigned N = 16,
-  parameter logic [$clog2(N)-1:0] INIT = '0  // initial value at reset and clear
+  parameter logic [(N > 1 ? $clog2(N) : 1)-1:0] INIT = '0  // initial value at reset and clear
 ) (
   // Input signals
   input logic clk_i,
@@ -23,8 +23,8 @@ module modn_counter #(
   input logic clr_i,   // Synchronous clear
 
   // Output signals
-  output logic [$clog2(N)-1:0] count_o,  // Counter value
-  output logic                 tc_o      // Terminal count: '1' when count_o = N-1
+  output logic [(N > 1 ? $clog2(N) : 1)-1:0] count_o,  // Counter value
+  output logic                               tc_o      // Terminal count: '1' when count_o = N-1
 );
 
   // Terminal count

@@ -1705,3 +1705,11 @@ exception window, alternative memory protocols, fully predictor-agnostic checkin
 or exhaustive FEV sign-off. Final counts are evidence-linked in the completion
 audit; historical million-cycle/mutation results are not new evidence for these
 changes.
+
+The pointer-only completion queue update extends existing FE-T04 with deterministic
+memory progress during output stalls, saturation of all externally outstanding
+completed bundles, and ordered recovery. FE-T52 now flushes the predictor while
+completed fetches are held by output backpressure. Required witnesses count
+public request/response/delivery obligations, not internal queue signals. The
+scoreboard also records cancellation coincident with an offered response and
+held completions; absence of that event is not claimed as coverage.

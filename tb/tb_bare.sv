@@ -41,14 +41,7 @@ module tb_bare #(
   localparam int unsigned MemDumpT = 0;  // memory dump period (in cycles, 0 to disable)
   localparam int unsigned MemPipeNum = 0;  // memory latency
 
-  // Datapath configuration
-  // NOTE: the memory can accept a number of outstanding requests equal to
-  // the number of its pipeline stages, plus the two internal registers of
-  // the output spill cell, if implemented. The fetch stage must buffer the
-  // same number of requests.
   localparam bit MemEmuSkipInstrOutReg = 1'b0;
-  localparam int unsigned FetchMemIfFifoDepth = MEMORY_BACKEND == MEM_BACKEND_TC_SRAM ?
-      memory_backend_pkg::SRAM_RESPONSE_DEPTH : MemPipeNum + ((MemEmuSkipInstrOutReg) ? 0 : 2);
 
   // INTERNAL SIGNALS
   // ----------------
@@ -137,6 +130,8 @@ module tb_bare #(
   // Command-line options and configuration
   // --------------------------------------
   initial begin
+    if (FETCH_MEMIF_FIFO_DEPTH == 0 || (FETCH_MEMIF_FIFO_DEPTH & (FETCH_MEMIF_FIFO_DEPTH - 1)) != 0)
+      $fatal(1, "Fetch completion queue requires a positive power-of-two capacity");
     // Set the firmware file path
     $value$plusargs("firmware=%s", mem_file);
 
@@ -280,7 +275,7 @@ module tb_bare #(
   // LEN5 BAREMETAL DATAPATH
   // -----------------------
   datapath #(
-    .FETCH_MEMIF_FIFO_DEPTH(FetchMemIfFifoDepth),
+    .FETCH_MEMIF_FIFO_DEPTH(FETCH_MEMIF_FIFO_DEPTH),
     .BOOT_PC               (BOOT_PC)
   ) u_datapath (
     .clk_i                     (clk_i),

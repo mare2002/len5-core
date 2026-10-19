@@ -402,6 +402,23 @@ void Simulator::step(Inputs i, bool schedule_backend) {
             backend_->validate_feedback(backend_feedback, cycle_);
         const bool k = actual.request && i.grant, r = i.response_valid && actual.response_ready,
                    d = actual.valid && i.ready && !i.flush;
+        // Count obligations from accepted public requests/responses/deliveries;
+        // this does not observe the DUT's storage or pointer state.
+        unsigned held_completions = 0;
+        for (const auto &entry : memory_ledger_) {
+            const auto &life = entry.second;
+            held_completions += life.cancellation.empty() && life.response != UINT64_MAX &&
+                                life.delivery == UINT64_MAX;
+        }
+        if (r && !i.ready) counter("memory-return-during-output-stall");
+        if (held_completions == cfg_.depth + 4 && actual.valid && !i.ready && !actual.request)
+            counter("memory-completed-saturation");
+        if (local_["memory-completed-saturation"] && d)
+            counter("memory-saturation-drained");
+        if (i.flush_bpu && held_completions && !i.ready)
+            counter("predictor-flush-with-held-completions");
+        if ((i.flush || actual.early_flush) && held_completions && i.response_valid)
+            counter("cancel-with-return-and-held-completions");
         if (k != p.mt.k || r != p.mt.r || d != p.d)
             throw std::logic_error("FE21: observed/expected handshake divergence escaped checks");
         if (r && (physical_.empty() || cycle_ <= physical_.front().accepted))
@@ -1112,13 +1129,18 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
             i.flush = i.feedback.flush;
             if (i.flush)
                 i.reason = "misprediction";
+            const bool completion_pressure = s.id == "FE-T04" ||
+                (s.id == "FE-T52" && step_index >= 160 && step_index < 256);
+            if (completion_pressure) i.grant = physical_.size() < cfg_.depth;
             if (!physical_.empty() && (held_response || (cycle_ >= physical_.front().due &&
-                                                         bounded(events_, 100) < response_weight_))) {
+                (completion_pressure || bounded(events_, 100) < response_weight_)))) {
                 i.response_valid = true;
                 i.response = physical_.front().payload;
                 held_response = true;
             }
             if ((s.id == "FE-T04" || s.id == "FE-T25" || s.id == "FE-T39") && step_index % 160 < 96)
+                i.ready = admission_external_ready_ = false;
+            if (s.id == "FE-T52" && step_index >= 160 && step_index < 256)
                 i.ready = admission_external_ready_ = false;
             if (s.id == "FE-T47" && !populated_reset && !model_->ras().confirmed.entries.empty())
                 i.ready = admission_external_ready_ = false;

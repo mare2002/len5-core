@@ -5,6 +5,7 @@
 ## private folders ##
 private/
 build/
+/.serena/
 
 # Local Spike source import; keep adjacent vendoring metadata tracked.
 /sw/vendor/riscv-isa-sim/

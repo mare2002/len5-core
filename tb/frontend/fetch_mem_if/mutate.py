@@ -23,7 +23,7 @@ def main():
     args=p.parse_args()
     if args.jobs<1:p.error('jobs must be positive')
     source=Path(__file__).resolve().parent; binary=args.binary.resolve()
-    files={'fetch_mem_if.sv':ROOT/'rtl/frontend/fetch_mem_if.sv','spill_cell_flush_cu.sv':ROOT/'rtl/common/spill_cell_flush_cu.sv'}
+    files={'fetch_mem_if.sv':ROOT/'rtl/frontend/fetch_mem_if.sv','spill_cell_flush_cu.sv':ROOT/'rtl/common/spill_cell_flush_cu.sv','completion_fifo.sv':ROOT/'rtl/common/completion_fifo.sv'}
     originals={name:path.read_bytes() for name,path in files.items()}
     config=configuration(); config['fingerprint']=fingerprint(config)
     args.output.mkdir(parents=True,exist_ok=True)
@@ -37,23 +37,23 @@ def main():
     before=baseline('original-before')
     # All edits are applied to private copies. Count guards prevent accidental edits at changed sites.
     mutations=[
-        ('current-predictions','14','FM05','fetch_mem_if.sv','pred_fifo_out.pred_data;','fetch_pred_i;',1),
-        ('current-mask','14','FM05','fetch_mem_if.sv','pred_fifo_out.valid_instr;','valid_instr_i;',1),
-        ('pop-on-offer','11','FM08','fetch_mem_if.sv','instr_valid_i & instr_ready_o;','instr_valid_i;',1),
-        ('drop-error','15','FM11','fetch_mem_if.sv','ans_reg_in.except_raised = instr_except_raised_i;',"ans_reg_in.except_raised = '0;",1),
-        ('wrong-cause-zero','16','FM11','fetch_mem_if.sv','ans_reg_in.except_code   = instr_except_code_i;',"ans_reg_in.except_code   = {LEN5_MULTIPLE_ISSUES{len5_pkg::E_UNKNOWN}};",1),
-        ('delayed-error','18','FM12','fetch_mem_if.sv','assign ans_reg_in.except_raised = instr_except_raised_i;',
+        ('current-predictions','14','FM05','fetch_mem_if.sv','response_metadata.pred_data;','fetch_pred_i;',1),
+        ('current-mask','14','FM05','fetch_mem_if.sv','response_metadata.valid_instr;','valid_instr_i;',1),
+        ('pop-on-offer','11','FM08','completion_fifo.sv','valid_o && ready_i;','valid_o && (ready_i || result_valid_i);',1),
+        ('drop-error','15','FM11','fetch_mem_if.sv','ans_reg_in.except_raised = response_result.except_raised;',"ans_reg_in.except_raised = '0;",1),
+        ('wrong-cause-zero','16','FM11','fetch_mem_if.sv','ans_reg_in.except_code = response_result.except_code;',"ans_reg_in.except_code = {LEN5_MULTIPLE_ISSUES{len5_pkg::E_UNKNOWN}};",1),
+        ('delayed-error','18','FM12','fetch_mem_if.sv','assign ans_reg_in.except_raised = response_result.except_raised;',
          "logic [LEN5_MULTIPLE_ISSUES-1:0] delayed_errors; always_ff @(posedge clk_i or negedge rst_ni) if (!rst_ni) delayed_errors <= '0; else delayed_errors <= instr_except_raised_i; assign ans_reg_in.except_raised = delayed_errors;",1),
         ('wrong-saved-fault-pc','15','FM05','fetch_mem_if.sv','issue_pred_o[i]          = ans_reg_out.pred_data[i];',"issue_pred_o[i]          = ans_reg_out.pred_data[i]; issue_pred_o[i].pc = ans_reg_out.pred_data[i].pc + 64'd4;",1),
         ('lane-word-swap','03','FM06','fetch_mem_if.sv','issue_instr_o[i].raw     = ans_reg_out.instr[i];','issue_instr_o[i].raw     = ans_reg_out.instr[(i+1)%LEN5_MULTIPLE_ISSUES];',1),
-        ('lost-error-response','15','FM07','fetch_mem_if.sv','.valid_i(instr_valid_i),','.valid_i(instr_valid_i && !instr_except_raised_i[0]),',1),
-        ('missing-answer-flush','26','FM14','fetch_mem_if.sv','.flush_i(flush_i),\n    .valid_i(instr_valid_i)',".flush_i(1'b0),\n    .valid_i(instr_valid_i)",1),
-        ('missing-metadata-flush','22','FM14','fetch_mem_if.sv','.flush_i(flush_i),\n    .push_i',".flush_i(1'b0),\n    .push_i",1),
-        ('ready-on-flush','25','FM09','spill_cell_flush_cu.sv','ready_o = !flush_i;',"ready_o = 1'b1;",3),
+        ('lost-error-response','15','FM07','fetch_mem_if.sv','.result_valid_i(instr_valid_i),','.result_valid_i(instr_valid_i && !instr_except_raised_i[0]),',1),
+        ('missing-answer-flush','26','FM14','fetch_mem_if.sv','.flush_i,\n      .valid_i(response_valid)',".flush_i(1'b0),\n      .valid_i(response_valid)",1),
+        ('missing-metadata-flush','25','FM14','completion_fifo.sv','.clr_i  (flush_i),\n    .en_i   (allocate_entry),', ".clr_i  (1'b0),\n    .en_i   (allocate_entry),",1),
+        ('ready-on-flush','25','FM09','completion_fifo.sv','active && (pending_result || allocate_i);','rst_ni && (pending_result || allocate_i);',1),
         ('ready-on-full','11','FM09','spill_cell_flush_cu.sv',"ready_o = 1'b0;  // do not accept new data","ready_o = 1'b1;  // deliberately admit while full",2),
         ('duplicate-answer','03','FM07','spill_cell_flush_cu.sv','else if (!valid_i && ready_i) next_state = NO_DATA;','else if (!valid_i && ready_i) next_state = curr_state;',2),
-        ('wrong-request-address','05','FM02','fetch_mem_if.sv','req_reg_out.pred_data[0].pc;',"req_reg_out.pred_data[0].pc + 64'd4;",1),
-        ('instruction-write','03','FM01','fetch_mem_if.sv',"instr_we_o            = 1'b0;","instr_we_o            = 1'b1;",1),
+        ('wrong-request-address','05','FM02','fetch_mem_if.sv','request_metadata.pred_data[0].pc;',"request_metadata.pred_data[0].pc + 64'd4;",1),
+        ('instruction-write','03','FM01','fetch_mem_if.sv',"instr_we_o   = 1'b0;","instr_we_o   = 1'b1;",1),
     ]
     exclusions=[]
     if config['bundle_instructions']==1:

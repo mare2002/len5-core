@@ -37,6 +37,9 @@ void Coverage::sample(const Sample& s,bool matched) {
     if(s.phase=="post" && !s.stimulus.question.empty()) {
         ++counts_[prefix+"FV16/cross/"+s.stimulus.question+"/epoch="+std::to_string(s.before.epoch%2)+"/valid="+std::to_string(s.actual.valid)+"/error="+std::to_string(bool(s.actual.payload.errors))];
     }
+    if(matched && s.phase=="async" && !s.observed.rst_n &&
+       !s.before.outstanding.empty() && !s.before.completed.empty())
+        ++counts_[prefix+"FV23/reset-mixed"];
     if(s.phase!="pre")return;
     const auto& i=s.observed;const auto& a=s.actual;const auto& t=s.transition;
     const unsigned c=unsigned(s.stimulus.campaign);const std::string p=std::string(name(s.stimulus.campaign))+"/";
@@ -50,6 +53,17 @@ void Coverage::sample(const Sample& s,bool matched) {
     if(i.fetch_valid&&!i.grant)++counts_[p+"FV01/request-stall"];
     if(i.response_valid&&!a.response_ready)++counts_[p+"FV01/response-stall"];
     if(a.valid&&!i.consumer_ready)++counts_[p+"FV01/output-stall"];
+    if(matched && i.rst_n && !s.stimulus.malformed) {
+        const auto pending=s.before.outstanding.size(),completed=s.before.completed.size();
+        if(!i.flush) {
+            if(pending+completed==cfg_.depth)++counts_[p+"FV23/reserved-full"];
+            if(completed==cfg_.depth)++counts_[p+"FV23/completed-full"];
+            if(r && !completed && s.before.answers.size()<2)++counts_[p+"FV23/arriving-head-bypass"];
+            if(r && completed)++counts_[p+"FV23/older-result-with-return"];
+            if(completed==cfg_.depth && d && !k)++counts_[p+"FV23/full-release-bubble"];
+        } else if(pending && completed && i.response_valid)
+            ++counts_[p+"FV23/flush-mixed-with-return"];
+    }
     if(!i.rst_n){++counts_[p+"FV17/reset/q="+std::to_string(s.before.outstanding.size())+"/a="+std::to_string(s.before.answers.size())];return;}
     if(i.flush){++counts_[p+"FV14/"+s.stimulus.reason+"/q="+std::to_string(s.before.outstanding.size())+"/a="+std::to_string(s.before.answers.size())];
         if(i.response_valid&&i.response.errors)++counts_[p+"FV14/fault-offered-on-flush"];
@@ -106,7 +120,7 @@ void Coverage::sample(const Sample& s,bool matched) {
     counts_[p+"FV21/canceled"]+=t.canceled_ids.size();
 }
 std::string Coverage::json() const {
-    std::ostringstream o;o<<"{\"scope\":\"FV01-FV22 sampled/accepted/matched/obligation evidence; not exhaustive signoff\",\"LEN5_MULTIPLE_ISSUES\":"<<cfg_.lanes<<",\"counters\":";map_json(o,counts_);o<<",\"campaigns\":{";
+    std::ostringstream o;o<<"{\"scope\":\"FV01-FV23 sampled/accepted/matched/obligation evidence; not exhaustive signoff\",\"LEN5_MULTIPLE_ISSUES\":"<<cfg_.lanes<<",\"counters\":";map_json(o,counts_);o<<",\"campaigns\":{";
     for(unsigned c=0;c<3;++c){if(c)o<<',';const auto p=std::string(name(Campaign(c)))+"/";o<<json_quote(name(Campaign(c)))<<":{\"matrix\":[";
         for(unsigned row=0;row<8;++row){if(row)o<<',';o<<"{\"row\":"<<row<<",\"required\":true,\"count\":"<<matrix_[c][row]<<'}';}o<<"],\"feature_goals\":[";
         std::vector<std::string> goals={p+"FV01/request-accepted",p+"FV01/response-accepted",p+"FV10/error-response",p+"FV10/clean-response",p+"FV21/fulfilled",p+"FV03/q/2",p+"FV04/a/2"};
@@ -114,7 +128,7 @@ std::string Coverage::json() const {
             for(unsigned cause=0;cause<2;++cause)goals.push_back(p+"FV11/matched-error/lane="+std::to_string(k)+"/cause="+std::to_string(cause));}
         for(unsigned k=0;k<goals.size();++k){if(k)o<<',';o<<"{\"bin\":"<<json_quote(goals[k])<<",\"count\":"<<count(goals[k])<<'}';}o<<"]}";
     }
-    o<<"},\"configuration_exclusions\":[\"lanes >= source N do not exist; multi-prediction cardinality limited by N\",\"architectural zero-latency, grant-on-flush, overcapacity, unordered/stale responses excluded by active protocol\",\"a=2 response acceptance excluded by current no-lookahead contract\"],\"coverage_limits\":[\"matrix closure enforces only eight normal handshake rows per selected campaign\",\"feature and temporal gaps remain separate; pending obligations fail completion\",\"fault address means saved prediction PC; mtval/full-core recovery outside scope\"]}";return o.str();
+    o<<"},\"configuration_exclusions\":[\"lanes >= source N do not exist; multi-prediction cardinality limited by N\",\"architectural zero-latency, grant-on-flush, overcapacity, unordered/stale responses excluded by active protocol\",\"answer spill retains no-lookahead consumption; reserved queue accepts responses even at a=2\"],\"coverage_limits\":[\"matrix closure enforces only eight normal handshake rows per selected campaign\",\"feature and temporal gaps remain separate; pending obligations fail completion\",\"fault address means saved prediction PC; mtval/full-core recovery outside scope\"]}";return o.str();
 }
 Scoreboard::Scoreboard(Config c,Contract p,uint64_t seed,const std::string& dir,bool full):cfg_(c),contract_(p),seed_(seed),directory_(dir),full_(full),journal_(dir+"/samples.jsonl"),coverage(c) {
     if(!journal_)throw std::runtime_error("cannot create sample journal");
@@ -200,10 +214,10 @@ void Scoreboard::problem(const std::string& kind,const std::string& why) {
     if(kind=="environment_error")++environment_;else ++framework_;discrepancies_.push_back("{\"category\":"+json_quote(kind)+",\"reason\":"+json_quote(why)+"}");TB_ERR("SCB > %s: %s",kind.c_str(),why.c_str());
 }
 int Scoreboard::finish(const std::string& reason,bool all,const std::string& selection) {
-    uint64_t pending=0;for(const auto& q:final_.outstanding)pending+=q.id!=0;for(const auto& a:final_.answers)pending+=a.request.id!=0;
+    uint64_t pending=0;for(const auto& q:final_.outstanding)pending+=q.id!=0;for(const auto& a:final_.completed)pending+=a.request.id!=0;for(const auto& a:final_.answers)pending+=a.request.id!=0;
     const bool conserved=final_.totals.accepted==final_.totals.delivered+final_.totals.canceled+pending;
     if(!conserved)problem("framework_error","FM07/FV21: independent temporal obligations do not conserve");
-    const bool incomplete=!reason.empty()||!checks_||pending||(selection=="random"&&!final_.totals.accepted)||(all&&scenarios_.size()!=40);
+    const bool incomplete=!reason.empty()||!checks_||pending||(selection=="random"&&!final_.totals.accepted)||(all&&scenarios_.size()!=44);
     const int status=environment_||framework_?2:field_errors_?1:incomplete?3:0;
     std::ofstream cov(directory_+"/coverage.json");cov<<coverage.json()<<'\n';
     std::ofstream chr(directory_+"/characterization.jsonl");for(const auto& p:observations_)chr<<"{\"observation\":"<<json_quote(p.first)<<",\"samples\":"<<p.second<<",\"representative\":"<<characterization_.at(p.first)<<"}\n";
@@ -217,7 +231,7 @@ int Scoreboard::finish(const std::string& reason,bool all,const std::string& sel
     for(unsigned q=1;q<=13;++q){if(q>1)o<<',';o<<json_quote(std::string("FQ")+(q<10?"0":"")+std::to_string(q));}o<<"],\"requirement_checks\":";map_json(o,requirements_);o<<",\"campaign_requirement_checks\":";map_json(o,campaign_requirements_);
     o<<",\"assumption_checks\":";map_json(o,assumptions_);o<<",\"unknown_output_samples\":";map_json(o,unknowns_);o<<",\"dont_care_output_samples\":";map_json(o,dont_cares_);o<<",\"scenario_samples\":";map_json(o,scenarios_);
     o<<",\"discrepancies\":[";for(unsigned k=0;k<discrepancies_.size();++k){if(k)o<<',';o<<discrepancies_[k];}o<<"],\"campaigns\":{";
-    for(unsigned c=0;c<3;++c){if(c)o<<',';o<<json_quote(name(Campaign(c)))<<":{\"cycles\":"<<campaign_cycles_[c]<<",\"checks\":"<<campaign_checks_[c]<<",\"mismatches\":"<<campaign_errors_[c]<<",\"obligations\":"<<counters_json(final_.campaigns[c],[&](){uint64_t count=0;for(const auto& q:final_.outstanding)count+=q.id&&unsigned(q.campaign)==c;for(const auto& a:final_.answers)count+=a.request.id&&unsigned(a.request.campaign)==c;return count;}())<<'}';}o<<"}}\n";
+    for(unsigned c=0;c<3;++c){if(c)o<<',';o<<json_quote(name(Campaign(c)))<<":{\"cycles\":"<<campaign_cycles_[c]<<",\"checks\":"<<campaign_checks_[c]<<",\"mismatches\":"<<campaign_errors_[c]<<",\"obligations\":"<<counters_json(final_.campaigns[c],[&](){uint64_t count=0;for(const auto& q:final_.outstanding)count+=q.id&&unsigned(q.campaign)==c;for(const auto& a:final_.completed)count+=a.request.id&&unsigned(a.request.campaign)==c;for(const auto& a:final_.answers)count+=a.request.id&&unsigned(a.request.campaign)==c;return count;}())<<'}';}o<<"}}\n";
     if(!o||!cov||!chr)throw std::runtime_error("report write failed");
     if(status)TB_ERR("TEST FAILED > errors: %" PRIu64 "/%" PRIu64,errors_,transactions_);else TB_SUCCESS(LOG_LOW,"TEST SUCCEEDED > errors: %" PRIu64 "/%" PRIu64,errors_,transactions_);
     TB_LOG(LOG_LOW,"SCB > cycles=%" PRIu64 " comparisons=%" PRIu64 " mismatches=%" PRIu64 " delivered=%" PRIu64 " canceled=%" PRIu64 " pending=%" PRIu64 " report=%s/report.json",cycles_,checks_,field_errors_,final_.totals.delivered,final_.totals.canceled,pending,directory_.c_str());

@@ -43,7 +43,7 @@ void run_random(Simulator& sim,const RunOptions& o){
     sim.reset();
     while(sim.cycles()<o.cycles){
         const auto remaining=o.cycles-sim.cycles();
-        if(remaining<=128){if(pending){sim.tick(&*pending);if(sim.last().k)pending.reset();}else if(sim.environment().empty()&&sim.state().outstanding.empty()&&sim.state().answers.empty())sim.tick(nullptr,false);else sim.tick();continue;}
+        if(remaining<=128){if(pending){sim.tick(&*pending);if(sim.last().k)pending.reset();}else if(sim.environment().empty()&&sim.state().outstanding.empty()&&sim.state().completed.empty()&&sim.state().answers.empty())sim.tick(nullptr,false);else sim.tick();continue;}
         const Campaign wanted=o.campaign=="all"?Campaign((sim.cycles()/512)%3):campaign;
         if(wanted!=campaign){sim.reset();campaign=wanted;context();pending.reset();phase=8;request_stall=consumer_stall=response_gap=0;continue;}
         if(phase<8){

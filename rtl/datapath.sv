@@ -1,5 +1,5 @@
 module datapath #(
-  parameter int unsigned FETCH_MEMIF_FIFO_DEPTH = 2,
+  parameter int unsigned FETCH_MEMIF_FIFO_DEPTH = len5_config_pkg::FETCH_MEMIF_FIFO_DEPTH,
   parameter longint unsigned BOOT_PC = '0
 ) (
   // Clock and reset

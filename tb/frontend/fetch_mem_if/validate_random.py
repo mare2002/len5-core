@@ -14,21 +14,22 @@ from validate import case
 
 def reconstruct(path, lanes):
     """A second queue oracle from public pre-edge ports, not C++ expected/model labels."""
-    requests=deque();answers=deque();counts=Counter();known=True;released=False
+    requests=deque();completed=deque();answers=deque();counts=Counter();known=True;released=False
     for line in path.read_text().splitlines():
         s=json.loads(line)
         if s['phase']!='pre':continue
         i=s['inputs'];a=s['actual'];c=s['campaign'];counts[c+'/sampled']+=1
         if not i['rst_n']:
-            requests.clear();answers.clear();known=True;released=False
+            requests.clear();completed.clear();answers.clear();known=True;released=False
             continue
         if s['malformed']:
             known=False
             continue
         if not known:continue
         assert a['valid']==bool(released and answers),(s['cycle'],'public output valid')
-        assert a['response_ready']==bool(released and not i['flush'] and len(answers)<2),(s['cycle'],'ready/full timing')
-        assert a['request_valid']==i['fetch_valid'] and a['fetch_ready']==i['grant'] and not a['write']
+        credit=not i['flush'] and len(requests)+len(completed)<2
+        assert a['response_ready']==bool(not i['flush'] and (requests or (i['fetch_valid'] and i['grant'] and credit))),(s['cycle'],'reserved response readiness')
+        assert a['request_valid']==bool(i['fetch_valid'] and credit) and a['fetch_ready']==bool(i['grant'] and credit) and not a['write']
         if i['fetch_valid']:
             assert a['request_address']==i['lanes'][0]['pc']
         k=a['request_valid'] and i['grant'];r=i['response_valid'] and a['response_ready'];d=a['valid'] and i['consumer_ready']
@@ -37,6 +38,7 @@ def reconstruct(path, lanes):
         counts[c+f'/FV04/cross/a={len(answers)}/K={int(k)}/R={int(r)}']+=1
         error_role=int(bool(i['response_valid'] and i['errors'])) | (2*int(bool(a['valid'] and (a['errors'] & a['mask']))))
         counts[c+f'/FV14/cross/error={error_role}/flush={int(i["flush"])}/q={len(requests)}']+=1
+        answer_room=released and len(answers)<2
         if d:
             assert answers
             old=answers.popleft()
@@ -54,21 +56,23 @@ def reconstruct(path, lanes):
             counts[c+f'/FV09/cross/hitmask={hitmask}/latency={latency}/metadata=matched']+=1
         if i['flush']:
             assert not k and not r
-            counts[c+'/canceled']+=len(requests)+len(answers)
-            requests.clear();answers.clear();released=True
+            counts[c+'/canceled']+=len(requests)+len(completed)+len(answers)
+            requests.clear();completed.clear();answers.clear();released=True
             continue
-        if r:
-            assert requests,'no old metadata for memory completion'
-            old=requests.popleft()
-            answers.append(dict(**old,words=[v['word'] for v in i['lanes']],causes=[v['cause'] for v in i['lanes']],errors=i['errors'],arrived=s['cycle']))
-            counts[c+'/responded']+=1
         if k:
-            assert len(requests)<2
+            assert len(requests)+len(completed)<2
             requests.append(dict(mask=i['mask'],pred=[dict(v) for v in i['lanes']],accepted=s['cycle']))
             counts[c+'/accepted']+=1
-        assert len(requests)<=2 and len(answers)<=2
+        if r:
+            assert requests,'no reserved metadata for memory completion'
+            old=requests.popleft()
+            completed.append(dict(**old,words=[v['word'] for v in i['lanes']],causes=[v['cause'] for v in i['lanes']],errors=i['errors'],arrived=s['cycle']))
+            counts[c+'/responded']+=1
+        if answer_room and completed:
+            answers.append(completed.popleft())
+        assert len(requests)+len(completed)<=2 and len(answers)<=2
         released=True
-    assert not requests and not answers,'journal ends with unresolved reliable obligations'
+    assert not requests and not completed and not answers,'journal ends with unresolved reliable obligations'
     return counts
 
 

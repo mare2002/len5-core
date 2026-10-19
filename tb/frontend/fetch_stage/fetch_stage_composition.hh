@@ -61,7 +61,7 @@ class Composition {
     uint64_t next_id() const { return next_id_; }
     uint64_t epoch() const { return epoch_; }
     size_t pending() const {
-        return memory_.state().outstanding.size() + memory_.state().answers.size() + output_.size();
+        return memory_.state().outstanding.size() + memory_.state().completed.size() + memory_.state().answers.size() + output_.size();
     }
     const Predictor &predictor() const { return bpu_; }
     const early::State &ras() const { return eju_.state(); }

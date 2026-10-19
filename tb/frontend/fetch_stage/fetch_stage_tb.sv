@@ -26,6 +26,10 @@ module fetch_stage_tb #(
   output logic [31:0] config_req_skip_o, config_ans_skip_o, config_cause_bits_o,
   output logic [63:0] config_boot_o
 );
+  initial begin : check_configuration
+    if (MEM_DEPTH == 0 || (MEM_DEPTH & (MEM_DEPTH - 1)) != 0)
+      $fatal(1, "Fetch completion queue requires a positive power-of-two capacity");
+  end
   localparam int N=len5_config_pkg::LEN5_MULTIPLE_ISSUES;
   logic [N-1:0][31:0] words;
   len5_pkg::instr_t [N-1:0] instructions;

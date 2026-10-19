@@ -6,6 +6,22 @@ Section 23 records the subsequent native implementation and execution evidence;
 [README.md](README.md) describes the installed commands. Production RTL,
 configuration and existing pc_gen/EJU verification remain unchanged.
 
+The 2026-10-19 transport update replaces the prediction-only FIFO with the
+shared `completion_fifo` described in
+[the memory integration notes](../../memory/tc_sram/MEMORY_BACKEND_INTEGRATION.md).
+Request acceptance reserves metadata and result space; ordered memory responses
+fill those entries independently of answer-spill readiness. The semantic model
+and independent public-journal reconstruction now track pending, completed, and
+answer-spill queues. Original architecture-phase findings below remain historical.
+
+The pointer-only queue update adds FM-T41–FM-T44 to the existing directed
+catalog: all completion slots occupied, full-credit recovery, mixed-state flush
+with a returning response, reset of full/mixed queues, and repeated full-ring
+reuse with distinguishable PCs, payloads, and faults. FV23 records these
+interactions plus arriving-head bypass and concurrent older-result/response
+handling. Expected values still come from semantic queues and public events,
+without reading DUT pointers or storage.
+
 ## 1. Scope, evidence and verification policy
 
 The future DUT is **production `fetch_mem_if` plus its actually instantiated request
@@ -123,7 +139,7 @@ pre-edge sample. An older output can be consumed on the response-acceptance edge
 | `FETCH_REQ_SPILL_SKIP` | 1, config line125 | Combinational request bypass. |
 | `FETCH_ANS_SPILL_SKIP` | 0, config line126 | Two-record registered answer capacity. The nearby “directly passed” comment is inconsistent with SKIP=0; use the cell's actual parameter semantics. |
 | `MAX_MEM_OUTSTANDING_REQUESTS` | Module default 2, S01:13–14 | Metadata association capacity D=2; this is not request admission logic. |
-| Active parent depth | `fetch_stage.MEMIF_FIFO_DEPTH` / `datapath.FETCH_MEMIF_FIFO_DEPTH`, defaults2 | Bare testbench binds `PIPE_NUM + (output spill enabled ? 2 : 0)`, currently0+2 (S09). |
+| Active parent depth | Datapath defaults to `len5_config_pkg::FETCH_MEMIF_FIFO_DEPTH` (8); standalone `fetch_stage` defaults to 2. | Bare testbench uses the CPU configuration; standalone verification explicitly selects depth 2. |
 | Memory emulator | PIPE_NUM=0; instruction answer spill enabled | At least a registered response, capacity2; source order preserved. |
 
 Do not hardcode N=4, masks=0xf, or a two-bit lane index in C++. N=1 has no partial

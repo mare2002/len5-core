@@ -112,6 +112,11 @@ std::vector<Scenario> scenarios(const Config &c) {
             s.witnesses.push_back("nested-full-unwind");
         if (k == 3 || k == 24)
             s.witnesses.push_back("EJU-stalled");
+        if (k == 3)
+            s.witnesses.insert(s.witnesses.end(), {"memory-return-during-output-stall",
+                "memory-completed-saturation", "memory-saturation-drained"});
+        if (k == 51)
+            s.witnesses.push_back("predictor-flush-with-held-completions");
         if (k == 5 || k == 6 || k == 44 || k == 49)
             s.witnesses.push_back("fault-delivery");
         if (k == 18) {

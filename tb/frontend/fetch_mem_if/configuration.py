@@ -36,7 +36,7 @@ def configuration():
 def sources():
     paths = set((ROOT/'rtl/packages').glob('*.sv'))
     paths.update([ROOT/'rtl/packages.core', ROOT/'rtl/misc/packages-waivers.vlt',
-                  ROOT/'rtl/frontend/fetch_mem_if.sv', ROOT/'rtl/common/fifo_nohs.sv',
+                  ROOT/'rtl/frontend/fetch_mem_if.sv', ROOT/'rtl/common/completion_fifo.sv',
                   ROOT/'rtl/common/spill_cell_flush.sv', ROOT/'rtl/common/spill_cell_flush_cu.sv', ROOT/'rtl/common/modn_counter.sv',
                   ROOT/'tb/frontend/early_jump_unit/early_jump_instructions.cpp', ROOT/'tb/frontend/early_jump_unit/early_jump_instructions.hh', ROOT/'tb/verilator/verilator-common.core',
                   ROOT/'tb/verilator/tb_macros.cpp', ROOT/'tb/verilator/tb_macros.hh',

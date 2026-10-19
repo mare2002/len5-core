@@ -41,7 +41,7 @@ def configuration():
 def sources():
     paths=set((ROOT/'rtl/packages').glob('*.sv'))
     paths.update((ROOT/'rtl/frontend').glob('*.sv'))
-    for name in ['modn_counter','fifo_nohs','spill_cell_flush','spill_cell_flush_cu','prio_enc']:
+    for name in ['modn_counter','completion_fifo','spill_cell_flush','spill_cell_flush_cu','prio_enc']:
         paths.add(ROOT/('rtl/common/'+name+'.sv'))
     for name in ['pc_gen/pc_gen_model','early_jump_unit/early_jump_model','early_jump_unit/early_jump_instructions','fetch_mem_if/fetch_mem_model']:
         for suffix in ['.hh','.cpp']: paths.add(HERE.parent/(name+suffix))

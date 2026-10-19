@@ -29,12 +29,17 @@ unsigned request_mask(uint64_t pc,const std::array<Prediction,MaxLanes>& p,const
 ReferenceModel::ReferenceModel(Config c,Contract p):cfg_(c),contract_(p) { c.validate(); p.validate(); }
 void ReferenceModel::cancel(State& n,Campaign) const {
     for(const auto& q:n.outstanding) if(q.id) {++n.totals.canceled;++n.campaigns[unsigned(q.campaign)].canceled;}
+    for(const auto& a:n.completed) if(a.request.id) {
+        auto& c=n.campaigns[unsigned(a.request.campaign)];++n.totals.canceled;++c.canceled;
+        ++n.totals.canceled_buffered;++c.canceled_buffered;
+        if(a.payload.errors&a.request.mask){++n.totals.fault_cancellations;++c.fault_cancellations;}
+    }
     for(const auto& a:n.answers) if(a.request.id) {
         auto& c=n.campaigns[unsigned(a.request.campaign)];++n.totals.canceled;++c.canceled;
         ++n.totals.canceled_buffered;++c.canceled_buffered;
         if(a.payload.errors&a.request.mask){++n.totals.fault_cancellations;++c.fault_cancellations;}
     }
-    n.outstanding.clear(); n.answers.clear();
+    n.outstanding.clear(); n.completed.clear(); n.answers.clear();
 }
 void ReferenceModel::input_change(const Stimulus& s) {
     if(!s.inputs.rst_n) {
@@ -44,15 +49,17 @@ void ReferenceModel::input_change(const Stimulus& s) {
 }
 Expected ReferenceModel::outputs(const Stimulus& s) const {
     const auto& i=s.inputs; Expected e;
-    e.fetch_ready=known(i.grant,"FM02","I","request-bypass (I)");
-    e.request_valid=known(i.fetch_valid,"FM02","I","request-bypass (I)");
+    const bool credit=i.rst_n && !i.flush && state_.outstanding.size()+state_.completed.size()<cfg_.depth;
+    e.fetch_ready=known(i.grant && credit,"FM02","I","reserved request slot (I)");
+    e.request_valid=known(i.fetch_valid && credit,"FM02","I","reserved request slot (I)");
     e.request_address=i.fetch_valid?known(i.predictions[0].pc,"FM02","I","request-lane0-address (I)"):dont_care("inactive-request-address");
     e.write=known(0,"FM01");
     e.response_ready=e.valid=unknown("FQ05:before-reset"); e.mask=dont_care("inactive-output");
     for(auto& p:e.lanes) p.word=p.pc=p.hit=p.taken=p.target=p.error=p.cause=dont_care("inactive-output");
     if(!state_.initialized) return e;
     const bool active=i.rst_n && state_.released;
-    e.response_ready=known(active && !i.flush && state_.answers.size()<2,"FM09","I","registered-answer-no-lookahead;release-one-empty-edge (I/FQ05)");
+    e.response_ready=known(i.rst_n && !i.flush && (!state_.outstanding.empty() || (i.fetch_valid && i.grant && credit)),
+                           "FM09","I","response fills an allocated entry (I)");
     e.valid=known(active && !state_.answers.empty(),"FM09","I","registered-answer (I)");
     if(!active || state_.answers.empty()) return e;
     if(i.flush && s.reason!="early") { e.mask=dont_care("canceled-output"); return e; }
@@ -80,42 +87,41 @@ Transition ReferenceModel::plan(const Stimulus& s,uint64_t cycle) const {
     Transition t; t.next=state_; auto& n=t.next; const auto& i=s.inputs;
     if(!i.rst_n) return t;
     const auto e=outputs(s);
-    t.k=i.fetch_valid && i.grant;
+    t.k=e.request_valid.known && e.request_valid.value && i.grant;
     t.r=i.response_valid && e.response_ready.known && e.response_ready.value;
     t.d=e.valid.known && e.valid.value && i.consumer_ready && (!i.flush || s.reason=="early");
-    auto& cc=n.campaigns[unsigned(s.campaign)];
-    if(t.d) { const auto& a=n.answers.front(); t.delivered_id=a.request.id;
+    if(t.d) {
+        const auto a=n.answers.front(); t.delivered_id=a.request.id;
         if(a.request.id) { ++n.totals.delivered; ++n.campaigns[unsigned(a.request.campaign)].delivered; }
         if(a.payload.errors&a.request.mask) { ++n.totals.fault_deliveries; ++n.campaigns[unsigned(a.request.campaign)].fault_deliveries; }
         n.answers.pop_front();
     }
     if(i.flush) {
         for(const auto& q:n.outstanding) t.canceled_ids.push_back(q.id);
+        for(const auto& a:n.completed) t.canceled_ids.push_back(a.request.id);
         for(const auto& a:n.answers) t.canceled_ids.push_back(a.request.id);
         cancel(n,s.campaign); ++n.epoch; n.initialized=n.released=true; n.association_known=true;
-        if(t.k || s.question=="FQ04") { n.association_known=false; t.ambiguous=true; ++n.totals.ambiguous; ++cc.ambiguous; }
         return t;
-    }
-    if(t.r) {
-        Answer a; a.payload=i.response; a.arrived=cycle;
-        if(!n.outstanding.empty() && s.question.empty()) {
-            a.request=n.outstanding.front(); t.response_id=a.request.id; n.outstanding.pop_front();
-            ++n.totals.responded; ++n.campaigns[unsigned(a.request.campaign)].responded;
-        } else {
-            // A malformed/alternative completion never establishes a golden identity.
-            a.request.metadata_known=false; n.association_known=false; t.ambiguous=true;
-            ++n.totals.ambiguous; ++cc.ambiguous;
-            // Any already tracked association is now uncertain, not repaired from observed data.
-            for(auto& q:n.outstanding) q.metadata_known=false;
-        }
-        if(i.response.errors) { ++n.totals.fault_responses; ++cc.fault_responses; }
-        n.answers.push_back(a);
     }
     if(t.k) {
         Request q; q.campaign=s.campaign; q.id=s.request_id; q.epoch=n.epoch; q.start=s.start; q.accepted=cycle;
         q.mask=i.mask; q.predictions=i.predictions; q.metadata_known=n.association_known;
-        n.outstanding.push_back(q); ++n.totals.accepted; ++cc.accepted;
-        if(n.outstanding.size()>cfg_.depth) { n.association_known=false; t.ambiguous=true; for(auto& v:n.outstanding) v.metadata_known=false; }
+        n.outstanding.push_back(q); ++n.totals.accepted; ++n.campaigns[unsigned(q.campaign)].accepted;
+    }
+    if(t.r) {
+        Answer a; a.payload=i.response; a.arrived=cycle;
+        a.request=n.outstanding.front(); n.outstanding.pop_front();
+        if(!s.question.empty()) { a.request.metadata_known=false; n.association_known=false; t.ambiguous=true;
+            ++n.totals.ambiguous; ++n.campaigns[unsigned(s.campaign)].ambiguous; }
+        t.response_id=a.request.id;
+        if(a.request.id) { ++n.totals.responded; ++n.campaigns[unsigned(a.request.campaign)].responded; }
+        if(i.response.errors) { ++n.totals.fault_responses; ++n.campaigns[unsigned(s.campaign)].fault_responses; }
+        n.completed.push_back(a);
+    }
+    // Independent semantic queue: the answer spill has registered, non-lookahead capacity two.
+    // A newly returned head may transfer directly on the same edge.
+    if(state_.released && state_.answers.size()<2 && !n.completed.empty()) {
+        n.answers.push_back(n.completed.front()); n.completed.pop_front();
     }
     n.released=n.initialized;
     return t;
@@ -141,8 +147,9 @@ std::string inputs_json(const Inputs& i,unsigned lanes) {
 std::string state_json(const State& s) {
     std::ostringstream o; o<<"{\"epoch\":"<<s.epoch<<",\"initialized\":"<<s.initialized<<",\"released\":"<<s.released<<",\"association_known\":"<<s.association_known<<",\"outstanding\":[";
     bool first=true; for(const auto& q:s.outstanding) { if(!first)o<<',';first=false;o<<"{\"id\":"<<q.id<<",\"accepted\":"<<q.accepted<<",\"start\":"<<json_quote(hex64(q.start))<<'}'; }
+    o<<"],\"completed\":[";first=true;for(const auto& a:s.completed){if(!first)o<<',';first=false;o<<"{\"id\":"<<a.request.id<<",\"arrived\":"<<a.arrived<<'}';}
     o<<"],\"answers\":[";first=true;for(const auto& a:s.answers){if(!first)o<<',';first=false;o<<"{\"id\":"<<a.request.id<<",\"arrived\":"<<a.arrived<<",\"metadata_known\":"<<a.request.metadata_known<<'}';}
-    o<<"],\"obligations\":"<<counters_json(s.totals,s.outstanding.size()+s.answers.size())<<'}';return o.str();
+    o<<"],\"obligations\":"<<counters_json(s.totals,s.outstanding.size()+s.completed.size()+s.answers.size())<<'}';return o.str();
 }
 std::string specification_json() {
     std::ostringstream o;o<<'{'; for(unsigned k=1;k<=13;++k) {if(k>1)o<<',';o<<json_quote(std::string("FQ")+(k<10?"0":"")+std::to_string(k))<<":{\"status\":\"unresolved\"}";}o<<'}';return o.str();

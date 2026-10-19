@@ -67,6 +67,7 @@ struct Counters {
 };
 struct State {
     std::deque<Request> outstanding;
+    std::deque<Answer> completed; // Returned bundles waiting for the answer spill cell.
     std::deque<Answer> answers;
     bool initialized=false,released=false,association_known=true,in_reset=false;
     uint64_t epoch=0;

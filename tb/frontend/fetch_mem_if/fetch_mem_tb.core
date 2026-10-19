@@ -7,7 +7,7 @@ filesets:
     - polito:len5:packages
     files:
     - ../../../rtl/common/modn_counter.sv
-    - ../../../rtl/common/fifo_nohs.sv
+    - ../../../rtl/common/completion_fifo.sv
     - ../../../rtl/common/spill_cell_flush_cu.sv
     - ../../../rtl/common/spill_cell_flush.sv
     - ../../../rtl/frontend/fetch_mem_if.sv
