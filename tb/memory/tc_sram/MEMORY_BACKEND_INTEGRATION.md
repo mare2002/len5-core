@@ -9,7 +9,7 @@ elaboration; it does not fall back to another backend.
 
 ```mermaid
 flowchart LR
-  FE["CPU fetch interface\nfrontend completion FIFO"] <--> IF["Instruction control\nlatency validity + metadata\none holding register"]
+  FE["CPU fetch interface\nfrontend completion FIFO"] <--> IF["Instruction control\nvalid + metadata pipelines\nno response storage"]
   IF <--> I["Unmodified tc_sram\nIMEM: one read-only port\nmax(64, 32*N) bits"]
   LSU["CPU load/store interfaces"] <--> LD["Load decode, metadata pipeline\nbyte selection + response buffer"]
   LSU <--> ST["Store decode, byte enables\none-cycle completion + response buffer"]
@@ -70,40 +70,34 @@ the native adapter. Fetch widths must match the CPU configuration and be one of
 
 ## Instruction responses without an adapter FIFO
 
-For positive IMEM latency, validity shifts by exactly `IMEM_LATENCY` clock edges.
-A single metadata register retains the accepted request's lane exceptions and
-N=1 half selection. At most one native read is in flight. A completed native
-result can move into one holding register, freeing the native path for another
-read. Thus at most two instruction transactions are owned by the adapter: one
-held result and one native read/result. There are no FIFO pointers, queue memory,
-or instruction-response reservation counters in the adapter.
+Every accepted instruction request already owns a result slot in the frontend's
+completion FIFO. IMEM can therefore accept one request per cycle whenever the
+frontend supplies one, independently of the configured latency. Downstream
+instruction stalls eventually exhaust frontend credits and backpressure requests
+through `fetch_mem_if` toward PC generation; they do not block results for
+previously accepted requests.
 
-If a native result returns while the holding register is occupied, new requests
-remain blocked. The adapter retains its valid bit and metadata. Upstream SRAM
-continues returning its last read address; because IMEM is read-only after
-initialization, that result remains stable without another data register. This
-invariant depends on keeping IMEM immutable during CPU execution.
+For positive latency, valid bits and per-request lane exceptions/N=1 half selection
+advance through exactly `IMEM_LATENCY` stages alongside the native SRAM data.
+Multiple reads can be in flight and return in order. There is no instruction data
+holding register, response FIFO, or reservation counter in the adapter. A protocol
+assertion checks that each live result has its reserved frontend destination.
 
-The oldest held response always wins. A consumed held response may be replaced
-by the next completed native result on the same edge. Grant depends on registered
-ownership and native-result availability, independently of response-ready. This
-avoids a feedback path through the frontend FIFO's same-cycle allocation/result
-support. Holding-register recovery retains a conservative grant bubble.
+Latency zero uses the native asynchronous read and delivers the result on the
+acceptance cycle. The completion FIFO supports simultaneous allocation and result
+insertion. Grant remains independent of response-ready, avoiding combinational
+feedback through that same-cycle path.
 
-Latency zero uses the native asynchronous read and can deliver a response on the
-acceptance cycle. Backpressure captures it in the same holding register. A held
-response blocks further requests until it is consumed; there is no extra pipeline
-stage disguised as latency zero.
-
-With ready continuously asserted, latency zero and latency one accept one bundle
-per cycle. Positive latency L>1 accepts one bundle every L cycles. More reads in
-flight would require additional guaranteed response storage; this implementation
-intentionally keeps instruction storage minimal.
+FIFO depth does not impose a maximum IMEM latency. For example, depth four with
+latency ten accepts four consecutive requests and then waits for frontend credits.
+Those four results still arrive exactly ten cycles after their respective requests.
+A small FIFO can limit sustained throughput at long latency without affecting
+correctness. The existing full-FIFO recovery bubble is unchanged.
 
 Instruction flush immediately suppresses grants and response-valid, then clears
-latency validity, held validity and outstanding ownership. Native SRAM reads
-already issued are allowed to finish, but their canceled validity cannot escape.
-CPU reset clears all protocol state without resetting or reloading SRAM contents.
+all latency valid bits together with frontend reservations. Already issued native
+reads finish, but their canceled validity cannot escape or complete a newer request.
+CPU reset clears protocol state without resetting or reloading SRAM contents.
 
 ## Data requests and exceptions
 
@@ -177,12 +171,12 @@ bytes retain the vendor model's uninitialized-memory semantics.
 | Files | Responsibility |
 | --- | --- |
 | `tb/packages/tb_config_pkg.sv`, `tb/tb_bare.sv`, `len5.core` | Independent memory settings, two SRAM instances, automatic boot address and unchanged backend selection |
-| `tb/memory/tc_sram/tc_sram_adapter.sv` | Full-width instruction reads, one holding register, independent read latencies and native ports |
+| `tb/memory/tc_sram/tc_sram_adapter.sv` | Full-width pipelined instruction reads, independent read latencies and native ports |
 | `tb/memory/tc_sram/{memory_backend_pkg,memory_access_check,memory_response_buffer}.sv` | Geometry and overlap checks, per-region permissions, latency-zero reservation assertion |
 | `tb/memory/{tc_sram_storage.sv,tc_sram_loader.svh}` | Generic word/port geometry and absolute-address deposits into the correct array |
 | `sw/linker/len5-sim.ld`, `scripts/gen-memory-map.py`, `sw/{makefile,benchmarks/makefile}`, `sw/device/runtime/spike.S` | Generated map, data placement, rebuild dependencies and executable host-exit routine |
 | `tb/verilator/diff/{monitor.cpp,spike_adapter.cpp,spike_adapter.hh,signals.vlt}` | Two-region reference map, DMEM-specific flush handling, required interface observation |
-| `tb/memory/tc_sram/{tc_sram_adapter_tb,tc_sram_config_tb,tc_sram_loader_tb}.sv`, `scripts/sim/check-tc-sram{.sh,-config.py,-loader.py}` | Direct backpressure scoreboard, configuration/firmware checks and deterministic fixtures |
+| `tb/memory/tc_sram/{tc_sram_adapter_tb,tc_sram_config_tb,tc_sram_loader_tb}.sv`, `scripts/sim/check-tc-sram{.sh,-config.py,-loader.py}` | Native-response and frontend-reservation scoreboards, configuration/firmware checks and deterministic fixtures |
 | `tb/memory/tc_sram/waivers.vlt`, `tb/frontend/fetch_mem_if/fetch_mem_waivers.vlt` | Narrow upstream latency-zero and intentionally unused counter-pin diagnostics |
 
 ## Verification and reproduction
@@ -204,7 +198,9 @@ The adapter scoreboard observes the public CPU/native interfaces directly, with
 an independent byte-address/exception oracle. It checks ordered and stalled
 responses, all byte lanes, read/write collisions, wrong-memory access, bounds,
 tags, invalid masks, disabled write-enable, flush/reset, full data buffers and
-single-register instruction backpressure. No frontend FIFO hides adapter stalls.
+frontend reservation exhaustion. A separate native-response scoreboard checks exact
+IMEM latency, order and payload before the frontend FIFO, so buffering cannot hide
+adapter stalls or incorrect responses.
 The upstream latency-zero pipeline declaration has narrowly scoped simulator
 waivers; its source is unchanged.
 
@@ -216,7 +212,7 @@ checker limitations on uninitialized reads and architectural trap recovery remai
 There is no claim of formal equivalence, synthesis timing/PPA sign-off or complete
 four-state/X-propagation verification.
 
-## Verified results (2026-10-20)
+## Harvard split baseline results (2026-10-20)
 
 All full-core runs use N=4 and identical rebuilt firmware for the shared-SRAM,
 Harvard and legacy comparisons. Read-only data is in DMEM in every compared image.
@@ -247,8 +243,9 @@ Stores complete in one cycle in all native configurations.
 
 Accepted-fetch rates include speculative requests and cancellations; they are not
 retired-instruction throughput. With continuous valid/ready, the directed adapter
-test proves one whole bundle per cycle at IMEM latency zero/one, and one every L
-cycles for positive L>1. The legacy emulator passes all four programs and takes
+test originally proved one whole bundle per cycle at IMEM latency zero/one.
+The baseline controller serialized reads at L>1; the pipelined controller described
+above removes that restriction. The legacy emulator passes all four programs and takes
 one more measured cycle than Harvard I=1/D=1 for each program.
 
 Behavioral verification covers:
@@ -278,3 +275,40 @@ Behavioral verification covers:
 Logs, model builds, source snapshots, performance reports and the consolidated
 receipt are under `build/harvard-sram/`. No formal or PPA claims are made. Full-core
 execution is tested at N=4; all supported fetch widths are covered at the adapter boundary.
+
+## Pipelined instruction verification (2026-10-20)
+
+The instruction controller now accepts consecutive requests for every supported
+latency while frontend credits remain available. Verification checks adapter
+responses before frontend buffering as well as subsequent ordered delivery:
+
+- N=1/2/4/8, each with I/D latency pairs `(0,0)`, `(0,3)`, `(1,0)`, `(1,1)`,
+  `(2,4)`, `(4,1)`, `(8,2)`, `(1,8)`, `(12,0)`, `(3,1)`: 100 seeds and 10,000
+  random cycles per configuration, totaling 40 million random cycles plus directed
+  tests. Frontend depth is two for `(4,1)`, one for `(3,1)`, and eight otherwise.
+  This covers full reservation queues, latency greater than depth, consecutive
+  returns, faults, flush/reset cancellation, data collisions and relocated MMIO.
+- All 35 configuration/generator checks pass, including IMEM latency 17 with
+  DMEM latency one, and IMEM latency 12 with asynchronous DMEM.
+- `hello_world`, `load_store`, `shift`, and `crc32` pass Spike at I/D `(1,1)`,
+  `(2,4)`, `(12,1)`, and `(0,0)`. Retirement traces and serial output match the
+  previous Harvard baseline. The latency-12 run reaches eight outstanding fetches
+  with zero adapter instruction buffering; measured read latencies remain 12/1.
+- Existing fetch-memory and complete-frontend randomized regressions each pass
+  100 seeds and their required matrices. These are selected-scope regression
+  results, not full-contract or formal sign-off.
+- Verible lint and `git diff --check` pass. CPU/vendor RTL and firmware are unchanged.
+
+At I/D `(2,4)`, identical firmware gives the following execution-cycle comparison:
+
+| Program | Previous serialized IMEM controller | Pipelined IMEM controller |
+| --- | ---: | ---: |
+| hello_world | 28,654 | 27,180 |
+| load_store | 3,745 | 2,897 |
+| shift | 2,897 | 2,893 |
+| crc32 | 33,019 | 32,161 |
+
+Cycles at `(1,1)` and `(0,0)` match the previous Harvard controller. Evidence and
+source/configuration snapshots are under `build/pipelined-imem/`; the consolidated
+receipt is `verification-summary.json`. Full-core runs use N=4. There is no formal
+equivalence, synthesis/PPA, or complete four-state verification claim.

@@ -17,7 +17,9 @@ module tc_sram_adapter #(
       DMEM_SIZE_BYTES / 8
   ) : 1,
   parameter int unsigned RESPONSE_DEPTH = (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1,
-  parameter int unsigned COUNT_WIDTH = $clog2(RESPONSE_DEPTH + 1)
+  parameter int unsigned COUNT_WIDTH = $clog2(
+      (RESPONSE_DEPTH > IMEM_LATENCY ? RESPONSE_DEPTH : IMEM_LATENCY) + 1
+  )
 ) (
   input logic clk_i,
   input logic rst_ni,
@@ -57,6 +59,7 @@ module tc_sram_adapter #(
   import memory_backend_pkg::*;
 
   localparam int unsigned FetchWordBytes = IMEM_DATA_WIDTH / 8;
+  localparam int unsigned DataCountWidth = $clog2(RESPONSE_DEPTH + 1);
   // verilog_lint: waive parameter-name-style
   localparam int unsigned IMEM_ADDR_SHIFT = $clog2(FetchWordBytes);
 
@@ -82,8 +85,7 @@ module tc_sram_adapter #(
     data_response_t response;
   } load_metadata_t;
 
-  logic instr_active, instr_accepted, instr_consumed;
-  logic        instr_hold_valid_q;
+  logic instr_active, instr_accepted;
   logic        fetch_result_valid;
   logic [63:0] fetch_bundle_addr;
   logic        fetch_pc_misaligned;
@@ -91,7 +93,9 @@ module tc_sram_adapter #(
   except_code_t [N-1:0] fetch_lane_code;
   logic         [N-1:0] unused_instr_mmio;
   fetch_metadata_t fetch_metadata, fetch_result_metadata;
-  instr_response_t fetch_result, instr_hold_q;
+  instr_response_t fetch_result;
+
+  logic [1:0][DataCountWidth-1:0] data_outstanding, data_occupancy;
 
   logic load_accepted, load_credit, load_flush;
   logic load_sram, load_except, unused_load_mmio;
@@ -132,45 +136,37 @@ module tc_sram_adapter #(
 
   assign instr_active = initialized_i && rst_ni && !instr_flush_i;
   assign instr_accepted = instr_req_i && response_o.instr_gnt;
-  assign instr_consumed = response_o.instr_valid && instr_ready_i;
   assign imem_req_o = instr_accepted && !fetch_pc_misaligned && fetch_lane_sram[0];
   assign imem_addr_o = IMEM_ADDR_WIDTH'((fetch_bundle_addr - IMEM_BASE_ADDR) >> IMEM_ADDR_SHIFT);
 
-  // Grant never depends on response-ready: the frontend may accept a zero-latency
-  // result on its allocation edge. Feeding ready back into grant would form a loop.
-  // A read uses the native output; the single holding register absorbs backpressure.
+  // The frontend reserves a completion slot before issuing each request. Results
+  // therefore always have a destination, even when downstream instruction issue stalls.
+  // Keep grant independent of result-ready to permit same-cycle latency-zero returns.
+  assign response_o.instr_gnt = instr_active;
+  assign occupancy_o[0] = '0;
   if (IMEM_LATENCY == 0) begin : gen_async_fetch
-    assign response_o.instr_gnt  = instr_active && !instr_hold_valid_q;
     assign fetch_result_valid    = instr_accepted;
     assign fetch_result_metadata = fetch_metadata;
-    assign outstanding_o[0]      = COUNT_WIDTH'(instr_hold_valid_q);
+    assign outstanding_o[0]      = '0;
   end else begin : gen_sync_fetch
     logic            [IMEM_LATENCY-1:0] pending_q;
-    fetch_metadata_t                    metadata_q;
-    logic                               result_waiting_q;
-    logic read_pending, result_released;
-    assign read_pending = (|pending_q) || result_waiting_q;
-    assign response_o.instr_gnt = instr_active && !instr_hold_valid_q && (!read_pending || fetch_result_valid);
-    assign fetch_result_valid = pending_q[IMEM_LATENCY-1] || result_waiting_q;
-    assign result_released = instr_active && fetch_result_valid && (!instr_hold_valid_q || instr_ready_i);
-    assign outstanding_o[0] = COUNT_WIDTH'(read_pending) + COUNT_WIDTH'(instr_hold_valid_q);
-    assign fetch_result_metadata = metadata_q;
+    fetch_metadata_t                    metadata_q[IMEM_LATENCY];
+    assign fetch_result_valid    = pending_q[IMEM_LATENCY-1];
+    assign fetch_result_metadata = metadata_q[IMEM_LATENCY-1];
+    assign outstanding_o[0]      = COUNT_WIDTH'($countones(pending_q));
     always_ff @(posedge clk_i or negedge rst_ni) begin : update_fetch_latency
       if (!rst_ni) begin
-        pending_q        <= '0;
-        metadata_q       <= '0;
-        result_waiting_q <= 1'b0;
+        pending_q <= '0;
+        foreach (metadata_q[stage]) metadata_q[stage] <= '0;
       end else if (instr_flush_i) begin
-        pending_q        <= '0;
-        result_waiting_q <= 1'b0;
+        pending_q <= '0;
       end else begin
-        // IMEM is read-only. With no new request its native output remains stable
-        // after arrival, so a blocked result needs only a retained valid bit.
-        if (result_released) result_waiting_q <= 1'b0;
-        else if (pending_q[IMEM_LATENCY-1]) result_waiting_q <= 1'b1;
         pending_q[0] <= instr_accepted;
-        for (int stage = 1; stage < IMEM_LATENCY; stage++) pending_q[stage] <= pending_q[stage-1];
-        if (instr_accepted) metadata_q <= fetch_metadata;
+        if (instr_accepted) metadata_q[0] <= fetch_metadata;
+        for (int stage = 1; stage < IMEM_LATENCY; stage++) begin
+          pending_q[stage] <= pending_q[stage-1];
+          if (pending_q[stage-1]) metadata_q[stage] <= metadata_q[stage-1];
+        end
       end
     end
   end
@@ -186,27 +182,14 @@ module tc_sram_adapter #(
     end
   end
 
-  assign response_o.instr_valid = instr_active && (instr_hold_valid_q || fetch_result_valid);
-  assign {response_o.instr_data, response_o.instr_except, response_o.instr_code} =
-      instr_hold_valid_q ? instr_hold_q : fetch_result;
-  assign occupancy_o[0] = COUNT_WIDTH'(instr_hold_valid_q);
+  assign response_o.instr_valid = instr_active && fetch_result_valid;
+  assign {response_o.instr_data, response_o.instr_except, response_o.instr_code} = fetch_result;
 
-  // A stalled native result moves to the holding register when it is free.
-  // A consumed held result can be replaced by the next completed native read.
-  always_ff @(posedge clk_i or negedge rst_ni) begin : update_instruction_response
-    if (!rst_ni) begin
-      instr_hold_valid_q <= 1'b0;
-      instr_hold_q       <= '0;
-    end else if (instr_flush_i) begin
-      instr_hold_valid_q <= 1'b0;
-    end else begin
-      if (fetch_result_valid && (instr_hold_valid_q ? instr_ready_i : !instr_ready_i)) begin
-        instr_hold_valid_q <= 1'b1;
-        instr_hold_q       <= fetch_result;
-      end else if (instr_consumed) begin
-        instr_hold_valid_q <= 1'b0;
-      end
-      assert (!instr_accepted || !instr_hold_valid_q);
+  // Accepted reads cannot be stalled inside the SRAM; the caller must reserve their results.
+  always_ff @(posedge clk_i) begin : check_instruction_reservation
+    if (response_o.instr_valid) begin
+      assert (instr_ready_i)
+      else $fatal(1, "Instruction response has no reserved frontend completion slot");
     end
   end
 
@@ -330,8 +313,8 @@ module tc_sram_adapter #(
     .valid_o       (response_o.load_valid),
     .ready_i       (load_ready_i),
     .data_o        (load_response),
-    .outstanding_o (outstanding_o[1]),
-    .occupancy_o   (occupancy_o[1])
+    .outstanding_o (data_outstanding[0]),
+    .occupancy_o   (data_occupancy[0])
   );
   memory_response_buffer #(
     .DATA_T(data_response_t),
@@ -347,9 +330,13 @@ module tc_sram_adapter #(
     .valid_o       (response_o.store_valid),
     .ready_i       (store_ready_i),
     .data_o        (store_response),
-    .outstanding_o (outstanding_o[2]),
-    .occupancy_o   (occupancy_o[2])
+    .outstanding_o (data_outstanding[1]),
+    .occupancy_o   (data_occupancy[1])
   );
+  assign outstanding_o[1]        = COUNT_WIDTH'(data_outstanding[0]);
+  assign outstanding_o[2]        = COUNT_WIDTH'(data_outstanding[1]);
+  assign occupancy_o[1]          = COUNT_WIDTH'(data_occupancy[0]);
+  assign occupancy_o[2]          = COUNT_WIDTH'(data_occupancy[1]);
   assign response_o.load_data    = load_response.data;
   assign response_o.load_tag     = load_response.tag;
   assign response_o.load_except  = load_response.except;
@@ -364,6 +351,8 @@ module tc_sram_adapter #(
       $fatal(1, "TC_SRAM requires N=1/2/4/8 and one full-width IMEM word per bundle");
     if (RESPONSE_DEPTH < (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1 || COUNT_WIDTH < $clog2(
             RESPONSE_DEPTH + 1
+        ) || COUNT_WIDTH < $clog2(
+            IMEM_LATENCY + 1
         ))
       $fatal(1, "TC_SRAM response capacity must cover read latency and one-cycle store completion");
     if (IMEM_SIZE_BYTES < FetchWordBytes || IMEM_SIZE_BYTES % FetchWordBytes != 0 ||

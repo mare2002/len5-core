@@ -15,6 +15,8 @@ cases = [
     ("async-instruction", {"I_LATENCY": "0", "D_LATENCY": "3"}, "", ""),
     ("async-data", {"I_LATENCY": "4", "D_LATENCY": "0"}, "", ""),
     ("latency-eight", {"I_LATENCY": "8", "D_LATENCY": "8"}, "", ""),
+    ("instruction-latency-above-frontend-depth", {"I_LATENCY": "17", "D_LATENCY": "1"}, "", ""),
+    ("long-instruction-async-data", {"I_LATENCY": "12", "D_LATENCY": "0"}, "", ""),
     ("nonbinary-words", {"I_SIZE": "48", "D_SIZE": "24"}, "", ""),
     ("memory-overlap", {"D_BASE": "64'h1000"}, "regions overlap", ""),
     ("unaligned-imem", {"I_BASE": "64'h1008"}, "Invalid IMEM", ""),

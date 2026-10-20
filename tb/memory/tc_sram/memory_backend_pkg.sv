@@ -22,7 +22,9 @@ package memory_backend_pkg;
   // verilog_lint: waive parameter-name-style
   localparam int unsigned SRAM_RESPONSE_DEPTH = (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1;
   // verilog_lint: waive parameter-name-style
-  localparam int unsigned SRAM_COUNT_WIDTH = $clog2(SRAM_RESPONSE_DEPTH + 1);
+  localparam int unsigned SRAM_COUNT_WIDTH = $clog2(
+      (SRAM_RESPONSE_DEPTH > IMEM_LATENCY ? SRAM_RESPONSE_DEPTH : IMEM_LATENCY) + 1
+  );
 
   // Preserve channel and field order: this packed type is the shared backend interface.
   typedef struct packed {

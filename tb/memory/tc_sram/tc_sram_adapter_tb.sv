@@ -6,6 +6,7 @@ module tc_sram_adapter_tb;
   import memory_backend_pkg::*;
   localparam int N = LEN5_MULTIPLE_ISSUES;
   localparam int Capacity = SRAM_RESPONSE_DEPTH;
+  localparam int FetchDepth = FETCH_MEMIF_FIFO_DEPTH;
   localparam int Size = 256;
   localparam int IWidth = N > 2 ? 32 * N : 64;
   localparam int IBytes = IWidth / 8;
@@ -30,9 +31,39 @@ module tc_sram_adapter_tb;
   logic [2:0][SRAM_COUNT_WIDTH-1:0] outstanding, occupancy;
   logic imem_initialized, dmem_initialized, initialized, mmio;
   memory_response_t rsp;
-  assign initialized = imem_initialized && dmem_initialized;
+  typedef struct packed {
+    logic [N-1:0][31:0] data;
+    logic [N-1:0] except;
+    except_code_t [N-1:0] code;
+  } fetch_response_t;
+  fetch_response_t instr_result, instr_response;
+  logic instr_request, instr_credit, instr_result_ready, instr_response_valid;
+  logic [63:0] instr_response_addr;
+  assign initialized   = imem_initialized && dmem_initialized;
 
-  // Exercise the adapter directly: response backpressure reaches its single IMEM holding slot.
+  // Match fetch_mem_if: every accepted read owns a frontend completion slot.
+  // Downstream stalls consume credits without blocking already accepted SRAM results.
+  assign instr_request = req[0] && instr_credit;
+  assign instr_result  = '{data: rsp.instr_data, except: rsp.instr_except, code: rsp.instr_code};
+  completion_fifo #(
+    .META_T(logic [63:0]),
+    .DATA_T(fetch_response_t),
+    .DEPTH (FetchDepth)
+  ) u_frontend_responses (
+    .clk_i         (clk),
+    .rst_ni        (rst),
+    .flush_i       (flush),
+    .allocate_i    (instr_request && rsp.instr_gnt),
+    .credit_o      (instr_credit),
+    .metadata_i    (addr[0]),
+    .result_valid_i(rsp.instr_valid),
+    .result_ready_o(instr_result_ready),
+    .result_i      (instr_result),
+    .valid_o       (instr_response_valid),
+    .ready_i       (ready[0]),
+    .metadata_o    (instr_response_addr),
+    .data_o        (instr_response)
+  );
   tc_sram_adapter #(
     .IMEM_SIZE_BYTES(Size),
     .DMEM_SIZE_BYTES(Size)
@@ -42,8 +73,8 @@ module tc_sram_adapter_tb;
     .instr_flush_i(flush),
     .load_flush_i (load_flush),
     .initialized_i(initialized),
-    .instr_req_i  (req[0]),
-    .instr_ready_i(ready[0]),
+    .instr_req_i  (instr_request),
+    .instr_ready_i(instr_result_ready),
     .instr_addr_i (addr[0]),
     .load_req_i   (req[1]),
     .load_ready_i (ready[1]),
@@ -119,18 +150,20 @@ module tc_sram_adapter_tb;
     int due;
   } expected_t;
   typedef struct packed {
+    logic [63:0] address;
     logic [N-1:0][31:0] data;
     except_code_t [N-1:0] code;
     int issued;
     int due;
   } fetch_expected_t;
   expected_t loads[$], stores[$];
-  fetch_expected_t fetches[$];
+  fetch_expected_t fetches[$], fetch_returns[$];
   int cycle_no = 0, seed = 1, cycles = 10000;
   int unsigned rng;
   int accepted[3], completed[3], errors[3], native_count[3], blocked[3], stalled[3];
   int max_out[3], max_occ[3], sum_out[3], sum_occ[3], latency_sum[3];
   int all_three = 0, collision = 0, flush_count = 0, mmio_count = 0;
+  int max_fetch_reserved = 0, fetch_return_count = 0;
 
   function automatic int unsigned random32();
     rng ^= rng << 13;
@@ -198,19 +231,21 @@ module tc_sram_adapter_tb;
     logic [63:0] fetch_base;
     int          size;
     #5;
-    grant        = {rsp.store_gnt, rsp.load_gnt, rsp.instr_gnt};
-    valid        = {rsp.store_valid, rsp.load_valid, rsp.instr_valid};
+    grant        = {rsp.store_gnt, rsp.load_gnt, rsp.instr_gnt && instr_credit};
+    valid        = {rsp.store_valid, rsp.load_valid, instr_response_valid};
     native_req   = {dmem_req, imem_req};
     accepted_now = req & grant;
     if (!rst) begin
       loads.delete();
       stores.delete();
       fetches.delete();
+      fetch_returns.delete();
       assert (native_req == 0 && valid == 0 && grant == 0)
       else $fatal(1, "Activity during reset");
     end else begin
       if (flush) begin
         fetches.delete();
+        fetch_returns.delete();
         flush_count++;
         assert (!valid[0] && !grant[0])
         else $fatal(1, "Fetch activity during flush");
@@ -220,10 +255,17 @@ module tc_sram_adapter_tb;
         assert (!valid[1] && !grant[1])
         else $fatal(1, "Load activity during cancellation");
       end
+      if (!flush) begin
+        assert (rsp.instr_gnt == initialized && occupancy[0] == 0)
+        else $fatal(1, "IMEM added request throttling or response storage");
+        assert (int'(outstanding[0]) == fetch_returns.size())
+        else $fatal(1, "IMEM outstanding count mismatch");
+      end
       // Queue accepted requests before checking responses, including true latency-zero returns.
       if (accepted_now[0]) begin
         fetch_base = N == 1 ? addr[0] : addr[0] / (N * 4) * (N * 4);
         f          = '0;
+        f.address  = addr[0];
         f.issued   = cycle_no;
         f.due      = cycle_no + int'(IMEM_LATENCY);
         for (int lane = 0; lane < N; lane++) begin
@@ -234,6 +276,7 @@ module tc_sram_adapter_tb;
           if (f.code[lane] != E_UNKNOWN) errors[0]++;
         end
         fetches.push_back(f);
+        fetch_returns.push_back(f);
         expected_native = addr[0] % 4 == 0 && fault(fetch_base, 4, 0) == E_UNKNOWN;
         assert (imem_req == expected_native)
         else $fatal(1, "Fetch SRAM request mismatch");
@@ -272,24 +315,39 @@ module tc_sram_adapter_tb;
       if (loads.size() != 0 && cycle_no >= loads[0].due) assert (valid[1]);
       if (stores.size() != 0 && cycle_no >= stores[0].due) assert (valid[2]);
       if (fetches.size() != 0 && cycle_no >= fetches[0].due) assert (valid[0]);
+      // Check native completion separately from frontend delivery: a FIFO must not
+      // hide a late, reordered, or corrupt adapter response.
+      if (fetch_returns.size() != 0) begin
+        assert (rsp.instr_valid == (cycle_no == fetch_returns[0].due))
+        else $fatal(1, "IMEM response did not match configured latency");
+      end else assert (!rsp.instr_valid);
+      if (rsp.instr_valid) begin
+        f = fetch_returns.pop_front();
+        assert (instr_result_ready && rsp.instr_data === f.data && rsp.instr_code == f.code)
+        else $fatal(1, "Pipelined IMEM response mismatch");
+        for (int lane = 0; lane < N; lane++)
+        assert (rsp.instr_except[lane] == (f.code[lane] != E_UNKNOWN));
+        fetch_return_count++;
+      end
       // Every visible payload must remain the oldest expected response even while stalled.
       if (valid[0]) begin
         assert (fetches.size() != 0)
         else $fatal(1, "Unsolicited fetch");
         f = fetches[0];
-        assert (cycle_no >= f.due && rsp.instr_data === f.data && rsp.instr_code == f.code)
+        assert (cycle_no >= f.due && instr_response_addr == f.address &&
+                instr_response.data === f.data && instr_response.code == f.code)
         else
           $fatal(
               1,
               "Fetch mismatch cycle %0d data %h/%h code %h/%h",
               cycle_no,
-              rsp.instr_data,
+              instr_response.data,
               f.data,
-              rsp.instr_code,
+              instr_response.code,
               f.code
           );
         for (int lane = 0; lane < N; lane++)
-        assert (rsp.instr_except[lane] == (f.code[lane] != E_UNKNOWN));
+        assert (instr_response.except[lane] == (f.code[lane] != E_UNKNOWN));
         if (ready[0]) begin
           f = fetches.pop_front();
           latency_sum[0] += cycle_no - f.issued;
@@ -348,6 +406,7 @@ module tc_sram_adapter_tb;
       end
       if (&native_req) all_three++;
       if (&dmem_req && dmem_addr[0] == dmem_addr[1]) collision++;
+      if (fetches.size() > max_fetch_reserved) max_fetch_reserved = fetches.size();
     end
     clk = 1;
     #5;
@@ -359,8 +418,8 @@ module tc_sram_adapter_tb;
     ready      = 7;
     flush      = 0;
     load_flush = 0;
-    repeat (IMEM_LATENCY + DMEM_LATENCY + Capacity + 5) tick();
-    assert (loads.size() == 0 && stores.size() == 0 && fetches.size() == 0)
+    repeat (IMEM_LATENCY + DMEM_LATENCY + Capacity + FetchDepth + 5) tick();
+    assert (loads.size() == 0 && stores.size() == 0 && fetches.size() == 0 && fetch_returns.size() == 0)
     else $fatal(1, "Drain failed");
   endtask
 
@@ -436,13 +495,38 @@ module tc_sram_adapter_tb;
       addr[2]     = DBase + 16;
       be[1]       = 255;
       be[2]       = 255;
-      repeat (32) tick();
-      assert (accepted[1]-start_load == 32 && accepted[2]-start_store == 32 &&
-              native_count[0]-start_fetch == (IMEM_LATENCY > 0 ? 31 / int'(IMEM_LATENCY) + 1 : 32))
+      for (int i = 0; i < 32; i++) begin
+        addr[0] = IBase + 64'((i * 4) % Size);
+        tick();
+      end
+      assert (accepted[1] - start_load == 32 && accepted[2] - start_store == 32)
       else $fatal(1, "Unexpected throughput");
+      if (FetchDepth > IMEM_LATENCY) begin
+        assert (native_count[0] - start_fetch == 32)
+        else $fatal(1, "IMEM failed to accept one bundle per cycle with frontend credit");
+      end
       drain();
     end
-    // Fill data reservation buffers and stall a complete IMEM response, then replace it on consumption.
+    // Fill all frontend reservations with consecutive reads even when latency exceeds depth.
+    begin
+      int start_fetch;
+      start_fetch = accepted[0];
+      req         = 1;
+      ready[0]    = 0;
+      for (int i = 0; i < FetchDepth; i++) begin
+        addr[0] = IBase + 64'((i * 4) % Size);
+        tick();
+        assert (accepted[0] - start_fetch == i + 1)
+        else $fatal(1, "IMEM serialized outstanding requests");
+      end
+      repeat (IMEM_LATENCY + 2) tick();
+      assert (accepted[0] - start_fetch == FetchDepth && fetch_returns.size() == 0 &&
+              fetches.size() == FetchDepth)
+      else
+        $fatal(1, "Full frontend FIFO did not backpressure requests while receiving all results");
+      drain();
+    end
+    // Fill data buffers and frontend reservations, then resume simultaneous traffic.
     ready   = 0;
     req     = 7;
     addr[0] = IBase;
@@ -450,16 +534,17 @@ module tc_sram_adapter_tb;
     addr[2] = DBase + 8;
     be[1]   = 255;
     be[2]   = 255;
-    repeat (IMEM_LATENCY + DMEM_LATENCY + Capacity + 4) tick();
+    repeat (IMEM_LATENCY + DMEM_LATENCY + Capacity + FetchDepth + 4) tick();
     ready   = 7;
     addr[0] = IBase + 64'(IBytes);
     repeat (4) tick();
     drain();
-    // In-flight and held instruction flushes; a new transaction must not inherit an old result.
+    // Flush in-flight reads and completed frontend entries; new requests must not inherit old results.
     for (int phase = 0; phase < 2; phase++) begin
       req      = 1;
       ready[0] = 0;
       addr[0]  = IBase;
+      tick();
       tick();
       if (phase == 1) repeat (IMEM_LATENCY + 1) tick();
       flush = 1;
@@ -519,9 +604,11 @@ module tc_sram_adapter_tb;
     end
     drain();
     assert (all_three > 0 && collision > 0 && mmio_count > 0 && flush_count > 0);
+    assert (max_fetch_reserved == FetchDepth && fetch_return_count > 0);
     for (int p = 0; p < 3; p++) begin
-      assert (errors[p] > 0 && max_out[p] == (p == 0 ? (IMEM_LATENCY == 0 ? 1 : 2) : Capacity) &&
-              max_occ[p] == (p == 0 ? 1 : Capacity) && stalled[p] > 0 && blocked[p] > 0);
+      assert (errors[p] > 0 &&
+              max_out[p] == (p == 0 ? (int'(IMEM_LATENCY) < FetchDepth ? int'(IMEM_LATENCY) : FetchDepth) : Capacity) &&
+              max_occ[p] == (p == 0 ? 0 : Capacity) && stalled[p] > 0 && blocked[p] > 0);
       $display(
           "PORT %0d accepted=%0d completed=%0d native=%0d errors=%0d latency=%f max_out=%0d avg_out=%f max_occ=%0d avg_occ=%f req_stall=%0d rsp_stall=%0d",
           p, accepted[p], completed[p], native_count[p], errors[p],
@@ -529,6 +616,8 @@ module tc_sram_adapter_tb;
           real'(sum_out[p]) / real'(cycle_no), max_occ[p], real'(sum_occ[p]) / real'(cycle_no),
           blocked[p], stalled[p]);
     end
+    $display("IMEM latency=%0d DMEM latency=%0d frontend_depth=%0d returns=%0d max_reserved=%0d",
+             IMEM_LATENCY, DMEM_LATENCY, FetchDepth, fetch_return_count, max_fetch_reserved);
     $display("PASS seed=%0d cycles=%0d all_ports=%0d collisions=%0d flushes=%0d mmio=%0d", seed,
              cycle_no, all_three, collision, flush_count, mmio_count);
     $finish;
