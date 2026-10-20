@@ -172,7 +172,6 @@ targets:
         - '--x-assign unique'
         - '--x-initial unique'
         - '--report-unoptflat'
-        - '-GBOOT_PC=65920' # 0x10180
         - '-Wall'
         - '-Wpedantic'
 

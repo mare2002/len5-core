@@ -142,8 +142,10 @@ struct Monitor::Impl {
     Impl(const std::string &image, const std::string &output, Config cfg, const std::string &f)
         : spike(image, constants.at("tb_bare.BOOT_PC"), isa(), csr_state(),
                 MemoryMap{constants.at("tb_bare.SERIAL_ADDR"), constants.at("tb_bare.EXIT_ADDR"),
-                          constants.at("tb_config_pkg.SRAM_BASE_ADDR"),
-                          constants.at("tb_config_pkg.MEMORY_BACKEND") == 1 ? constants.at("tb_config_pkg.SRAM_SIZE_BYTES") : 0,
+                          constants.at("tb_config_pkg.IMEM_BASE_ADDR"),
+                          constants.at("tb_config_pkg.MEMORY_BACKEND") == 1 ? constants.at("tb_config_pkg.IMEM_SIZE_BYTES") : 0,
+                          constants.at("tb_config_pkg.DMEM_BASE_ADDR"),
+                          constants.at("tb_config_pkg.MEMORY_BACKEND") == 1 ? constants.at("tb_config_pkg.DMEM_SIZE_BYTES") : 0,
                           constants.at("len5_config_pkg.MMAP_MASK")} ),
           checker(spike, output, cfg), fault(f) {
         if (constants.at("len5_config_pkg.LEN5_C_EN") ||
@@ -197,7 +199,7 @@ struct Monitor::Impl {
                                  top_signals.get("dp2mem_load_be"), t);
         if (back_flush)
             checker.flush_backend(t, constants.at("tb_config_pkg.MEMORY_BACKEND") == 1 &&
-                                  constants.at("tb_config_pkg.SRAM_LATENCY") > 1);
+                                  constants.at("tb_config_pkg.DMEM_LATENCY") > 1);
         if (front_flush)
             checker.flush_frontend(t);
         if (comm_signals.get("cu_except_flush")) {

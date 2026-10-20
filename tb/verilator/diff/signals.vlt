@@ -1,6 +1,7 @@
 `verilator_config
 // Read-only exposure, confined to differential-verification builds.
-public_flat_rd -module "tb_bare" -var "*"
+public_flat_rd -module "tb_bare" -var "dp2mem_*"
+public_flat_rd -module "tb_bare" -var "mem2dp_*"
 public_flat_rd -module "issue_stage" -var "*"
 public_flat_rd -module "issue_queue" -var "*"
 public_flat_rd -module "commit_stage" -var "*"

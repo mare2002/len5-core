@@ -1,63 +1,64 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 module tc_sram_adapter #(
-    parameter int unsigned N = len5_config_pkg::LEN5_MULTIPLE_ISSUES,
-    parameter logic [63:0] BASE_ADDR = tb_config_pkg::SRAM_BASE_ADDR,
-    parameter int unsigned SIZE_BYTES = tb_config_pkg::SRAM_SIZE_BYTES,
-    parameter int unsigned LATENCY = tb_config_pkg::SRAM_LATENCY,
-    parameter logic [63:0] SERIAL_ADDR = tb_config_pkg::SERIAL_ADDR,
-    parameter logic [63:0] EXIT_ADDR = tb_config_pkg::EXIT_ADDR,
-    parameter int unsigned ADDR_WIDTH = SIZE_BYTES / 8 > 1 ? $clog2(SIZE_BYTES / 8) : 1,
-    parameter int unsigned RESPONSE_DEPTH = LATENCY + 1,
-    parameter int unsigned COUNT_WIDTH = $clog2(RESPONSE_DEPTH + 1)
+  parameter int unsigned N = len5_config_pkg::LEN5_MULTIPLE_ISSUES,
+  parameter logic [63:0] IMEM_BASE_ADDR = tb_config_pkg::IMEM_BASE_ADDR,
+  parameter int unsigned IMEM_SIZE_BYTES = tb_config_pkg::IMEM_SIZE_BYTES,
+  parameter int unsigned IMEM_LATENCY = tb_config_pkg::IMEM_LATENCY,
+  parameter logic [63:0] DMEM_BASE_ADDR = tb_config_pkg::DMEM_BASE_ADDR,
+  parameter int unsigned DMEM_SIZE_BYTES = tb_config_pkg::DMEM_SIZE_BYTES,
+  parameter int unsigned DMEM_LATENCY = tb_config_pkg::DMEM_LATENCY,
+  parameter logic [63:0] SERIAL_ADDR = tb_config_pkg::SERIAL_ADDR,
+  parameter logic [63:0] EXIT_ADDR = tb_config_pkg::EXIT_ADDR,
+  parameter int unsigned IMEM_DATA_WIDTH = N > 2 ? 32 * N : 64,
+  parameter int unsigned IMEM_ADDR_WIDTH = IMEM_SIZE_BYTES / (IMEM_DATA_WIDTH / 8) > 1 ? $clog2(
+      IMEM_SIZE_BYTES / (IMEM_DATA_WIDTH / 8)
+  ) : 1,
+  parameter int unsigned DMEM_ADDR_WIDTH = DMEM_SIZE_BYTES / 8 > 1 ? $clog2(
+      DMEM_SIZE_BYTES / 8
+  ) : 1,
+  parameter int unsigned RESPONSE_DEPTH = (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1,
+  parameter int unsigned COUNT_WIDTH = $clog2(RESPONSE_DEPTH + 1)
 ) (
-    input logic clk_i,
-    rst_ni,
-    instr_flush_i,
-    load_flush_i,
-    initialized_i,
-    input logic instr_req_i,
-    instr_ready_i,
-    input logic [63:0] instr_addr_i,
-    input logic load_req_i,
-    load_ready_i,
-    input logic [63:0] load_addr_i,
-    input logic [7:0] load_be_i,
-    input logic [len5_pkg::BUFF_IDX_LEN-1:0] load_tag_i,
-    input logic store_req_i,
-    store_ready_i,
-    store_we_i,
-    input logic [63:0] store_addr_i,
-    store_data_i,
-    input logic [7:0] store_be_i,
-    input logic [len5_pkg::BUFF_IDX_LEN-1:0] store_tag_i,
-    output memory_backend_pkg::memory_response_t response_o  /* verilator split_var */,
-    output logic [2:0] sram_req_o,
-    sram_we_o,
-    output logic [2:0][ADDR_WIDTH-1:0] sram_addr_o,
-    output logic [2:0][63:0] sram_wdata_o,
-    output logic [2:0][7:0] sram_be_o,
-    input logic [2:0][63:0] sram_rdata_i,
-    output logic mmio_write_o,
-    output logic [2:0][COUNT_WIDTH-1:0] outstanding_o,
-    occupancy_o
+  input logic clk_i,
+  input logic rst_ni,
+  input logic instr_flush_i,
+  input logic load_flush_i,
+  input logic initialized_i,
+  input logic instr_req_i,
+  input logic instr_ready_i,
+  input logic [63:0] instr_addr_i,
+  input logic load_req_i,
+  input logic load_ready_i,
+  input logic [63:0] load_addr_i,
+  input logic [7:0] load_be_i,
+  input logic [len5_pkg::BUFF_IDX_LEN-1:0] load_tag_i,
+  input logic store_req_i,
+  input logic store_ready_i,
+  input logic store_we_i,
+  input logic [63:0] store_addr_i,
+  input logic [63:0] store_data_i,
+  input logic [7:0] store_be_i,
+  input logic [len5_pkg::BUFF_IDX_LEN-1:0] store_tag_i,
+  output memory_backend_pkg::memory_response_t response_o  /* verilator split_var */,
+  output logic imem_req_o,
+  output logic [IMEM_ADDR_WIDTH-1:0] imem_addr_o,
+  input logic [IMEM_DATA_WIDTH-1:0] imem_rdata_i,
+  output logic [1:0] dmem_req_o,
+  output logic [1:0] dmem_we_o,
+  output logic [1:0][DMEM_ADDR_WIDTH-1:0] dmem_addr_o,
+  output logic [1:0][63:0] dmem_wdata_o,
+  output logic [1:0][7:0] dmem_be_o,
+  input logic [1:0][63:0] dmem_rdata_i,
+  output logic mmio_write_o,
+  output logic [2:0][COUNT_WIDTH-1:0] outstanding_o,
+  output logic [2:0][COUNT_WIDTH-1:0] occupancy_o
 );
   import len5_pkg::*;
   import memory_backend_pkg::*;
 
-  // Port mapping and fetch geometry.
+  localparam int unsigned FetchWordBytes = IMEM_DATA_WIDTH / 8;
   // verilog_lint: waive parameter-name-style
-  localparam int unsigned INSTR_PORT = 0;
-  // verilog_lint: waive parameter-name-style
-  localparam int unsigned LOAD_PORT = 1;
-  // verilog_lint: waive parameter-name-style
-  localparam int unsigned STORE_PORT = 2;
-  // verilog_lint: waive parameter-name-style
-  localparam int unsigned FETCH_BEATS = (N + 1) / 2;
-  // verilog_lint: waive parameter-name-style
-  localparam int unsigned FETCH_BEAT_WIDTH = FETCH_BEATS > 1 ? $clog2(FETCH_BEATS) : 1;
-  // Keep invalid latency-zero configurations well formed until the configuration diagnostic.
-  // verilog_lint: waive parameter-name-style
-  localparam int unsigned READ_STAGES = LATENCY > 0 ? LATENCY : 1;
+  localparam int unsigned IMEM_ADDR_SHIFT = $clog2(FetchWordBytes);
 
   typedef struct packed {
     logic [63:0] data;
@@ -70,232 +71,242 @@ module tc_sram_adapter #(
     logic [N-1:0] except;
     except_code_t [N-1:0] code;
   } instr_response_t;
-
+  typedef struct packed {
+    logic upper_half;
+    logic [N-1:0] except;
+    except_code_t [N-1:0] code;
+  } fetch_metadata_t;
   typedef struct packed {
     logic [2:0] byte_offset;
     logic [7:0] byte_mask;
     data_response_t response;
   } load_metadata_t;
-  typedef struct packed {
-    logic [FETCH_BEAT_WIDTH-1:0] beat;
-    logic last;
-    logic upper_half;
-    logic [1:0] except;
-    except_code_t [1:0] code;
-  } fetch_metadata_t;
 
-  // Data channels reserve local response slots; the frontend reserves instruction slots.
-  logic [2:0] request_accepted;
-  logic [2:1] response_credit;
-  logic [2:0] result_valid_q;
+  logic instr_active, instr_accepted, instr_consumed;
+  logic        instr_hold_valid_q;
+  logic        fetch_result_valid;
+  logic [63:0] fetch_bundle_addr;
+  logic        fetch_pc_misaligned;
+  logic [N-1:0] fetch_lane_sram, fetch_lane_except;
+  except_code_t [N-1:0] fetch_lane_code;
+  logic         [N-1:0] unused_instr_mmio;
+  fetch_metadata_t fetch_metadata, fetch_result_metadata;
+  instr_response_t fetch_result, instr_hold_q;
 
-  // Load metadata follows the native read pipeline, including requests which return faults.
-  logic load_sram, load_except;
+  logic load_accepted, load_credit, load_flush;
+  logic load_sram, load_except, unused_load_mmio;
   except_code_t load_code;
-  logic unused_load_mmio;
-  logic [2:0] load_byte_offset_q;
-  logic [7:0] load_byte_mask_q;
-  data_response_t load_response_q;
+  logic         load_result_valid;
+  load_metadata_t load_metadata, load_result_metadata;
   data_response_t load_result, load_response;
-  load_metadata_t load_metadata_q[READ_STAGES];
-  logic [READ_STAGES-1:0] load_pending_q;
-  logic load_flush;
 
-  // Store side effects occur at acceptance; the registered response carries completion.
+  logic store_accepted, store_credit;
   logic store_sram, store_mmio, store_except;
   except_code_t store_code;
-  data_response_t store_response_q;
-  data_response_t store_response;
+  logic         store_result_valid_q;
+  data_response_t store_result_q, store_response;
 
-  // Fetch request state: retain the bundle address and original PC alignment across beats.
-  logic fetch_busy_q;
-  logic [FETCH_BEAT_WIDTH-1:0] fetch_next_beat_q;
-  logic [63:0] fetch_bundle_addr_q;
-  logic fetch_pc_misaligned_q;
-  logic fetch_beat_issue;
-  logic [FETCH_BEAT_WIDTH-1:0] fetch_beat;
-  logic [63:0] fetch_request_base, fetch_bundle_addr, fetch_read_addr;
-  logic fetch_pc_misaligned;
-  logic [1:0][63:0] fetch_lane_addr;
-  logic [1:0] fetch_lane_sram, fetch_lane_except;
-  except_code_t [1:0] fetch_lane_code;
-  logic [1:0] unused_instr_mmio;
+  wire unused_read_data = &{1'b0, dmem_rdata_i[1], store_response.data, fetch_lane_sram};
 
-  // Returning-beat metadata is registered with port 0's read; earlier beats stay in the bundle.
-  logic [FETCH_BEAT_WIDTH-1:0] fetch_result_beat_q;
-  logic fetch_last_beat_q, fetch_upper_half_q;
-  logic [1:0] fetch_lane_except_q;
-  except_code_t [1:0] fetch_lane_code_q;
-  instr_response_t fetch_bundle_q;
-  instr_response_t fetch_result;
-  logic [COUNT_WIDTH-1:0] fetch_outstanding_q;
-  fetch_metadata_t fetch_metadata_q[READ_STAGES];
-  logic [READ_STAGES-1:0] fetch_pending_q;
-
-  // Long-latency loads must be canceled before a flushed LSU entry can reuse their tags.
-  // Preserve the original drain-on-flush behavior at latency one.
-  assign load_flush = LATENCY > 1 && load_flush_i;
-  assign result_valid_q[LOAD_PORT] = load_pending_q[READ_STAGES-1];
-  assign load_response_q = load_metadata_q[READ_STAGES-1].response;
-  assign load_byte_offset_q = load_metadata_q[READ_STAGES-1].byte_offset;
-  assign load_byte_mask_q = load_metadata_q[READ_STAGES-1].byte_mask;
-  assign result_valid_q[INSTR_PORT] = fetch_pending_q[READ_STAGES-1];
-  assign fetch_result_beat_q = fetch_metadata_q[READ_STAGES-1].beat;
-  assign fetch_last_beat_q = fetch_metadata_q[READ_STAGES-1].last;
-  assign fetch_upper_half_q = fetch_metadata_q[READ_STAGES-1].upper_half;
-  assign fetch_lane_except_q = fetch_metadata_q[READ_STAGES-1].except;
-  assign fetch_lane_code_q = fetch_metadata_q[READ_STAGES-1].code;
-
-  wire unused_read_ports = &{1'b0, sram_rdata_i[STORE_PORT], store_response.data, fetch_lane_sram[1]};
-
-  // Data request decoding.
-  memory_access_check #(
-      .BASE_ADDR  (BASE_ADDR),
-      .SIZE_BYTES (SIZE_BYTES),
-      .SERIAL_ADDR(SERIAL_ADDR),
-      .EXIT_ADDR  (EXIT_ADDR),
-      .KIND       (1)
-  ) u_load_decode (
-      .addr_i  (load_addr_i),
-      .bytes_i (access_bytes(load_be_i)),
-      .sram_o  (load_sram),
-      .mmio_o  (unused_load_mmio),
-      .except_o(load_except),
-      .code_o  (load_code)
-  );
-  memory_access_check #(
-      .BASE_ADDR  (BASE_ADDR),
-      .SIZE_BYTES (SIZE_BYTES),
-      .SERIAL_ADDR(SERIAL_ADDR),
-      .EXIT_ADDR  (EXIT_ADDR),
-      .KIND       (2)
-  ) u_store_decode (
-      .addr_i  (store_addr_i),
-      .bytes_i (access_bytes(store_be_i)),
-      .sram_o  (store_sram),
-      .mmio_o  (store_mmio),
-      .except_o(store_except),
-      .code_o  (store_code)
-  );
-
-  // Request acceptance. Credit includes reset/flush gating from each response buffer.
-  assign response_o.load_gnt = initialized_i && response_credit[LOAD_PORT];
-  assign response_o.store_gnt = initialized_i && response_credit[STORE_PORT];
-  assign response_o.instr_gnt = initialized_i && rst_ni && !instr_flush_i && !fetch_busy_q;
-  assign request_accepted[INSTR_PORT] = instr_req_i && response_o.instr_gnt;
-  assign request_accepted[LOAD_PORT] = load_req_i && response_o.load_gnt;
-  assign request_accepted[STORE_PORT] = store_req_i && response_o.store_gnt;
-
-  // Fetch beat addressing. A new bundle starts at beat zero; busy cycles issue its remaining beats.
-  assign fetch_beat_issue = initialized_i && rst_ni && !instr_flush_i &&
-                            (fetch_busy_q || request_accepted[INSTR_PORT]);
-  assign fetch_beat = fetch_busy_q ? fetch_next_beat_q : '0;
-  assign fetch_request_base = N == 1 ? instr_addr_i : instr_addr_i & ~64'(N * 4 - 1);
-  assign fetch_bundle_addr = fetch_busy_q ? fetch_bundle_addr_q : fetch_request_base;
-  assign fetch_pc_misaligned = fetch_busy_q ? fetch_pc_misaligned_q : (instr_addr_i[1:0] != 0);
-  assign fetch_read_addr = fetch_bundle_addr + 64'(fetch_beat) * 8;
-
-  // Keep both lane checks: each returned instruction carries its own address exception.
-  // The original-PC alignment check above precedes bundle alignment and applies to every lane.
-  for (genvar j = 0; j < 2; j++) begin : gen_instr_decode
-    assign fetch_lane_addr[j] = fetch_read_addr + 64'(j * 4);
+  // Each fetch accesses one IMEM word. N=1 selects one half of a 64-bit word.
+  // Check the original PC before bundle alignment, then check every returned lane.
+  assign fetch_bundle_addr   = N == 1 ? instr_addr_i : instr_addr_i & ~64'(N * 4 - 1);
+  assign fetch_pc_misaligned = instr_addr_i[1:0] != 0;
+  for (genvar lane = 0; lane < N; lane++) begin : gen_instr_decode
     memory_access_check #(
-        .BASE_ADDR (BASE_ADDR),
-        .SIZE_BYTES(SIZE_BYTES),
-        .KIND      (0)
+      .BASE_ADDR (IMEM_BASE_ADDR),
+      .SIZE_BYTES(IMEM_SIZE_BYTES),
+      .KIND      (0)
     ) u_decode (
-        .addr_i  (fetch_lane_addr[j]),
-        .bytes_i (4),
-        .sram_o  (fetch_lane_sram[j]),
-        .mmio_o  (unused_instr_mmio[j]),
-        .except_o(fetch_lane_except[j]),
-        .code_o  (fetch_lane_code[j])
+      .addr_i  (fetch_bundle_addr + 64'(lane * 4)),
+      .bytes_i (4),
+      .sram_o  (fetch_lane_sram[lane]),
+      .mmio_o  (unused_instr_mmio[lane]),
+      .except_o(fetch_lane_except[lane]),
+      .code_o  (fetch_lane_code[lane])
     );
   end
+  assign fetch_metadata.upper_half = instr_addr_i[2];
+  assign fetch_metadata.except = fetch_pc_misaligned ? '1 : fetch_lane_except;
+  assign fetch_metadata.code = fetch_pc_misaligned ? {N{E_I_ADDR_MISALIGNED}} : fetch_lane_code;
 
-  // Native SRAM operations. Decode gates requests before word-index truncation can alias an address.
-  always_comb begin : drive_sram_ports
-    sram_req_o               = '0;
-    sram_we_o                = 3'b100;
-    sram_addr_o[INSTR_PORT]  = ADDR_WIDTH'((fetch_read_addr - BASE_ADDR) >> 3);
-    sram_addr_o[LOAD_PORT]   = ADDR_WIDTH'((load_addr_i - BASE_ADDR) >> 3);
-    sram_addr_o[STORE_PORT]  = ADDR_WIDTH'((store_addr_i - BASE_ADDR) >> 3);
-    sram_wdata_o             = '0;
-    sram_wdata_o[STORE_PORT] = store_data_i << (8 * store_addr_i[2:0]);
-    sram_be_o                = '0;
-    sram_be_o[STORE_PORT]    = store_be_i << store_addr_i[2:0];
-    sram_req_o[INSTR_PORT]   = fetch_beat_issue && !fetch_pc_misaligned && fetch_lane_sram[0];
-    sram_req_o[LOAD_PORT]    = request_accepted[LOAD_PORT] && load_sram;
-    sram_req_o[STORE_PORT]   = request_accepted[STORE_PORT] && store_sram && store_we_i;
+  assign instr_active = initialized_i && rst_ni && !instr_flush_i;
+  assign instr_accepted = instr_req_i && response_o.instr_gnt;
+  assign instr_consumed = response_o.instr_valid && instr_ready_i;
+  assign imem_req_o = instr_accepted && !fetch_pc_misaligned && fetch_lane_sram[0];
+  assign imem_addr_o = IMEM_ADDR_WIDTH'((fetch_bundle_addr - IMEM_BASE_ADDR) >> IMEM_ADDR_SHIFT);
+
+  // Grant never depends on response-ready: the frontend may accept a zero-latency
+  // result on its allocation edge. Feeding ready back into grant would form a loop.
+  // A read uses the native output; the single holding register absorbs backpressure.
+  if (IMEM_LATENCY == 0) begin : gen_async_fetch
+    assign response_o.instr_gnt  = instr_active && !instr_hold_valid_q;
+    assign fetch_result_valid    = instr_accepted;
+    assign fetch_result_metadata = fetch_metadata;
+    assign outstanding_o[0]      = COUNT_WIDTH'(instr_hold_valid_q);
+  end else begin : gen_sync_fetch
+    logic            [IMEM_LATENCY-1:0] pending_q;
+    fetch_metadata_t                    metadata_q;
+    logic                               result_waiting_q;
+    logic read_pending, result_released;
+    assign read_pending = (|pending_q) || result_waiting_q;
+    assign response_o.instr_gnt = instr_active && !instr_hold_valid_q && (!read_pending || fetch_result_valid);
+    assign fetch_result_valid = pending_q[IMEM_LATENCY-1] || result_waiting_q;
+    assign result_released = instr_active && fetch_result_valid && (!instr_hold_valid_q || instr_ready_i);
+    assign outstanding_o[0] = COUNT_WIDTH'(read_pending) + COUNT_WIDTH'(instr_hold_valid_q);
+    assign fetch_result_metadata = metadata_q;
+    always_ff @(posedge clk_i or negedge rst_ni) begin : update_fetch_latency
+      if (!rst_ni) begin
+        pending_q        <= '0;
+        metadata_q       <= '0;
+        result_waiting_q <= 1'b0;
+      end else if (instr_flush_i) begin
+        pending_q        <= '0;
+        result_waiting_q <= 1'b0;
+      end else begin
+        // IMEM is read-only. With no new request its native output remains stable
+        // after arrival, so a blocked result needs only a retained valid bit.
+        if (result_released) result_waiting_q <= 1'b0;
+        else if (pending_q[IMEM_LATENCY-1]) result_waiting_q <= 1'b1;
+        pending_q[0] <= instr_accepted;
+        for (int stage = 1; stage < IMEM_LATENCY; stage++) pending_q[stage] <= pending_q[stage-1];
+        if (instr_accepted) metadata_q <= fetch_metadata;
+      end
+    end
   end
 
-  // MMIO has the same accepted-store event, but never issues a native SRAM write.
-  assign mmio_write_o = request_accepted[STORE_PORT] && store_we_i && store_mmio;
+  always_comb begin : select_instruction_lanes
+    fetch_result        = '0;
+    fetch_result.except = fetch_result_metadata.except;
+    fetch_result.code   = fetch_result_metadata.code;
+    for (int lane = 0; lane < N; lane++) begin
+      if (!fetch_result_metadata.except[lane]) begin
+        fetch_result.data[lane] = 32'(imem_rdata_i >> (32 * (lane + (N == 1 ? int'(fetch_result_metadata.upper_half) : 0))));
+      end
+    end
+  end
 
-  // Load return: select bytes using the accepted request's offset and mask. The LSU sign-extends.
+  assign response_o.instr_valid = instr_active && (instr_hold_valid_q || fetch_result_valid);
+  assign {response_o.instr_data, response_o.instr_except, response_o.instr_code} =
+      instr_hold_valid_q ? instr_hold_q : fetch_result;
+  assign occupancy_o[0] = COUNT_WIDTH'(instr_hold_valid_q);
+
+  // A stalled native result moves to the holding register when it is free.
+  // A consumed held result can be replaced by the next completed native read.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : update_instruction_response
+    if (!rst_ni) begin
+      instr_hold_valid_q <= 1'b0;
+      instr_hold_q       <= '0;
+    end else if (instr_flush_i) begin
+      instr_hold_valid_q <= 1'b0;
+    end else begin
+      if (fetch_result_valid && (instr_hold_valid_q ? instr_ready_i : !instr_ready_i)) begin
+        instr_hold_valid_q <= 1'b1;
+        instr_hold_q       <= fetch_result;
+      end else if (instr_consumed) begin
+        instr_hold_valid_q <= 1'b0;
+      end
+      assert (!instr_accepted || !instr_hold_valid_q);
+    end
+  end
+
+  // DMEM and MMIO retain size validation and misalignment-before-access-fault priority.
+  memory_access_check #(
+    .BASE_ADDR  (DMEM_BASE_ADDR),
+    .SIZE_BYTES (DMEM_SIZE_BYTES),
+    .SERIAL_ADDR(SERIAL_ADDR),
+    .EXIT_ADDR  (EXIT_ADDR),
+    .KIND       (1)
+  ) u_load_decode (
+    .addr_i  (load_addr_i),
+    .bytes_i (access_bytes(load_be_i)),
+    .sram_o  (load_sram),
+    .mmio_o  (unused_load_mmio),
+    .except_o(load_except),
+    .code_o  (load_code)
+  );
+  memory_access_check #(
+    .BASE_ADDR  (DMEM_BASE_ADDR),
+    .SIZE_BYTES (DMEM_SIZE_BYTES),
+    .SERIAL_ADDR(SERIAL_ADDR),
+    .EXIT_ADDR  (EXIT_ADDR),
+    .KIND       (2)
+  ) u_store_decode (
+    .addr_i  (store_addr_i),
+    .bytes_i (access_bytes(store_be_i)),
+    .sram_o  (store_sram),
+    .mmio_o  (store_mmio),
+    .except_o(store_except),
+    .code_o  (store_code)
+  );
+
+  // Preserve the latency-one drain-on-flush contract; longer reads cancel before LSU tag reuse.
+  assign load_flush = DMEM_LATENCY > 1 && load_flush_i;
+  assign response_o.load_gnt = initialized_i && load_credit;
+  assign response_o.store_gnt = initialized_i && store_credit;
+  assign load_accepted = load_req_i && response_o.load_gnt;
+  assign store_accepted = store_req_i && response_o.store_gnt;
+  assign dmem_req_o[0] = load_accepted && load_sram;
+  assign dmem_req_o[1] = store_accepted && store_sram && store_we_i;
+  assign dmem_we_o = 2'b10;
+  assign dmem_addr_o[0] = DMEM_ADDR_WIDTH'((load_addr_i - DMEM_BASE_ADDR) >> 3);
+  assign dmem_addr_o[1] = DMEM_ADDR_WIDTH'((store_addr_i - DMEM_BASE_ADDR) >> 3);
+  assign dmem_wdata_o[0] = '0;
+  assign dmem_wdata_o[1] = store_data_i << (8 * store_addr_i[2:0]);
+  assign dmem_be_o[0] = '0;
+  assign dmem_be_o[1] = store_be_i << store_addr_i[2:0];
+  assign mmio_write_o = store_accepted && store_we_i && store_mmio;
+
+  assign load_metadata = '{
+          byte_offset: load_addr_i[2:0],
+          byte_mask: load_be_i,
+          response: '{data: '0, tag: load_tag_i, except: load_except, code: load_code}
+      };
+  if (DMEM_LATENCY == 0) begin : gen_async_load
+    assign load_result_valid    = load_accepted;
+    assign load_result_metadata = load_metadata;
+  end else begin : gen_sync_load
+    logic           [DMEM_LATENCY-1:0] pending_q;
+    load_metadata_t                    metadata_q[DMEM_LATENCY];
+    assign load_result_valid    = pending_q[DMEM_LATENCY-1];
+    assign load_result_metadata = metadata_q[DMEM_LATENCY-1];
+    always_ff @(posedge clk_i or negedge rst_ni) begin : update_load_latency
+      if (!rst_ni) begin
+        pending_q <= '0;
+        foreach (metadata_q[stage]) metadata_q[stage] <= '0;
+      end else if (load_flush) begin
+        pending_q <= '0;
+      end else begin
+        pending_q[0] <= load_accepted;
+        if (load_accepted) metadata_q[0] <= load_metadata;
+        for (int stage = 1; stage < DMEM_LATENCY; stage++) begin
+          pending_q[stage] <= pending_q[stage-1];
+          if (pending_q[stage-1]) metadata_q[stage] <= metadata_q[stage-1];
+        end
+      end
+    end
+  end
+
+  // Byte selection zero-extends; sign extension remains in the LSU.
   always_comb begin : select_load_bytes
-    load_result      = load_response_q;
+    load_result      = load_result_metadata.response;
     load_result.data = '0;
     for (int b = 0; b < 8; b++) begin
-      if (load_byte_mask_q[b] && !load_response_q.except) begin
-        load_result.data[b*8+:8] = 8'(sram_rdata_i[LOAD_PORT] >> (8 * (int'(load_byte_offset_q) + b)));
+      if (load_result_metadata.byte_mask[b] && !load_result_metadata.response.except) begin
+        load_result.data[b*8+:8] = 8'(dmem_rdata_i[0] >> (8 * (int'(load_result_metadata.byte_offset) + b)));
       end
     end
   end
 
-  // Fetch return: merge this beat with earlier lanes; N=1 selects one 32-bit half of the SRAM word.
-  always_comb begin : assemble_fetch_result
-    fetch_result = fetch_bundle_q;
-    for (int lane = 0; lane < 2; lane++) begin
-      int bundle_lane;
-      int word_lane;
-
-      bundle_lane = int'(fetch_result_beat_q) * 2 + lane;
-      word_lane   = N == 1 ? int'(fetch_upper_half_q) : lane;
-      if (bundle_lane < N) begin
-        fetch_result.data[bundle_lane] = fetch_lane_except_q[lane] ? '0 :
-            32'(sram_rdata_i[INSTR_PORT] >> (32 * word_lane));
-        fetch_result.except[bundle_lane] = fetch_lane_except_q[lane];
-        fetch_result.code[bundle_lane] = fetch_lane_code_q[lane];
-      end
-    end
-  end
-
-  // Load pipeline. Validity, tag, offset and fault status advance with port 1's SRAM data.
-  always_ff @(posedge clk_i or negedge rst_ni) begin : update_load_pipeline
+  // Stores write at acceptance, irrespective of DMEM read latency. Acknowledge one cycle later.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : update_store_response
     if (!rst_ni) begin
-      load_pending_q <= '0;
-      foreach (load_metadata_q[stage]) load_metadata_q[stage] <= '0;
-    end else if (load_flush) begin
-      load_pending_q <= '0;
+      store_result_valid_q <= 1'b0;
+      store_result_q       <= '0;
     end else begin
-      load_pending_q[0] <= request_accepted[LOAD_PORT];
-      if (request_accepted[LOAD_PORT]) begin
-        load_metadata_q[0].response <= '{
-            data: '0,
-            tag: load_tag_i,
-            except: load_except,
-            code: load_code
-        };
-        load_metadata_q[0].byte_offset <= load_addr_i[2:0];
-        load_metadata_q[0].byte_mask <= load_be_i;
-      end
-      for (int stage = 1; stage < READ_STAGES; stage++) begin
-        load_pending_q[stage] <= load_pending_q[stage-1];
-        if (load_pending_q[stage-1]) load_metadata_q[stage] <= load_metadata_q[stage-1];
-      end
-    end
-  end
-
-  // Store pipeline. Port 2 writes at acceptance; completion retains the original tag and exception.
-  always_ff @(posedge clk_i or negedge rst_ni) begin : update_store_pipeline
-    if (!rst_ni) begin
-      result_valid_q[STORE_PORT] <= 1'b0;
-      store_response_q           <= '0;
-    end else begin
-      result_valid_q[STORE_PORT] <= request_accepted[STORE_PORT];
-      if (request_accepted[STORE_PORT]) begin
-        store_response_q <= '{
+      store_result_valid_q <= store_accepted;
+      if (store_accepted) begin
+        store_result_q <= '{
             data: '0,
             tag: store_tag_i,
             except: store_except || !store_we_i,
@@ -305,97 +316,40 @@ module tc_sram_adapter #(
     end
   end
 
-  // Fetch pipeline. Instruction flush cancels the bundle without resetting unrelated beat metadata.
-  always_ff @(posedge clk_i or negedge rst_ni) begin : update_fetch_pipeline
-    if (!rst_ni) begin
-      fetch_pending_q       <= '0;
-      fetch_outstanding_q   <= '0;
-      fetch_busy_q          <= 1'b0;
-      fetch_next_beat_q     <= '0;
-      fetch_bundle_addr_q   <= '0;
-      fetch_pc_misaligned_q <= 1'b0;
-      foreach (fetch_metadata_q[stage]) fetch_metadata_q[stage] <= '0;
-      fetch_bundle_q <= '0;
-    end else begin
-      if (instr_flush_i) begin
-        // Override pending fetch validity; other beat metadata is intentionally retained.
-        fetch_busy_q        <= 1'b0;
-        fetch_pending_q     <= '0;
-        fetch_outstanding_q <= '0;
-        fetch_bundle_q      <= '0;
-      end else begin
-        fetch_outstanding_q <= fetch_outstanding_q + COUNT_WIDTH'(request_accepted[INSTR_PORT]) -
-                               COUNT_WIDTH'(response_o.instr_valid && instr_ready_i);
-        // Every issued fetch owns a frontend slot; native read results cannot be stalled.
-        assert (!response_o.instr_valid || instr_ready_i);
-        assert (!response_o.instr_valid || fetch_outstanding_q != 0);
-        fetch_pending_q[0] <= fetch_beat_issue;
-        for (int stage = 1; stage < READ_STAGES; stage++) begin
-          fetch_pending_q[stage] <= fetch_pending_q[stage-1];
-          if (fetch_pending_q[stage-1]) fetch_metadata_q[stage] <= fetch_metadata_q[stage-1];
-        end
-        if (result_valid_q[INSTR_PORT]) begin
-          fetch_bundle_q <= fetch_result;
-        end
-        if (fetch_beat_issue) begin
-          fetch_busy_q <= int'(fetch_beat) != FETCH_BEATS - 1;
-          fetch_next_beat_q <= fetch_beat + 1'b1;
-          fetch_bundle_addr_q <= fetch_bundle_addr;
-          fetch_pc_misaligned_q <= fetch_pc_misaligned;
-          fetch_metadata_q[0].beat <= fetch_beat;
-          fetch_metadata_q[0].upper_half <= fetch_read_addr[2];
-          fetch_metadata_q[0].last <= int'(fetch_beat) == FETCH_BEATS - 1;
-          fetch_metadata_q[0].except <= fetch_pc_misaligned ? '1 : fetch_lane_except;
-          fetch_metadata_q[0].code <= fetch_pc_misaligned ? {2{E_I_ADDR_MISALIGNED}} : fetch_lane_code;
-        end
-      end
-    end
-  end
-
-  // Complete bundles stream into frontend-reserved slots without local response storage.
-  assign response_o.instr_valid = rst_ni && !instr_flush_i && result_valid_q[INSTR_PORT] && fetch_last_beat_q;
-  assign outstanding_o[INSTR_PORT] = fetch_outstanding_q;
-  assign occupancy_o[INSTR_PORT] = '0;
-
-  // Load/store consumers retain their independent ready/valid response buffers.
   memory_response_buffer #(
-      .DATA_T(data_response_t),
-      .DEPTH (RESPONSE_DEPTH)
+    .DATA_T(data_response_t),
+    .DEPTH (RESPONSE_DEPTH)
   ) u_load_buffer (
-      .clk_i,
-      .rst_ni,
-      .flush_i       (load_flush),
-      .allocate_i    (request_accepted[LOAD_PORT]),
-      .credit_o      (response_credit[LOAD_PORT]),
-      .result_valid_i(result_valid_q[LOAD_PORT]),
-      .result_i      (load_result),
-      .valid_o       (response_o.load_valid),
-      .ready_i       (load_ready_i),
-      .data_o        (load_response),
-      .outstanding_o (outstanding_o[LOAD_PORT]),
-      .occupancy_o   (occupancy_o[LOAD_PORT])
+    .clk_i,
+    .rst_ni,
+    .flush_i       (load_flush),
+    .allocate_i    (load_accepted),
+    .credit_o      (load_credit),
+    .result_valid_i(load_result_valid),
+    .result_i      (load_result),
+    .valid_o       (response_o.load_valid),
+    .ready_i       (load_ready_i),
+    .data_o        (load_response),
+    .outstanding_o (outstanding_o[1]),
+    .occupancy_o   (occupancy_o[1])
   );
   memory_response_buffer #(
-      .DATA_T(data_response_t),
-      .DEPTH (RESPONSE_DEPTH)
+    .DATA_T(data_response_t),
+    .DEPTH (RESPONSE_DEPTH)
   ) u_store_buffer (
-      .clk_i,
-      .rst_ni,
-      .flush_i       (1'b0),
-      .allocate_i    (request_accepted[STORE_PORT]),
-      .credit_o      (response_credit[STORE_PORT]),
-      .result_valid_i(result_valid_q[STORE_PORT]),
-      .result_i      (store_response_q),
-      .valid_o       (response_o.store_valid),
-      .ready_i       (store_ready_i),
-      .data_o        (store_response),
-      .outstanding_o (outstanding_o[STORE_PORT]),
-      .occupancy_o   (occupancy_o[STORE_PORT])
+    .clk_i,
+    .rst_ni,
+    .flush_i       (1'b0),
+    .allocate_i    (store_accepted),
+    .credit_o      (store_credit),
+    .result_valid_i(store_result_valid_q),
+    .result_i      (store_result_q),
+    .valid_o       (response_o.store_valid),
+    .ready_i       (store_ready_i),
+    .data_o        (store_response),
+    .outstanding_o (outstanding_o[2]),
+    .occupancy_o   (occupancy_o[2])
   );
-
-  assign response_o.instr_data   = fetch_result.data;
-  assign response_o.instr_except = fetch_result.except;
-  assign response_o.instr_code   = fetch_result.code;
   assign response_o.load_data    = load_response.data;
   assign response_o.load_tag     = load_response.tag;
   assign response_o.load_except  = load_response.except;
@@ -404,24 +358,34 @@ module tc_sram_adapter #(
   assign response_o.store_except = store_response.except;
   assign response_o.store_code   = store_response.code;
 
-  // Configuration checks; unsupported modes must fail rather than alter the interface contract.
   initial begin : check_configuration
-    if (LATENCY == 0) $fatal(1, "TC_SRAM adapter requires a positive read latency");
-    if (RESPONSE_DEPTH < LATENCY + 1 || COUNT_WIDTH < $clog2(RESPONSE_DEPTH + 1))
-      $fatal(1, "TC_SRAM response capacity must cover the read pipeline plus one slot");
-    if (N == 0 || (N & (N - 1)) != 0 || N != len5_config_pkg::LEN5_MULTIPLE_ISSUES)
-      $fatal(1, "TC_SRAM fetch width must match the power-of-two CPU bundle width");
-    if (SIZE_BYTES < 8 || SIZE_BYTES % 8 != 0 || BASE_ADDR[2:0] != 0 ||
-        BASE_ADDR > (64'hffff_ffff_ffff_ffff - 64'(SIZE_BYTES-1)))
-      $fatal(1, "Invalid TC_SRAM address window");
-    if (SERIAL_ADDR[2:0] != 0 || EXIT_ADDR[2:0] != 0 || SERIAL_ADDR == EXIT_ADDR || in_region(
-            SERIAL_ADDR, 1, BASE_ADDR, 64'(SIZE_BYTES)
-        ) || in_region(
-            EXIT_ADDR, 1, BASE_ADDR, 64'(SIZE_BYTES)
+    if (!(N == 1 || N == 2 || N == 4 || N == 8) || N != len5_config_pkg::LEN5_MULTIPLE_ISSUES ||
+        IMEM_DATA_WIDTH != (N > 2 ? 32 * N : 64))
+      $fatal(1, "TC_SRAM requires N=1/2/4/8 and one full-width IMEM word per bundle");
+    if (RESPONSE_DEPTH < (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1 || COUNT_WIDTH < $clog2(
+            RESPONSE_DEPTH + 1
+        ))
+      $fatal(1, "TC_SRAM response capacity must cover read latency and one-cycle store completion");
+    if (IMEM_SIZE_BYTES < FetchWordBytes || IMEM_SIZE_BYTES % FetchWordBytes != 0 ||
+        IMEM_BASE_ADDR % 64'(FetchWordBytes) != 0 ||
+        IMEM_BASE_ADDR > (64'hffff_ffff_ffff_ffff - 64'(IMEM_SIZE_BYTES-1)))
+      $fatal(1, "Invalid IMEM address window");
+    if (DMEM_SIZE_BYTES < 8 || DMEM_SIZE_BYTES % 8 != 0 || DMEM_BASE_ADDR[2:0] != 0 ||
+        DMEM_BASE_ADDR > (64'hffff_ffff_ffff_ffff - 64'(DMEM_SIZE_BYTES-1)))
+      $fatal(1, "Invalid DMEM address window");
+    if (regions_overlap(IMEM_BASE_ADDR, 64'(IMEM_SIZE_BYTES), DMEM_BASE_ADDR, 64'(DMEM_SIZE_BYTES)))
+      $fatal(1, "IMEM and DMEM regions overlap");
+    if (SERIAL_ADDR[2:0] != 0 || EXIT_ADDR[2:0] != 0 || SERIAL_ADDR == EXIT_ADDR || regions_overlap(
+            SERIAL_ADDR, 8, IMEM_BASE_ADDR, 64'(IMEM_SIZE_BYTES)
+        ) || regions_overlap(
+            EXIT_ADDR, 8, IMEM_BASE_ADDR, 64'(IMEM_SIZE_BYTES)
+        ) || regions_overlap(
+            SERIAL_ADDR, 8, DMEM_BASE_ADDR, 64'(DMEM_SIZE_BYTES)
+        ) || regions_overlap(
+            EXIT_ADDR, 8, DMEM_BASE_ADDR, 64'(DMEM_SIZE_BYTES)
         ))
       $fatal(1, "Invalid or overlapping SRAM/MMIO regions");
-    if ((SERIAL_ADDR & len5_config_pkg::MMAP_MASK) == 0 ||
-        (EXIT_ADDR & len5_config_pkg::MMAP_MASK) == 0)
+    if ((SERIAL_ADDR & len5_config_pkg::MMAP_MASK) == 0 || (EXIT_ADDR & len5_config_pkg::MMAP_MASK) == 0)
       $fatal(1, "MMIO addresses must be excluded by MMAP_MASK from store-to-load forwarding");
     if (len5_config_pkg::ONLY_DOUBLEWORD_MEM_ACCESSES || len5_config_pkg::LEN5_C_EN)
       $fatal(1, "TC_SRAM requires original load offsets and uncompressed instructions");

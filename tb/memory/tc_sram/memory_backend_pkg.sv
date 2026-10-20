@@ -4,13 +4,23 @@ package memory_backend_pkg;
   import len5_config_pkg::*;
   import tb_config_pkg::*;
 
-  // Native SRAM addresses index 64-bit words; CPU addresses remain byte addresses.
+  // Native addresses index words; instruction words hold one complete fetch bundle.
   // verilog_lint: waive parameter-name-style
-  localparam int unsigned SRAM_ADDR_WIDTH = SRAM_SIZE_BYTES / 8 > 1 ? $clog2(SRAM_SIZE_BYTES / 8) : 1;
+  localparam int unsigned IMEM_DATA_WIDTH = LEN5_MULTIPLE_ISSUES > 2 ? 32 * LEN5_MULTIPLE_ISSUES : 64;
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned IMEM_WORD_BYTES = IMEM_DATA_WIDTH / 8;
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned IMEM_ADDR_WIDTH = IMEM_SIZE_BYTES / IMEM_WORD_BYTES > 1 ? $clog2(
+      IMEM_SIZE_BYTES / IMEM_WORD_BYTES
+  ) : 1;
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned DMEM_ADDR_WIDTH = DMEM_SIZE_BYTES / 8 > 1 ? $clog2(
+      DMEM_SIZE_BYTES / 8
+  ) : 1;
 
   // One extra reservation avoids a full-buffer bubble during steady one-request-per-cycle reads.
   // verilog_lint: waive parameter-name-style
-  localparam int unsigned SRAM_RESPONSE_DEPTH = SRAM_LATENCY + 1;
+  localparam int unsigned SRAM_RESPONSE_DEPTH = (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1;
   // verilog_lint: waive parameter-name-style
   localparam int unsigned SRAM_COUNT_WIDTH = $clog2(SRAM_RESPONSE_DEPTH + 1);
 
@@ -55,5 +65,13 @@ package memory_backend_pkg;
                                      longint unsigned size);
     return (bytes != 0) && (64'(bytes) <= size) && (addr >= base) &&
            ((addr - base) <= (size - 64'(bytes)));
+  endfunction
+
+  // Subtract bases rather than adding sizes, so validation cannot overflow.
+  function automatic logic regions_overlap(logic [63:0] first_base, longint unsigned first_size,
+                                           logic [63:0] second_base, longint unsigned second_size);
+    return first_size != 0 && second_size != 0 &&
+           (first_base <= second_base ? second_base - first_base < first_size :
+                                       first_base - second_base < second_size);
   endfunction
 endpackage

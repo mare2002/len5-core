@@ -14,8 +14,19 @@ mkdir -p "$test_build_dir"
   tb/memory/tc_sram/memory_response_buffer.sv tb/memory/tc_sram/tc_sram_adapter.sv \
   rtl/vendor/tech_cells_generic/tc_sram.sv +incdir+tb/memory tb/memory/tc_sram_storage.sv \
   tb/memory/tc_sram/tc_sram_adapter_tb.sv > "$test_build_dir/build.log" 2>&1 || { tail -60 "$test_build_dir/build.log"; exit 1; }
+python3 - "$test_build_dir" "${TC_SRAM_TB_CONFIG:-tb/packages/tb_config_pkg.sv}" <<'PY_IMAGE'
+import importlib.util
+from pathlib import Path
+import sys
+spec = importlib.util.spec_from_file_location("memory_map", "scripts/gen-memory-map.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+base = module.settings(Path(sys.argv[2]))["IMEM_BASE_ADDR"]
+data = bytes(((index * 37) ^ ((index // 4) * 13) ^ 0x5a) & 255 for index in range(256))
+(Path(sys.argv[1]) / "firmware.hex").write_text(f"@{base:x}\n" + data.hex(" ") + "\n")
+PY_IMAGE
 for ((seed=1;seed<=${SEEDS:-10};seed++)); do
-  "$test_build_dir/Vtc_sram_adapter_tb" +seed="$seed" +cycles="${CYCLES:-10000}" | tee "$test_build_dir/seed-$seed.log"
+  "$test_build_dir/Vtc_sram_adapter_tb" +seed="$seed" +cycles="${CYCLES:-10000}" +firmware="$test_build_dir/firmware.hex" | tee "$test_build_dir/seed-$seed.log"
 done
 python3 - "$test_build_dir" "${SEEDS:-10}" <<'PY'
 import json

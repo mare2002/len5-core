@@ -1,50 +1,60 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-// Each invalid elaborated configuration must stop before any request is granted.
+// Each invalid configuration must stop before the adapter can grant any request.
 module tc_sram_config_tb #(
-    parameter int TEST_CASE = 0
+  parameter int unsigned I_LATENCY = 1,
+  parameter int unsigned D_LATENCY = 1,
+  parameter logic [63:0] I_BASE = 64'h1000,
+  parameter logic [63:0] D_BASE = 64'h2000,
+  parameter int unsigned I_SIZE = 256,
+  parameter int unsigned D_SIZE = 256,
+  parameter logic [63:0] SERIAL = 64'h2000_0000,
+  parameter logic [63:0] EXIT = 64'h2000_0100,
+  parameter int unsigned CAPACITY = (D_LATENCY > 0 ? D_LATENCY : 1) + 1
 );
-  // verilog_lint: waive parameter-name-style
-  localparam int unsigned TEST_LATENCY = TEST_CASE == 1 ? 0 : TEST_CASE == 2 ? 2 : TEST_CASE == 12 ? 8 : 1;
   tc_sram_adapter #(
-      .LATENCY(TEST_LATENCY),
-      .RESPONSE_DEPTH(TEST_CASE == 13 ? 1 : TEST_LATENCY + 1),
-      .BASE_ADDR(TEST_CASE == 3 ? 64'h2000_0000 :
-                 TEST_CASE == 4 ? 64'h1001 :
-                 TEST_CASE == 5 ? 64'hffff_ffff_ffff_fff8 : 64'h1000),
-      .SIZE_BYTES(TEST_CASE == 6 ? 9 : 256),
-      .SERIAL_ADDR(TEST_CASE == 7 ? 64'h4000 : 64'h2000_0000),
-      .EXIT_ADDR(TEST_CASE == 8 ? 64'h2000_0000 : TEST_CASE == 9 ? 64'h2000_0101 : 64'h2000_0100)
+    .IMEM_LATENCY   (I_LATENCY),
+    .DMEM_LATENCY   (D_LATENCY),
+    .RESPONSE_DEPTH (CAPACITY),
+    .IMEM_BASE_ADDR (I_BASE),
+    .IMEM_SIZE_BYTES(I_SIZE),
+    .DMEM_BASE_ADDR (D_BASE),
+    .DMEM_SIZE_BYTES(D_SIZE),
+    .SERIAL_ADDR    (SERIAL),
+    .EXIT_ADDR      (EXIT)
   ) dut (
-      .clk_i(1'b0),
-      .rst_ni(1'b0),
-      .instr_flush_i(1'b0),
-      .load_flush_i(1'b0),
-      .initialized_i(1'b0),
-      .instr_req_i(1'b0),
-      .instr_ready_i(1'b0),
-      .instr_addr_i('0),
-      .load_req_i(1'b0),
-      .load_ready_i(1'b0),
-      .load_addr_i('0),
-      .load_be_i('0),
-      .load_tag_i('0),
-      .store_req_i(1'b0),
-      .store_ready_i(1'b0),
-      .store_we_i(1'b0),
-      .store_addr_i('0),
-      .store_data_i('0),
-      .store_be_i('0),
-      .store_tag_i('0),
-      .response_o(),
-      .sram_req_o(),
-      .sram_we_o(),
-      .sram_addr_o(),
-      .sram_wdata_o(),
-      .sram_be_o(),
-      .sram_rdata_i('0),
-      .mmio_write_o(),
-      .outstanding_o(),
-      .occupancy_o()
+    .clk_i        (1'b0),
+    .rst_ni       (1'b0),
+    .instr_flush_i(1'b0),
+    .load_flush_i (1'b0),
+    .initialized_i(1'b0),
+    .instr_req_i  (1'b0),
+    .instr_ready_i(1'b0),
+    .instr_addr_i ('0),
+    .load_req_i   (1'b0),
+    .load_ready_i (1'b0),
+    .load_addr_i  ('0),
+    .load_be_i    ('0),
+    .load_tag_i   ('0),
+    .store_req_i  (1'b0),
+    .store_ready_i(1'b0),
+    .store_we_i   (1'b0),
+    .store_addr_i ('0),
+    .store_data_i ('0),
+    .store_be_i   ('0),
+    .store_tag_i  ('0),
+    .response_o   (),
+    .imem_req_o   (),
+    .imem_addr_o  (),
+    .imem_rdata_i ('0),
+    .dmem_req_o   (),
+    .dmem_we_o    (),
+    .dmem_addr_o  (),
+    .dmem_wdata_o (),
+    .dmem_be_o    (),
+    .dmem_rdata_i ('0),
+    .mmio_write_o (),
+    .outstanding_o(),
+    .occupancy_o  ()
   );
   initial begin
     #1;

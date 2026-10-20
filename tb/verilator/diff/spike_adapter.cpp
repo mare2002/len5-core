@@ -73,12 +73,19 @@ struct SpikeReference::Impl final : simif_t {
     char *addr_to_mem(reg_t) override {
         return nullptr;
     } // sparse memory, no unchecked host pointers
+    bool bounded_memory() const { return map.imem_size != 0 || map.dmem_size != 0; }
+    static bool in_region(uint64_t addr, size_t len, uint64_t base, uint64_t size) {
+        return len <= size && addr >= base && addr - base <= size - len;
+    }
     bool mmio_load(reg_t addr, size_t len, uint8_t *bytes) override {
-        if (addr == map.serial || addr == map.exit || (!map.size && (addr & map.mmio_mask))) {
+        if (addr == map.serial || addr == map.exit || (!bounded_memory() && (addr & map.mmio_mask))) {
             violation = "MMIO reads are unsupported (no deterministic input model)";
             return false;
         }
-        if (map.size && (len > map.size || addr < map.base || addr-map.base > map.size-len))
+        // Spike shares this callback between instruction fetch and data reads.
+        // The adapter regression independently checks IMEM/DMEM access permissions.
+        if (bounded_memory() && !in_region(addr, len, map.imem_base, map.imem_size) &&
+            !in_region(addr, len, map.dmem_base, map.dmem_size))
             return false;
         for (size_t i = 0; i < len; ++i) {
             auto it = memory.find(addr + i);
@@ -90,12 +97,12 @@ struct SpikeReference::Impl final : simif_t {
     }
     bool mmio_store(reg_t addr, size_t len, const uint8_t *bytes) override {
         // These are the existing testbench's output-only serial and exit sinks.
-        if (!map.size && (addr & map.mmio_mask) && addr != map.serial && addr != map.exit) {
+        if (!bounded_memory() && (addr & map.mmio_mask) && addr != map.serial && addr != map.exit) {
             violation = "unsupported MMIO store";
             return false;
         }
-        if (map.size && addr != map.serial && addr != map.exit &&
-            (len > map.size || addr < map.base || addr-map.base > map.size-len))
+        if (bounded_memory() && addr != map.serial && addr != map.exit &&
+            !in_region(addr, len, map.dmem_base, map.dmem_size))
             return false;
         for (size_t i = 0; i < len; ++i)
             if (executed_bytes.count(addr + i)) {

@@ -3,6 +3,10 @@
 lint_off -rule DECLFILENAME -file "*tech_cells_generic/tc_sram.sv" -match "*tc_sram_blackbox*"
 lint_off -rule GENUNNAMED -file "*tech_cells_generic/tc_sram.sv"
 lint_off -rule UNSIGNED -file "*tech_cells_generic/tc_sram.sv" -match "*Comparison is constant*"
+// Latency zero leaves the upstream synchronous pipeline declaration unused and [-1:0].
+lint_off -rule LITENDIAN -file "*tech_cells_generic/tc_sram.sv" -match "*Ascending bit range*"
+lint_off -rule UNDRIVEN -file "*tech_cells_generic/tc_sram.sv" -match "*Signal is not driven: 'rdata_d'*"
+lint_off -rule UNUSEDSIGNAL -file "*tech_cells_generic/tc_sram.sv" -match "Signal is not used: 'rdata_q'"
 // The simulation power-on reset is intentionally observed by the loader.
 lint_off -rule SYNCASYNCNET -file "*tc_sram_storage.sv" -match "*storage_reset_n*"
 // Implementation keys and greeting parameters are synthesis/non-Verilator metadata.
@@ -11,6 +15,3 @@ lint_off -rule UNUSEDPARAM -file "*tech_cells_generic/tc_sram.sv" -match "*'Impl
 lint_off -rule UNUSEDPARAM -file "*tech_cells_generic/tc_sram.sv" -match "*'FPGAImplKey'*"
 // Native SimInit="none" deliberately leaves the upstream initialization array unused.
 lint_off -rule UNUSEDSIGNAL -file "*tech_cells_generic/tc_sram.sv" -match "Signal is not used: 'init_val'"
-
-// Exported interface width can be unused by standalone test targets.
-lint_off -rule UNUSEDPARAM -file "*/memory_backend_pkg.sv" -match "*'SRAM_ADDR_WIDTH'*"

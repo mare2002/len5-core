@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-// Reserved response slots, with fall-through from the SRAM output register.
-// Allocation can precede result arrival by multiple cycles (fetch bundles).
+// Reserved response slots, with fall-through from each completed memory operation.
+// Allocation reserves space before the corresponding load/store result is available.
 module memory_response_buffer #(
-    parameter type DATA_T = logic [63:0],
-    parameter int unsigned DEPTH = 2,
-    parameter int unsigned COUNT_WIDTH = $clog2(DEPTH + 1)
+  parameter type DATA_T = logic [63:0],
+  parameter int unsigned DEPTH = 2,
+  parameter int unsigned COUNT_WIDTH = $clog2(DEPTH + 1)
 ) (
-    input logic clk_i,
-    rst_ni,
-    flush_i,
-    input logic allocate_i,
-    output logic credit_o,
-    input logic result_valid_i,
-    input DATA_T result_i,
-    output logic valid_o,
-    input logic ready_i,
-    output DATA_T data_o,
-    output logic [COUNT_WIDTH-1:0] outstanding_o,
-    output logic [COUNT_WIDTH-1:0] occupancy_o
+  input  logic                    clk_i,
+  rst_ni,
+  flush_i,
+  input  logic                    allocate_i,
+  output logic                    credit_o,
+  input  logic                    result_valid_i,
+  input  DATA_T                   result_i,
+  output logic                    valid_o,
+  input  logic                    ready_i,
+  output DATA_T                   data_o,
+  output logic  [COUNT_WIDTH-1:0] outstanding_o,
+  output logic  [COUNT_WIDTH-1:0] occupancy_o
 );
   // verilog_lint: waive parameter-name-style
   localparam int unsigned POINTER_WIDTH = DEPTH > 1 ? $clog2(DEPTH) : 1;
@@ -96,7 +96,8 @@ module memory_response_buffer #(
               (COUNT_WIDTH + 1)'(response_consumed) <= (COUNT_WIDTH + 1)'(DEPTH));
       assert (occupancy_q <= reserved_q);
       assert (!allocate_i || credit_o);
-      assert (!result_valid_i || reserved_q != 0);
+      // An asynchronous read may complete on the same edge as its reservation.
+      assert (!result_valid_i || reserved_q != 0 || allocate_i);
     end
   end
 

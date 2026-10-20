@@ -75,8 +75,8 @@ $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf
 	$(RISCV_EXE_PREFIX)-objcopy -O binary $< $@
 
 # Linked executable firmware
-$(BUILD_DIR)/main.elf: $(BENCH_OBJS) $(LIB_OBJS)
-	$(RISCV_EXE_PREFIX)-gcc $(CFLAGS) $(LDFLAGS_PRE) $(INC_FOLDERS_GCC) $^ $(LDFLAGS_POST) -o $@
+$(BUILD_DIR)/main.elf: $(BENCH_OBJS) $(LIB_OBJS) $(LINKER) $(MEMORY_REGIONS_LD)
+	$(RISCV_EXE_PREFIX)-gcc $(CFLAGS) $(LDFLAGS_PRE) $(INC_FOLDERS_GCC) $(filter %.o,$^) $(LDFLAGS_POST) -o $@
 
 # Implicit compilation rules
 $(BUILD_DIR)/%.o: ./%.c

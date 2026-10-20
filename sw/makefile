@@ -45,7 +45,7 @@ CFLAGS			:= -march=$(ISA_STRING) \
 				   -fno-builtin \
 				   $(COPT) \
 				   -Wall
-LDFLAGS_PRE		:= -T $(LINKER) \
+LDFLAGS_PRE		:= -Wl,-L,$(abspath $(BUILD_DIR)) -T $(LINKER) \
 				   -static
 LDFLAGS_POST	:= -Wl,-Map,$(BUILD_DIR)/main.map \
 				   -Wl,--gc-sections \
@@ -68,7 +68,9 @@ INC_DIRS_GCC 	+= $(addprefix -I ,$(INC_DIRS))
 
 # Share simulation MMIO addresses with the RTL package. Explicit CDEFS can override
 # these for a testbench parameter override, but normal builds have one source.
+TB_CONFIG ?= $(abspath ../tb/packages/tb_config_pkg.sv)
 MEMORY_MAP_HEADER := $(abspath $(BUILD_DIR)/len5_memory_map.h)
+MEMORY_REGIONS_LD := $(abspath $(BUILD_DIR)/len5_memory_regions.ld)
 CFLAGS += -include $(MEMORY_MAP_HEADER)
 
 # Export all the variables to sub-makefiles
@@ -103,12 +105,16 @@ $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf
 	$(RISCV_EXE_PREFIX)-objcopy -O binary $< $@
 
 # Linked executable firmware
-$(BUILD_DIR)/%.elf: $(OBJS) $(LIB_OBJS)
+$(BUILD_DIR)/%.elf: $(OBJS) $(LIB_OBJS) $(LINKER) $(MEMORY_REGIONS_LD)
 	echo $(LIB_OBJS)
-	$(RISCV_EXE_PREFIX)-gcc $(CFLAGS) $(LDFLAGS_PRE) $(INC_DIRS_GCC) $^ $(LDFLAGS_POST) -o $@
+	$(RISCV_EXE_PREFIX)-gcc $(CFLAGS) $(LDFLAGS_PRE) $(INC_DIRS_GCC) $(filter %.o,$^) $(LDFLAGS_POST) -o $@
 
-$(MEMORY_MAP_HEADER): ../tb/packages/tb_config_pkg.sv ../scripts/gen-memory-map.py
-	python3 ../scripts/gen-memory-map.py $@
+# Check configuration selection even when an alternate file has an older timestamp.
+.PHONY: force-memory-map
+force-memory-map:
+
+$(MEMORY_MAP_HEADER) $(MEMORY_REGIONS_LD) &: $(TB_CONFIG) ../scripts/gen-memory-map.py force-memory-map
+	python3 ../scripts/gen-memory-map.py $(MEMORY_MAP_HEADER) --config $(TB_CONFIG) --linker $(MEMORY_REGIONS_LD)
 
 $(OBJS) $(LIB_OBJS): $(MEMORY_MAP_HEADER)
 

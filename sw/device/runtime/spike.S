@@ -14,6 +14,8 @@ tohost: .dword 0
 fromhost: .dword 0
 
 # Exit code is expected in a0
+.section .text.tohost_exit, "ax", @progbits
+.align 2
 .global tohost_exit
 tohost_exit:
     slli a0, a0, 1

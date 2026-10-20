@@ -3,7 +3,8 @@
 namespace len5::diff {
 struct MemoryMap {
     uint64_t serial = 0x20000000, exit = 0x20000100;
-    uint64_t base = 0, size = 0; // size zero preserves the legacy sparse map
+    uint64_t imem_base = 0, imem_size = 0;
+    uint64_t dmem_base = 0, dmem_size = 0; // both sizes zero preserve the legacy sparse map
     uint64_t mmio_mask = 0xffffffffe0000000;
 };
 // ABI is deliberately confined to this translation unit and pinned Spike source/build trees.
