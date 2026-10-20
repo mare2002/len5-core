@@ -1,5 +1,4 @@
 module datapath #(
-  parameter int unsigned FETCH_MEMIF_FIFO_DEPTH = len5_config_pkg::FETCH_MEMIF_FIFO_DEPTH,
   parameter longint unsigned BOOT_PC = '0
 ) (
   // Clock and reset
@@ -100,7 +99,7 @@ module datapath #(
     .HLEN            (HLEN),
     .BTB_BITS        (BTB_BITS),
     .BOOT_PC         (BOOT_PC),
-    .MEMIF_FIFO_DEPTH(FETCH_MEMIF_FIFO_DEPTH)
+    .MEMIF_FIFO_DEPTH(len5_config_pkg::FETCH_MEMIF_FIFO_DEPTH)
   ) u_fetch_stage (
     .clk_i                 (clk_i),
     .rst_ni                (rst_ni),

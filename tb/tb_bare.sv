@@ -279,8 +279,7 @@ module tb_bare #(
   // LEN5 BAREMETAL DATAPATH
   // -----------------------
   datapath #(
-    .FETCH_MEMIF_FIFO_DEPTH(FETCH_MEMIF_FIFO_DEPTH),
-    .BOOT_PC               (BOOT_PC)
+    .BOOT_PC(BOOT_PC)
   ) u_datapath (
     .clk_i                     (clk_i),
     .rst_ni                    (rst_ni),
