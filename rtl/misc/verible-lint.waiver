@@ -33,3 +33,11 @@ waive --rule=forbid-line-continuations --location="../../../rtl/vendor/pulp-comm
 waive --rule=interface-name-style --location="../../../rtl/vendor/pulp-common-cells"
 waive --rule=typedef-structs-unions --location="../../../rtl/vendor/pulp-common-cells"
 waive --rule=explicit-parameter-storage-type --location="../../../rtl/vendor/pulp-common-cells"
+
+# Unmodified pinned PULP AXI sources
+waive --rule=explicit-parameter-storage-type --location="../../../rtl/vendor/pulp-axi"
+waive --rule=interface-name-style --location="../../../rtl/vendor/pulp-axi"
+waive --rule=parameter-name-style --location="../../../rtl/vendor/pulp-axi"
+waive --rule=undersized-binary-literal --location="../../../rtl/vendor/pulp-axi"
+waive --rule=generate-label --location="../../../rtl/vendor/pulp-axi"
+waive --rule=no-trailing-spaces --location="../../../rtl/vendor/pulp-axi"

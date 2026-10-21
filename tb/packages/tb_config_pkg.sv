@@ -11,7 +11,7 @@
 // Simulation memory configuration; CPU configuration lives in len5_config_pkg.
 
 package tb_config_pkg;
-  // Select exactly one memory implementation. AXI is reserved, not implemented.
+  // Select one memory implementation. AXI_SIM requires load-tag retention on flush.
   typedef enum logic [1:0] {
     MEM_BACKEND_LEGACY,
     MEM_BACKEND_TC_SRAM,
@@ -19,6 +19,9 @@ package tb_config_pkg;
   } memory_backend_t;
   // verilog_lint: waive parameter-name-style
   localparam memory_backend_t MEMORY_BACKEND = MEM_BACKEND_TC_SRAM;
+  // AXI clock/model phases use picoseconds; other backends keep their clock.
+  // verilog_lint: waive parameter-name-style
+  localparam int unsigned AXI_CLOCK_HALF_PERIOD_PS = 1000;
   // verilog_lint: waive parameter-name-style
   localparam logic [63:0] IMEM_BASE_ADDR = 64'h0001_0000;
   // verilog_lint: waive parameter-name-style

@@ -21,6 +21,7 @@
 module load_buffer #(
   parameter  int unsigned DEPTH = 4,
   parameter  int unsigned TAG_W = 4,
+  parameter bit DRAIN_ON_FLUSH = len5_config_pkg::LOAD_BUFFER_DRAIN_ON_FLUSH,
   // Dependent parameters: do NOT override
   localparam int unsigned IdxW  = $clog2(DEPTH)
 ) (
@@ -101,7 +102,8 @@ module load_buffer #(
     LOAD_S_MEM_REQ,
     LOAD_S_MEM_WAIT,
     LOAD_S_COMPLETED,
-    LOAD_S_HALT     // for debug
+    LOAD_S_HALT,    // for debug; preserve existing state encodings
+    LOAD_S_KILLED
   } lb_state_t;
 
   // Load instruction data
@@ -168,7 +170,8 @@ module load_buffer #(
     sb_mem_blocked_o = 1'b0;
     for (int i = 0; i < DEPTH; i++) begin
       sb_pending_loads_o[i] = (curr_state[i] != LOAD_S_EMPTY) &&
-                              (curr_state[i] != LOAD_S_COMPLETED);
+                              (curr_state[i] != LOAD_S_COMPLETED) &&
+                              (curr_state[i] != LOAD_S_KILLED);
       if (sb_older_loads_i[i] && sb_pending_loads_o[i]) begin
         case (curr_state[i])
           LOAD_S_DEP_WAIT, LOAD_S_MEM_REQ, LOAD_S_MEM_WAIT: begin
@@ -202,14 +205,24 @@ module load_buffer #(
   assign tail_cnt_clr  = flush_i;
   assign addr_cnt_clr  = flush_i;
   assign mem_cnt_clr   = flush_i;
-  assign head_cnt_en   = pop;
-  assign tail_cnt_en   = push;
-  assign addr_cnt_en   = addr_accepted;
+  // A flush leaves holes occupied by killed transactions. Skip them without
+  // reallocating their tags; empty holes behind the allocation pointer are free.
+  assign head_cnt_en   = pop || (DRAIN_ON_FLUSH &&
+      ((curr_state[head_idx] == LOAD_S_KILLED) ||
+       (curr_state[head_idx] == LOAD_S_EMPTY && head_idx != tail_idx)));
+  assign tail_cnt_en   = push || (DRAIN_ON_FLUSH && curr_state[tail_idx] == LOAD_S_KILLED);
+  assign addr_cnt_en   = addr_accepted || (DRAIN_ON_FLUSH &&
+      ((curr_state[addr_idx] == LOAD_S_KILLED) ||
+       (curr_state[addr_idx] == LOAD_S_EMPTY && addr_idx != tail_idx)));
   generate
     if (LEN5_STORE_LOAD_FWD_EN != 0) begin : gen_mem_cnt_fwd
-      assign mem_cnt_en = mem_accepted | (lb_op[mem_idx] == LOAD_OP_SAVE_CACHED);
+      assign mem_cnt_en = mem_accepted | (lb_op[mem_idx] == LOAD_OP_SAVE_CACHED) |
+          (DRAIN_ON_FLUSH && ((curr_state[mem_idx] == LOAD_S_KILLED) ||
+           (curr_state[mem_idx] == LOAD_S_EMPTY && mem_idx != tail_idx)));
     end else begin : gen_mem_cnt_no_fwd
-      assign mem_cnt_en = mem_accepted;
+      assign mem_cnt_en = mem_accepted | (DRAIN_ON_FLUSH &&
+          ((curr_state[mem_idx] == LOAD_S_KILLED) ||
+           (curr_state[mem_idx] == LOAD_S_EMPTY && mem_idx != tail_idx)));
     end
   endgenerate
 
@@ -319,16 +332,29 @@ module load_buffer #(
           if (pop && head_idx == i[IdxW-1:0]) next_state[i] = LOAD_S_EMPTY;
           else next_state[i] = LOAD_S_COMPLETED;
         end
+        LOAD_S_KILLED: begin
+          // Data and ROB destination are no longer live; only the tag is retained.
+          next_state[i] = save_mem && mem_tag_i == BUFF_IDX_LEN'(i) ? LOAD_S_EMPTY : LOAD_S_KILLED;
+        end
         default: next_state[i] = LOAD_S_HALT;
       endcase
     end
+    if (DRAIN_ON_FLUSH && flush_i) foreach (lb_op[i]) lb_op[i] = LOAD_OP_NONE;
   end
 
   // State update
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_state_update
     if (!rst_ni) foreach (curr_state[i]) curr_state[i] <= LOAD_S_EMPTY;
-    else if (flush_i) foreach (curr_state[i]) curr_state[i] <= LOAD_S_EMPTY;
-    else curr_state <= next_state;
+    else if (flush_i) begin
+      foreach (curr_state[i]) begin
+        if (DRAIN_ON_FLUSH &&
+            ((curr_state[i] == LOAD_S_MEM_WAIT) || (curr_state[i] == LOAD_S_KILLED) ||
+             (mem_accepted && mem_idx == IdxW'(i))) &&
+            !(save_mem && mem_tag_i == BUFF_IDX_LEN'(i))) begin
+          curr_state[i] <= LOAD_S_KILLED;
+        end else curr_state[i] <= LOAD_S_EMPTY;
+      end
+    end else curr_state <= next_state;
   end
 
   // Load-after-store control logic
@@ -427,10 +453,10 @@ module load_buffer #(
   assign mem_we_o                 = 1'b0;
 
   // Issue stage
-  assign issue_ready_o            = curr_state[tail_idx] == LOAD_S_EMPTY;
+  assign issue_ready_o            = (curr_state[tail_idx] == LOAD_S_EMPTY) && !(DRAIN_ON_FLUSH && flush_i);
 
   // CDB
-  assign cdb_valid_o              = curr_state[head_idx] == LOAD_S_COMPLETED;
+  assign cdb_valid_o              = (curr_state[head_idx] == LOAD_S_COMPLETED) && !(DRAIN_ON_FLUSH && flush_i);
   assign cdb_data_o.rob_idx       = data[head_idx].dest_rob_idx;
   assign cdb_data_o.res_value     = cdb_data;  // from sign extender/byte selector
   assign cdb_data_o.except_raised = data[head_idx].except_raised;

@@ -32,19 +32,29 @@ filesets:
     - polito:len5:packages
     files:
     - tb/packages/tb_config_pkg.sv
+    - rtl/vendor/pulp-axi/src/axi_pkg.sv
+    - rtl/vendor/pulp-axi/src/axi_intf.sv
+    - rtl/vendor/pulp-axi/include/axi/typedef.svh: {is_include_file: true, include_path: rtl/vendor/pulp-axi/include}
+    - rtl/vendor/pulp-axi/include/axi/assign.svh: {is_include_file: true, include_path: rtl/vendor/pulp-axi/include}
+    - rtl/vendor/pulp-axi/src/axi_sim_mem.sv: {is_include_file: true}
+    - rtl/memory_interface/axi_memory_pkg.sv
     - tb/memory/tc_sram/memory_backend_pkg.sv
     - tb/memory/tc_sram/memory_access_check.sv
     - tb/memory/tc_sram/memory_response_buffer.sv
     - tb/memory/tc_sram/tc_sram_adapter.sv
+    - rtl/memory_interface/axi_sim_adapter.sv
     - tb/memory/memory_class.svh: {is_include_file : true}
     - rtl/vendor/tech_cells_generic/tc_sram.sv
     - tb/memory/tc_sram_storage.sv
     - tb/memory/tc_sram_loader.svh: {is_include_file: true}
+    - tb/memory/firmware_loader.svh: {is_include_file: true}
+    - tb/memory/axi_sim/axi_sim_storage.sv
     - tb/memory/memory_protocol_monitor.sv
     - tb/memory/memory_if.sv
     - tb/memory/memory_bare_emu.sv
     - tb/len5_utils.svh: {is_include_file: true}
     - tb/tb_bare.sv
+    - tb/memory/axi_sim/axi_sim_model.sv
     file_type: systemVerilogSource
 
   verilator-bare-tb:
@@ -74,6 +84,7 @@ filesets:
 
   verilator-waivers:
     files:
+    - tb/memory/axi_sim/waivers.vlt
     - tb/memory/tc_sram/waivers.vlt
     - tb/misc/tb-waivers.vlt
     file_type: vlt
@@ -162,6 +173,8 @@ targets:
         mode: cc
         verilator_options:
         - '--cc'
+        - '--timing'
+        - '--timescale 1ps/1ps'
         # Existing Verilator 5.040 DFG metadata bug: tb/frontend/RTL_VERIFICATION_FINDINGS.md T01.
         - '-fno-dfg'
         - '--assert'

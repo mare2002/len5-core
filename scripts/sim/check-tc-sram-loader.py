@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise both SRAM loaders, native initialization, absolute addresses and malformed images."""
+"""Exercise native memory loaders, absolute addresses and malformed images."""
 import json
 import os
 from pathlib import Path
@@ -7,13 +7,24 @@ import subprocess
 
 root = Path(__file__).resolve().parents[2]
 os.chdir(root)
-build = Path(os.environ.get("TC_SRAM_LOADER_BUILD_DIR", root / "build/tc-sram-loader"))
+axi = os.environ.get("LOADER_BACKEND", "TC_SRAM") == "AXI_SIM"
+assert os.environ.get("LOADER_BACKEND", "TC_SRAM") in ("TC_SRAM", "AXI_SIM")
+build = Path(os.environ.get("TC_SRAM_LOADER_BUILD_DIR", root / ("build/axi-sim-loader" if axi else "build/tc-sram-loader")))
 build.mkdir(parents=True, exist_ok=True)
-sources = ["rtl/misc/packages-waivers.vlt", "tb/memory/tc_sram/waivers.vlt",
+sources = ["rtl/misc/packages-waivers.vlt",
            "rtl/packages/util_pkg.sv", "rtl/packages/len5_config_pkg.sv", "rtl/packages/len5_pkg.sv",
            "tb/packages/tb_config_pkg.sv", "tb/memory/tc_sram/memory_backend_pkg.sv",
-           "rtl/vendor/tech_cells_generic/tc_sram.sv", "+incdir+tb/memory",
-           "tb/memory/tc_sram_storage.sv", "tb/memory/tc_sram/tc_sram_loader_tb.sv"]
+           "+incdir+tb/memory"]
+if axi:
+    sources += ["tb/memory/axi_sim/waivers.vlt",
+        "+incdir+rtl/vendor/pulp-axi/include", "+incdir+rtl/vendor/pulp-axi/src", "+incdir+tb/memory",
+        "rtl/vendor/pulp-axi/src/axi_pkg.sv", "rtl/vendor/pulp-axi/src/axi_intf.sv",
+        "rtl/memory_interface/axi_memory_pkg.sv", "tb/memory/axi_sim/axi_sim_storage.sv",
+        "tb/memory/axi_sim/axi_sim_loader_tb.sv", "tb/memory/axi_sim/axi_sim_model.sv"]
+else:
+    sources += ["tb/memory/tc_sram/waivers.vlt", "rtl/vendor/tech_cells_generic/tc_sram.sv",
+                "tb/memory/tc_sram_storage.sv", "tb/memory/tc_sram/tc_sram_loader_tb.sv"]
+top = "axi_sim_loader_tb" if axi else "tc_sram_loader_tb"
 results = []
 for width, ilat, dlat in ((64, 0, 3), (128, 1, 1), (256, 4, 0)):
     image_dir = build / f"width-{width}"
@@ -37,18 +48,20 @@ for width, ilat, dlat in ((64, 0, 3), (128, 1, 1), (256, 4, 0)):
     for name, data in images.items():
         (image_dir / name).write_text(data)
     (image_dir / "image.bin").write_bytes(bytes.fromhex("1122334455667788"))
-    for mode in ("ones", "zeros", "none", "random"):
+    for mode in (("none",) if axi else ("ones", "zeros", "none", "random")):
         out = image_dir / mode
         out.mkdir(exist_ok=True)
         cmd = [os.environ.get("VERILATOR", "verilator"), "--binary", "--timing", "--assert", "-j", "4",
-               "-MAKEFLAGS", "OBJCACHE= CXX=/usr/bin/g++", "--Mdir", str(out), "--top-module", "tc_sram_loader_tb",
-               "-Wall", "-Wno-UNUSEDSIGNAL", "-Wno-UNUSEDPARAM", f'-GSIM_INIT="{mode}"',
-               f"-GI_WIDTH={width}", f"-GI_LATENCY={ilat}", f"-GD_LATENCY={dlat}"] + sources
+               "-MAKEFLAGS", "OBJCACHE= CXX=/usr/bin/g++", "--Mdir", str(out), "--top-module", top,
+               "-Wall", "-Wno-UNUSEDSIGNAL", "-Wno-UNUSEDPARAM", f"-GI_WIDTH={width}"]
+        cmd += (["--timescale", "1ps/1ps", "-Wno-PINCONNECTEMPTY"] if axi else
+                [f'-GSIM_INIT="{mode}"', f"-GI_LATENCY={ilat}", f"-GD_LATENCY={dlat}"])
+        cmd += sources
         with (out / "build.log").open("w") as log:
             subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True)
-        for name in ("image.hex", "image.txt", "image.bin") + (tuple(images)[2:] if mode == "ones" else ()):
+        for name in ("image.hex", "image.txt", "image.bin") + (tuple(images)[2:] if axi or mode == "ones" else ()):
             good = name.startswith("image.")
-            args = [str(out / "Vtc_sram_loader_tb"), f"+firmware={image_dir / name}"]
+            args = [str(out / ("V" + top)), f"+firmware={image_dir / name}"]
             if name.endswith(".bin"):
                 args += ["+firmware_base=4000", "+binary_image"]
             run = subprocess.run(args, capture_output=True, text=True)

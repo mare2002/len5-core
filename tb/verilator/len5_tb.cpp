@@ -20,6 +20,8 @@
 #include <verilated_fst_c.h>
 
 #include "Vtb_bare.h"
+#include "Vtb_bare__Dpi.h"
+#include <svdpi.h>
 #include "tb_macros.hh"
 #ifdef LEN5_DIFF
 #include "diff/monitor.hh"
@@ -166,6 +168,9 @@ int main(int argc, char *argv[]) {
 
     // Initialize the DUT
     initDut(dut, dump_trace);
+    svSetScope(svGetScopeFromName("TOP.tb_bare"));
+    // AXI's native application/acquisition phases run between CPU clock edges.
+    const vluint64_t half_period = tb_len5_clock_half_period();
 #ifdef LEN5_DIFF
     std::unique_ptr<len5::diff::Monitor> differential;
     if (diff_enabled) {
@@ -192,15 +197,15 @@ int main(int argc, char *argv[]) {
     long unsigned int sim_time = 0;
     long unsigned int sim_cycles = 0;
     TB_LOG(LOG_LOW, "Starting simulation...");
-    while (!cntx->gotFinish() && cntx->time() < (max_cycles << 1))
+    while (!cntx->gotFinish() && sim_time < (max_cycles << 1))
     {
         // Generate clock and reset
-        rstDut(dut, cntx->time());
+        rstDut(dut, sim_time);
 #ifdef LEN5_DIFF
         // Sample settled handshake/data values BEFORE the edge consumes them.
         // The existing testbench writes external memory on falling edges.
-        if (differential && cntx->time() >= (RESET_CYCLES << 1)) {
-            const len5::diff::Stamp stamp{cntx->time() / 2, cntx->time()};
+        if (differential && sim_time >= (RESET_CYCLES << 1)) {
+            const len5::diff::Stamp stamp{sim_time / 2, cntx->time()};
             if (dut->clk_i == 0) differential->before_rising(stamp);
             else differential->before_falling(stamp);
         }
@@ -210,15 +215,24 @@ int main(int argc, char *argv[]) {
         // Evaluate simulation step
         dut->eval();
 #ifdef LEN5_DIFF
-        if (differential && dut->clk_i && cntx->time() >= (RESET_CYCLES << 1))
-            differential->after_rising({cntx->time() / 2, cntx->time()});
+        if (differential && dut->clk_i && sim_time >= (RESET_CYCLES << 1))
+            differential->after_rising({sim_time / 2, cntx->time()});
 #endif
 
         // Dump waveforms
         if (dump_waves) m_trace->dump(cntx->time());
 
         // Increment simulation time
-        cntx->timeInc(1);
+        const vluint64_t next_edge = cntx->time() + half_period;
+#if VM_TIMING
+        while (dut->eventsPending() && dut->nextTimeSlot() < next_edge) {
+            cntx->time(dut->nextTimeSlot());
+            dut->eval();
+            if (dump_waves) m_trace->dump(cntx->time());
+        }
+#endif
+        cntx->time(next_edge);
+        ++sim_time;
         if (dut->clk_i == 1) sim_cycles++;
 #ifdef LEN5_DIFF
         if (differential && differential->stopped()) break;
@@ -245,7 +259,7 @@ int main(int argc, char *argv[]) {
 #ifdef LEN5_DIFF
     if (differential) {
         try {
-            result = differential->finish(cntx->gotFinish(), {cntx->time() / 2, cntx->time()},
+            result = differential->finish(cntx->gotFinish(), {sim_time / 2, cntx->time()},
                                           dump_waves ? FST_FILENAME : "");
         } catch (const std::exception& e) {
             fprintf(stderr, "Differential output failed: %s\n", e.what());

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-// Observational metrics only; identical sampling for both memory backends.
-module memory_protocol_monitor (
+// Observational metrics only; identical sampling for all memory backends.
+module memory_protocol_monitor #(
+    parameter int unsigned COUNT_WIDTH = memory_backend_pkg::SRAM_COUNT_WIDTH
+) (
     input logic clk_i,
     rst_ni,
     flush_i,
@@ -11,7 +13,7 @@ module memory_protocol_monitor (
     gnt_i,
     valid_i,
     ready_i,
-    input logic [2:0][memory_backend_pkg::SRAM_COUNT_WIDTH-1:0] occupancy_i
+    input logic [2:0][COUNT_WIDTH-1:0] occupancy_i
 );
   // Separate queues avoid Verilator 5.040's indexed queue mutation bug.
   longint unsigned instr_times[$], load_times[$], store_times[$];

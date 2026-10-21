@@ -1,0 +1,12 @@
+`verilator_config
+// Diagnostics are confined to the unmodified, pinned upstream simulation model.
+lint_off -rule WIDTHEXPAND -file "*/pulp-axi/src/axi_sim_mem.sv"
+lint_off -rule WIDTHTRUNC -file "*/pulp-axi/src/axi_sim_mem.sv"
+lint_off -rule INITIALDLY -file "*/pulp-axi/src/axi_sim_mem.sv"
+lint_off -rule WIDTHEXPAND -file "*/pulp-axi/src/axi_pkg.sv"
+lint_off -rule UNUSEDPARAM -file "*/pulp-axi/src/axi_pkg.sv"
+lint_off -rule DECLFILENAME -file "*/pulp-axi/src/axi_intf.sv"
+lint_off -rule DECLFILENAME -file "*/pulp-axi/src/axi_sim_mem.sv"
+lint_off -rule GENUNNAMED -file "*/pulp-axi/src/axi_sim_mem.sv"
+// The native diagnostic monitor is unused; CPU-side metrics are collected separately.
+lint_off -rule PINCONNECTEMPTY -file "*/axi_sim/axi_sim_storage.sv" -match "*mon_*"

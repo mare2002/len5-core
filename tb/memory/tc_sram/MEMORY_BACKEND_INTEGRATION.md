@@ -1,11 +1,24 @@
 # Simulation memory backends
 
-`tb_bare` selects the existing associative-array emulator or the Harvard TC_SRAM
-backend through `tb/packages/tb_config_pkg.sv`. The CPU retains its instruction,
-load and store interfaces. `MEM_BACKEND_AXI_SIM` remains reserved and fails at
-elaboration; it does not fall back to another backend.
+`tb_bare` selects LEGACY, TC_SRAM, or AXI_SIM through
+`tb/packages/tb_config_pkg.sv`. Adapters and memory models live outside the
+datapath. The CPU retains its instruction, load and store interfaces.
 
-## Harvard organization
+For an isolated AXI build, use:
+
+```sh
+python3 scripts/sim/prepare-memory-backend.py AXI_SIM build/axi-source
+make -C build/axi-source verilator-build-debug
+```
+
+The snapshot helper sets both the testbench backend and the CPU's
+`LOAD_BUFFER_DRAIN_ON_FLUSH` configuration. This CPU option retains accepted
+load tags across flushes; it defaults off and must be on only for AXI_SIM.
+`tb_bare` rejects inconsistent combinations at elaboration. This coordinated
+setting avoids passing a simulation-backend selector through the datapath or LSU.
+LEGACY and TC_SRAM keep their original Load Buffer flush behavior.
+
+## TC_SRAM organization
 
 ```mermaid
 flowchart LR
@@ -23,7 +36,8 @@ flowchart LR
 There is no arbitration between instruction and data accesses. IMEM and DMEM
 are separate arrays instantiated through the parameterized simulation-only
 `tc_sram_storage` wrapper. IMEM write-enable is tied low. DMEM port 0 is read-only;
-port 1 is write-only. Neither the vendor SRAM source nor CPU RTL is changed.
+port 1 is write-only. The vendor SRAM and TC_SRAM adapter are unchanged by the
+AXI_SIM integration.
 
 | Fetch width N | IMEM word width | SRAM accesses per bundle |
 | --- | --- | --- |
@@ -46,11 +60,12 @@ The testbench configuration is the single source for the memory map:
 | --- | --- | --- |
 | `IMEM_BASE_ADDR` | `0x10000` | Aligned to the IMEM word size |
 | `IMEM_SIZE_BYTES` | 256 KiB | Positive integral number of IMEM words |
-| `IMEM_LATENCY` | 1 | Unsigned read latency, including zero |
+| `IMEM_LATENCY` | 4 | TC_SRAM read latency, including zero |
 | `DMEM_BASE_ADDR` | `0x50000` | Eight-byte aligned |
 | `DMEM_SIZE_BYTES` | 768 KiB | Positive integral number of 64-bit words |
-| `DMEM_LATENCY` | 1 | Unsigned read latency, including zero |
-| `SRAM_SIM_INIT` | `"none"` | Native `none`, `zeros`, `ones`, or `random` initialization |
+| `DMEM_LATENCY` | 1 | TC_SRAM read latency, including zero |
+| `SRAM_SIM_INIT` | `"none"` | TC_SRAM-only `none`, `zeros`, `ones`, or `random` initialization |
+| `AXI_CLOCK_HALF_PERIOD_PS` | 1000 | AXI harness/model clock phase; at least 3 ps |
 | `SERIAL_ADDR` | `0x20000000` | Distinct, eight-byte-aligned output-only MMIO address |
 | `EXIT_ADDR` | `0x20000100` | Distinct, eight-byte-aligned output-only MMIO address |
 
@@ -65,10 +80,10 @@ frontend completion FIFO (default eight, positive power of two). Its size is not
 derived from either memory latency. The adapter does not contain that FIFO.
 
 `LEN5_C_EN` and `ONLY_DOUBLEWORD_MEM_ACCESSES` remain explicitly unsupported by
-the native adapter. Fetch widths must match the CPU configuration and be one of
+both native adapters. Fetch widths must match the CPU configuration and be one of
 1, 2, 4 or 8. There is no silent substitution of latency or word width.
 
-## Instruction responses without an adapter FIFO
+## TC_SRAM instruction responses without an adapter FIFO
 
 Every accepted instruction request already owns a result slot in the frontend's
 completion FIFO. IMEM can therefore accept one request per cycle whenever the
@@ -99,7 +114,7 @@ all latency valid bits together with frontend reservations. Already issued nativ
 reads finish, but their canceled validity cannot escape or complete a newer request.
 CPU reset clears protocol state without resetting or reloading SRAM contents.
 
-## Data requests and exceptions
+## TC_SRAM data requests and exceptions
 
 Loads and stores access DMEM exclusively. Data access to IMEM, instruction access
 to DMEM, gaps, and addresses outside the configured windows return access faults.
@@ -131,6 +146,225 @@ any stalled result is captured before the write's nonblocking update.
 For DMEM latency greater than one, backend flush cancels load reservations and
 pending results before LSU tags can be reused. Latency zero/one retain the
 existing short-latency drain-on-flush contract. Stores are not canceled.
+
+## AXI_SIM organization
+
+```mermaid
+flowchart LR
+  FE["Unchanged fetch interface\nfrontend completion FIFO"] <--> IF["AXI fetch control\none AR holding register\nmetadata FIFO; outstanding/stale counters"]
+  IF <-->|"ARID=0 / ordered R"| I["Upstream axi_sim_mem\nIMEM: one read-only port\nmax(64,32*N) bits"]
+  LB["Load Buffer\nLOAD_S_KILLED retains tags"] <--> LD["Load AR holding register\nper-ID offset/mask ownership\none response register"]
+  SB["Unchanged Store Buffer"] <--> ST["Independent AW/W holding\nper-ID ownership\none response register"]
+  LD <-->|"ARID/RID = load tag"| D["Upstream axi_sim_mem\nDMEM: 64 bits\nread port 0; write port 1"]
+  ST <-->|"AWID/BID = store tag"| D
+  ST --> MMIO["Accepted serial / exit writes"]
+  FW["Shared absolute-address firmware parser"] -.-> I
+  FW -.-> D
+```
+
+`rtl/memory_interface/axi_sim_adapter.sv` produces single-beat AXI4 requests
+(`AxLEN=0`, `BURST_INCR`); `axi_memory_pkg.sv` defines widths and packed channel
+types using upstream macros. IMEM and DMEM are independent instances of PULP
+`axi_sim_mem`, with absolute 64-bit byte addresses. Loads use naturally sized
+AXI reads; the adapter selects and zero-extends bytes from the returned 64-bit
+word. Stores position data and strobes in that word. Invalid addresses/masks and
+misalignment complete locally with the existing exception priority. Read errors
+(`SLVERR`/`DECERR`) become instruction/load access faults; B errors become store
+access faults. Locally rejected or MMIO requests do not access either array;
+native write errors retain the upstream model's write side effects.
+
+The upstream dependency is pinned at
+`70b8e54fd460e3308e58be596ceb3566a6e3576e`. Its sources, headers, licenses and
+checksums are in `rtl/vendor/pulp-axi/`; no upstream module is modified. The
+metadata FIFO reuses the existing pinned common_cells `fifo_v3`.
+
+### Fetch ownership and flush
+
+Every accepted CPU fetch reserves a frontend result slot and one adapter
+metadata entry (lane exceptions, local-fault classification, N=1 half selection).
+The adapter stores no instruction data: a live AXI R response remains on the
+slave interface until its reserved frontend slot accepts it. Local faults follow
+the same metadata order. Every instruction AR uses ID zero, so old and new
+instruction responses have one AXI ordering domain.
+
+The outstanding counter increments on AR handshake and decrements only on
+`RVALID && RREADY && RLAST`. The stale counter counts the canceled prefix of
+those transactions. On flush, it becomes the updated outstanding count,
+including an AR accepted on the same edge and excluding a completed RLAST.
+The metadata FIFO is flushed immediately; instruction grant/valid are suppressed
+on that edge. Stale responses are consumed regardless of frontend backpressure
+and never reach the frontend. New requests can be accepted while stale reads
+remain, subject to transaction capacity and frontend credits.
+
+An AR already offered under backpressure cannot be withdrawn. Its address and
+VALID stay stable across flush; a stale bit on that single holding register
+marks it for discard when it eventually handshakes. Repeated flushes mark all
+currently committed requests stale again, without double counting. No PC epoch
+is needed because all instruction responses use the same ordered ID.
+
+### Loads, killed tags, and store ordering
+
+CPU acceptance owns a load tag even before its AR handshakes. Neither the AR nor
+the eventual load completion is canceled by an architectural flush. `RID` maps
+directly to the original load tag, allowing different IDs to complete out of
+order. One response register applies CPU backpressure to R; each ID remains busy
+until the CPU consumes its completion.
+
+With drain-on-flush enabled, the Load Buffer behaves as follows:
+
+| Event for an entry | Result |
+| --- | --- |
+| Flush without an accepted pending request | EMPTY |
+| Flush with an accepted pending request, including acceptance on that edge | KILLED |
+| Flush with matching response handshake | EMPTY; discard result |
+| KILLED with matching response handshake | EMPTY |
+| KILLED without matching response handshake | KILLED |
+
+Allocation requires EMPTY. KILLED preserves the existing tag and cannot publish
+to the CDB. Flush suppresses normal completion/publication. Existing pointer
+counters skip killed entries and empty holes left by flush, without extra CPU
+flags or epoch counters. Killed entries are excluded from the pending-load mask
+and store-order checks: a store can proceed even if all load tags are killed.
+Active-load ordering and forwarding are unchanged.
+
+AW and W each retain their own VALID/payload until handshake; a new store cannot
+overwrite either unaccepted channel. Their order matches CPU store order, and
+the two channels may handshake in either order. `AWID`/`BID` are the original
+store tags. CPU store authorization remains in the unchanged Store Buffer.
+Already owned writes finish exactly once across recovery. Since that buffer
+clears its tags on flush, the adapter drains and discards old B responses while
+retaining their ID ownership; post-flush loads wait for these old writes to
+drain. Local/MMIO stores wait for earlier native writes and execute their side
+effect once, at legal CPU acceptance. The exit monitor is unchanged.
+
+### Native model scheduling, reset, and initialization
+
+The upstream model uses timed tasks and keeps transaction queues after its
+initial reset release. The wrapper gives it a separate one-time power-on reset.
+Later CPU reset invalidates frontend metadata, marks fetches stale, drains old
+data responses and preserves already offered AR/AW/W obligations. IDs remain
+owned until those transactions drain, preventing reset-time tag aliasing.
+One asynchronous reset-event bit keeps cancellation active until a clock records
+it, including a pulse entirely between CPU edges. New CPU handshakes resume after
+that cleanup edge; no memory-request pipeline stage is added.
+Memory contents are neither cleared nor reloaded by CPU reset.
+
+`axi_sim_model.sv` includes the unchanged upstream source in a 1 ps time scope.
+The storage wrapper applies responses 1 ps after the CPU falling edge. It snapshots
+actual AXI handshakes at the CPU rising edge and lets the native model acquire
+those snapshots 2 ps later. It never predicts an upcoming handshake from READY:
+asynchronous reset and backpressure changes therefore cannot make the model
+consume a different transaction from the adapter. This is simulation sampling,
+without an additional CPU-visible request or response stage.
+
+The shared `AXI_CLOCK_HALF_PERIOD_PS` setting clocks the harness and directed
+AXI tests and places the native acquisition phase. The C++
+harness services pending Verilator timed events between CPU edges, while cycle
+limits, reset scheduling and Spike cycle counts retain logical cycle units;
+event timestamps use physical simulation time to align with FST waveforms. LEGACY
+and TC_SRAM keep their previous clock scheduling. AXI latency follows the native
+protocol model, not `IMEM_LATENCY`/`DMEM_LATENCY`; those knobs remain TC_SRAM-only.
+The randomized test slave independently varies channel readiness, delay and
+cross-ID response order.
+
+Both AXI instances use the same shared firmware parser as TC_SRAM, depositing
+bytes directly into the appropriate native associative array at absolute
+addresses. Untouched addresses remain absent/uninitialized. No linker, runtime,
+fetch-stage, datapath, LSU interface, or Store Buffer changes are required.
+
+### AXI verification commands
+
+```sh
+SEEDS=100 CYCLES=10000 JOBS=4 bash scripts/sim/check-axi-sim.sh
+AXI_NATIVE=1 SEEDS=100 CYCLES=10000 JOBS=4 bash scripts/sim/check-axi-sim.sh
+LOADER_BACKEND=AXI_SIM python3 scripts/sim/check-tc-sram-loader.py
+```
+
+The adapter script accepts `AXI_CONFIG`, `AXI_TB_CONFIG`, `AXI_BUILD_DIR`, and
+`VERILATOR` for isolated width/map builds. The default test slave has independent
+AR/R/AW/W/B stalls, variable response delay, cross-ID read/B reordering, and
+injected R/B errors; `AXI_NATIVE=1` runs against both original PULP memories.
+The oracle independently checks CPU responses, native requests, payload stability
+under backpressure, and exactly-once accepted writes. It covers byte lanes,
+boundaries, wrong-memory access, unsupported masks, MMIO, simultaneous traffic,
+flushes and CPU reset. Native loader checks cover HEX/TXT/BIN, sparse boundaries,
+invalid images and absence of untouched bytes.
+
+For the real-LSU killed-load test, copy `len5_config_pkg.sv`, enable
+`LOAD_BUFFER_DRAIN_ON_FLUSH`, and run `check-load-store.sh` with
+`LOAD_STORE_TOP=load_store_killed_tb` and `LOAD_STORE_CONFIG=/absolute/copy.sv`.
+The default command still runs the original LSU regression. The new test delays
+and reorders responses, checks no stale CDB publication, simultaneous
+flush/request/response cases, repeated flushes, all-tags-killed capacity and store
+progress. Its compiled model accepts `+seed=<decimal>` for reproducible runs.
+
+### AXI_SIM verification results (2026-10-21)
+
+- Fetch widths 1/2/4/8 against the variable-latency slave and original PULP
+  models, plus N=8 with relocated memory/MMIO against each model: 10
+  configurations, each with 100 seeds and 10,000 random cycles (10 million
+  random cycles plus directed tests). The variable slave reaches eight owned
+  fetches and exercises out-of-order tagged load completions.
+- The variable fixture injects DECERR and native PULP error maps generate SLVERR,
+  covering both error codes on instruction reads, loads and stores. Directed
+  reset tests include a pulse entirely between clock edges while completions
+  are held. That test failed before reset-event capture and passes afterward.
+- Real LSU with killed-load retention: 100 seeds of 10,000 random cycles plus
+  directed flush/accept/response races, tag reuse and store progress with all
+  load tags killed. Original LSU regression also passes with retention off.
+- TC_SRAM baseline and post-change adapter regressions: 100 seeds each, with
+  identical per-port metrics and outcomes. All 35 existing configuration/map
+  checks, 63 TC_SRAM loader cases and 36 AXI native-loader cases pass.
+- Existing fetch-memory directed scenarios and 100-seed random regression pass.
+  Complete-frontend random verification passes 901 selected cases with zero
+  mismatches. Its directed catalog remains 47 passing, six incomplete and one
+  provisional; this is not complete frontend sign-off.
+- N=4 full-core Spike runs pass `hello_world`, `load_store`, `shift` and CRC32
+  on AXI_SIM, TC_SRAM and LEGACY, with zero discrepancies. Identical images
+  produce identical retirement traces through accepted exit and serial output.
+- The ordinary AXI simulator builds and runs `hello_world` without Spike. A
+  waveform-enabled `load_store` Spike run also passes; all 141,832 recorded
+  events align with physical FST time and logical CPU cycles.
+- Targeted Verible lint, Verilator compilation/lint, Python/shell syntax,
+  backend-selection checks and `git diff --check` pass. Repository-wide
+  `make lint` still fails on existing violations in 11 unchanged files; no new
+  adapter or Load Buffer diagnostics are hidden by those failures. Six style
+  waivers apply only to the unmodified pinned PULP AXI directory.
+
+The comparison below uses the current TC_SRAM settings I=4/D=1 and the native
+AXI model, without changing the firmware or frontend depth (eight). These are
+CPU-cycle measurements, not wall-clock simulation speed or hardware timing.
+
+| Program | TC_SRAM cycles | AXI_SIM cycles | LEGACY cycles | TC_SRAM IPC | AXI_SIM IPC |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| hello_world | 27,367 | 27,714 | 24,075 | 0.5160 | 0.5096 |
+| load_store | 2,912 | 2,911 | 2,860 | 0.9327 | 0.9330 |
+| shift | 2,908 | 2,908 | 2,857 | 0.9333 | 0.9333 |
+| crc32 | 30,915 | 32,176 | 30,838 | 0.9505 | 0.9132 |
+
+TC_SRAM fetch/load/store completion latencies are 4/1/1 cycles in these runs.
+AXI fetch latency is two cycles; measured mean load latency is 2.68–3.00 cycles
+and store latency 3.96–4.00 cycles, including speculative accesses and local
+MMIO completions. The longer data protocol offsets the faster native fetch in
+memory-sensitive programs.
+
+| Program | TC_SRAM accepted fetch bundles/cycle | AXI_SIM accepted fetch bundles/cycle |
+| --- | ---: | ---: |
+| hello_world | 0.8360 | 0.8062 |
+| load_store | 0.6947 | 0.6884 |
+| shift | 0.4027 | 0.3955 |
+| crc32 | 0.3346 | 0.3205 |
+
+Fetch acceptance includes speculation and canceled requests; it is not retired
+instruction throughput. Evidence is under `build/axi-sim/`, including source
+snapshots, seed logs, native-loader reports, full-core performance JSON and
+`verification-summary.json`.
+
+Only single-beat LEN5 transactions are generated; this is not a general AXI
+bridge. Full-core execution is tested at N=4; all four widths are checked at
+the adapter boundary. Architectural trap recovery and uninitialized-read
+checking retain the existing Spike checker limitations. No formal equivalence,
+synthesis/PPA, complete four-state simulation, or ModelSim validation is claimed.
 
 ## Firmware and linker integration
 

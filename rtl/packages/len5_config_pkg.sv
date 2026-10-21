@@ -120,6 +120,9 @@ package len5_config_pkg;
   // Fetch memory interface
   // verilog_lint: waive parameter-name-style
   localparam int unsigned FETCH_MEMIF_FIFO_DEPTH = 32'd8;  // completion queue entries (positive power of two)
+  // Retain accepted load tags across flush when the memory cannot cancel requests.
+  // verilog_lint: waive parameter-name-style
+  localparam bit LOAD_BUFFER_DRAIN_ON_FLUSH = 1'b0;
   // NOTE: if the memory is 0-latency, at least one of the fetch unit registers
   // must be enabled (i.e., not skipped). Therefore, at least one of the
   // following switches must be commented in this case.

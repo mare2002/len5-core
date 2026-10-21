@@ -143,9 +143,9 @@ struct Monitor::Impl {
         : spike(image, constants.at("tb_bare.BOOT_PC"), isa(), csr_state(),
                 MemoryMap{constants.at("tb_bare.SERIAL_ADDR"), constants.at("tb_bare.EXIT_ADDR"),
                           constants.at("tb_config_pkg.IMEM_BASE_ADDR"),
-                          constants.at("tb_config_pkg.MEMORY_BACKEND") == 1 ? constants.at("tb_config_pkg.IMEM_SIZE_BYTES") : 0,
+                          constants.at("tb_config_pkg.MEMORY_BACKEND") != 0 ? constants.at("tb_config_pkg.IMEM_SIZE_BYTES") : 0,
                           constants.at("tb_config_pkg.DMEM_BASE_ADDR"),
-                          constants.at("tb_config_pkg.MEMORY_BACKEND") == 1 ? constants.at("tb_config_pkg.DMEM_SIZE_BYTES") : 0,
+                          constants.at("tb_config_pkg.MEMORY_BACKEND") != 0 ? constants.at("tb_config_pkg.DMEM_SIZE_BYTES") : 0,
                           constants.at("len5_config_pkg.MMAP_MASK")} ),
           checker(spike, output, cfg), fault(f) {
         if (constants.at("len5_config_pkg.LEN5_C_EN") ||
@@ -306,7 +306,7 @@ struct Monitor::Impl {
                     checker.fetch(issue_signals.get("new_instr", "curr_pc", lane),
                                   issue_signals.get("new_instr", "instruction.raw", lane), t);
         }
-        if (constants.at("tb_config_pkg.MEMORY_BACKEND") == 1 &&
+        if (constants.at("tb_config_pkg.MEMORY_BACKEND") != 0 &&
             top_signals.get("dp2mem_store_valid") && top_signals.get("mem2dp_store_ready") &&
             top_signals.get("dp2mem_store_we")) {
             auto tag = top_signals.get("dp2mem_store_tag");

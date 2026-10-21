@@ -33,6 +33,10 @@ module tb_bare #(
   import csr_pkg::*;
   import len5_config_pkg::*;
   import tb_config_pkg::*;
+  export "DPI-C" function tb_len5_clock_half_period;
+  function automatic longint unsigned tb_len5_clock_half_period();
+    return MEMORY_BACKEND == MEM_BACKEND_AXI_SIM ? 64'(AXI_CLOCK_HALF_PERIOD_PS) : 64'd1;
+  endfunction
 
   // ----------------
   // TB CONFIGURATION
@@ -119,7 +123,9 @@ module tb_bare #(
   logic [1:0][memory_backend_pkg::DMEM_ADDR_WIDTH-1:0] dmem_addr;
   logic [1:0][63:0] dmem_wdata, dmem_rdata;
   logic [1:0][7:0] dmem_be;
-  logic [2:0][memory_backend_pkg::SRAM_COUNT_WIDTH-1:0] memory_outstanding, memory_occupancy;
+  localparam int unsigned MemoryCountWidth = MEMORY_BACKEND == MEM_BACKEND_AXI_SIM ?
+      axi_memory_pkg::CountWidth : memory_backend_pkg::SRAM_COUNT_WIDTH;
+  logic [2:0][MemoryCountWidth-1:0] memory_outstanding, memory_occupancy;
   logic                                 memory_load_flush;
   memory_backend_pkg::memory_response_t memory_response  /* verilator split_var */;
   logic                                 monitor_store;
@@ -130,6 +136,13 @@ module tb_bare #(
   // ----
   // BODY
   // ----
+
+  if (LOAD_BUFFER_DRAIN_ON_FLUSH != (MEMORY_BACKEND == MEM_BACKEND_AXI_SIM)) begin : gen_load_protocol_error
+    $fatal(
+        1,
+        "LOAD_BUFFER_DRAIN_ON_FLUSH must be enabled only for AXI_SIM; use prepare-memory-backend.py"
+    );
+  end
 
   // Command-line options and configuration
   // --------------------------------------
@@ -325,7 +338,9 @@ module tb_bare #(
     .core_sleep_o              ()
   );
 
-  memory_protocol_monitor u_memory_monitor (
+  memory_protocol_monitor #(
+    .COUNT_WIDTH(MemoryCountWidth)
+  ) u_memory_monitor (
     .clk_i,
     .rst_ni,
     .flush_i(dp2mem_flush),
@@ -515,6 +530,92 @@ module tb_bare #(
         .rdata_o      (dmem_rdata),
         .initialized_o(dmem_initialized)
       );
+    end else if (MEMORY_BACKEND == MEM_BACKEND_AXI_SIM) begin : gen_axi
+      axi_memory_pkg::imem_axi_req_t        axi_imem_req;
+      axi_memory_pkg::imem_axi_resp_t       axi_imem_rsp;
+      axi_memory_pkg::dmem_axi_req_t  [1:0] axi_dmem_req;
+      axi_memory_pkg::dmem_axi_resp_t [1:0] axi_dmem_rsp;
+      bit                                   axi_reset_n;
+      initial axi_reset_n = 0;
+      // The upstream model retains its queues after its first reset release.
+      // Keep the adapter's AXI ownership alive while CPU reset drains old work.
+      always @(negedge clk_i) axi_reset_n <= 1;
+      assign sram_initialized = imem_initialized && dmem_initialized;
+      assign imem_rdata       = '0;
+      assign dmem_rdata       = '0;
+      assign imem_req         = '0;
+      assign imem_addr        = '0;
+      assign dmem_req         = '0;
+      assign dmem_we          = '0;
+      assign dmem_addr        = '0;
+      assign dmem_wdata       = '0;
+      assign dmem_be          = '0;
+      wire unused_sram = &{1'b0, imem_rdata, dmem_rdata, imem_req, imem_addr,
+                           dmem_req, dmem_we, dmem_addr, dmem_wdata, dmem_be};
+      axi_sim_adapter #(
+        .SERIAL_ADDR(SERIAL_ADDR),
+        .EXIT_ADDR  (EXIT_ADDR)
+      ) u_adapter (
+        .clk_i,
+        .rst_ni       (axi_reset_n),
+        .cpu_reset_ni (rst_ni),
+        .instr_flush_i(dp2mem_flush),
+        .data_flush_i (dp2mem_load_flush),
+        .initialized_i(sram_initialized),
+        .instr_req_i  (dp2mem_instr_valid),
+        .instr_ready_i(dp2mem_instr_ready),
+        .instr_addr_i (dp2mem_instr_addr),
+        .load_req_i   (dp2mem_load_valid),
+        .load_ready_i (dp2mem_load_ready),
+        .load_addr_i  (dp2mem_load_addr),
+        .load_be_i    (dp2mem_load_be),
+        .load_tag_i   (dp2mem_load_tag),
+        .store_req_i  (dp2mem_store_valid),
+        .store_ready_i(dp2mem_store_ready),
+        .store_we_i   (dp2mem_store_we),
+        .store_addr_i (dp2mem_store_addr),
+        .store_data_i (dp2mem_store_wdata),
+        .store_be_i   (dp2mem_store_be),
+        .store_tag_i  (dp2mem_store_tag),
+        .response_o   (memory_response),
+        .imem_req_o   (axi_imem_req),
+        .imem_rsp_i   (axi_imem_rsp),
+        .dmem_req_o   (axi_dmem_req),
+        .dmem_rsp_i   (axi_dmem_rsp),
+        .mmio_write_o (mmio_write),
+        .outstanding_o(memory_outstanding),
+        .occupancy_o  (memory_occupancy)
+      );
+      axi_sim_storage #(
+        .BASE_ADDR       (IMEM_BASE_ADDR),
+        .SIZE_BYTES      (IMEM_SIZE_BYTES),
+        .OTHER_BASE_ADDR (DMEM_BASE_ADDR),
+        .OTHER_SIZE_BYTES(DMEM_SIZE_BYTES),
+        .DATA_WIDTH      (axi_memory_pkg::InstrDataWidth),
+        .NUM_PORTS       (1),
+        .AXI_REQ_T       (axi_memory_pkg::imem_axi_req_t),
+        .AXI_RESP_T      (axi_memory_pkg::imem_axi_resp_t)
+      ) u_imem (
+        .clk_i,
+        .rst_ni       (axi_reset_n),
+        .req_i        (axi_imem_req),
+        .rsp_o        (axi_imem_rsp),
+        .initialized_o(imem_initialized)
+      );
+      axi_sim_storage #(
+        .BASE_ADDR       (DMEM_BASE_ADDR),
+        .SIZE_BYTES      (DMEM_SIZE_BYTES),
+        .OTHER_BASE_ADDR (IMEM_BASE_ADDR),
+        .OTHER_SIZE_BYTES(IMEM_SIZE_BYTES),
+        .DATA_WIDTH      (64),
+        .NUM_PORTS       (2)
+      ) u_dmem (
+        .clk_i,
+        .rst_ni       (axi_reset_n),
+        .req_i        (axi_dmem_req),
+        .rsp_o        (axi_dmem_rsp),
+        .initialized_o(dmem_initialized)
+      );
     end else begin : gen_no_storage
       assign sram_initialized   = 1'b0;
       assign imem_initialized   = 1'b0;
@@ -532,11 +633,7 @@ module tb_bare #(
       assign mmio_write         = 1'b0;
       assign memory_outstanding = '0;
       assign memory_occupancy   = '0;
-      if (MEMORY_BACKEND == MEM_BACKEND_AXI_SIM) begin : gen_axi_error
-        $fatal(1, "MEM_BACKEND_AXI_SIM is reserved and not implemented");
-      end else begin : gen_selection_error
-        $fatal(1, "Invalid MEMORY_BACKEND selection");
-      end
+      $fatal(1, "Invalid MEMORY_BACKEND selection");
     end
   end
 endmodule

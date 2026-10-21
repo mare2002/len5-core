@@ -55,6 +55,8 @@ module tc_sram_storage #(
     .be_i,
     .rdata_o
   );
+  localparam string FirmwareBackend = "TC_SRAM";
+  localparam string FirmwareStorage = "SRAM";
   `include "tc_sram_loader.svh"
   initial begin
     if (DATA_WIDTH < 8 || DATA_WIDTH % 8 != 0 || NUM_PORTS == 0 ||
