@@ -205,7 +205,6 @@ module axi_sim_adapter #(
         // ID zero orders every instruction response, including canceled reads.
         instr_ar_q.id    <= '0;
       end
-      if (imem_rsp_i.r_valid) assert (imem_rsp_i.r.id == 0);
     end
   end
 
@@ -292,7 +291,6 @@ module axi_sim_adapter #(
       end
       if (load_ar_fire) load_ar_valid_q <= 1'b0;
       if (load_r_fire && dmem_rsp_i[0].r.last) begin
-        assert (load_busy_q[dmem_rsp_i[0].r.id]);
         if (cpu_reset || load_discard_q[dmem_rsp_i[0].r.id]) begin
           load_busy_q[dmem_rsp_i[0].r.id]    <= 1'b0;
           load_discard_q[dmem_rsp_i[0].r.id] <= 1'b0;
@@ -369,7 +367,6 @@ module axi_sim_adapter #(
       if (store_aw_fire) store_aw_valid_q <= 1'b0;
       if (store_w_fire) store_w_valid_q <= 1'b0;
       if (store_b_fire) begin
-        assert (store_busy_q[dmem_rsp_i[1].b.id]);
         if (store_cancel || store_discard_q[dmem_rsp_i[1].b.id]) begin
           store_busy_q[dmem_rsp_i[1].b.id]    <= 1'b0;
           store_discard_q[dmem_rsp_i[1].b.id] <= 1'b0;

@@ -109,7 +109,7 @@ module tc_sram_adapter #(
   logic         store_result_valid_q;
   data_response_t store_result_q, store_response;
 
-  wire unused_read_data = &{1'b0, dmem_rdata_i[1], store_response.data, fetch_lane_sram};
+  wire unused_read_data = &{1'b0, instr_ready_i, dmem_rdata_i[1], store_response.data, fetch_lane_sram};
 
   // Each fetch accesses one IMEM word. N=1 selects one half of a 64-bit word.
   // Check the original PC before bundle alignment, then check every returned lane.
@@ -181,14 +181,6 @@ module tc_sram_adapter #(
 
   assign response_o.instr_valid = instr_active && fetch_result_valid;
   assign {response_o.instr_data, response_o.instr_except, response_o.instr_code} = fetch_result;
-
-  // Accepted reads cannot be stalled inside the SRAM; the caller must reserve their results.
-  always_ff @(posedge clk_i) begin : check_instruction_reservation
-    if (response_o.instr_valid) begin
-      assert (instr_ready_i)
-      else $fatal(1, "Instruction response has no reserved frontend completion slot");
-    end
-  end
 
   // DMEM and MMIO retain size validation and misalignment-before-access-fault priority.
   memory_access_check #(

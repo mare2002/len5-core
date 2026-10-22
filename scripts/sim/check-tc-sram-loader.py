@@ -19,7 +19,7 @@ if axi:
     sources += ["tb/memory/axi_sim/waivers.vlt",
         "+incdir+rtl/vendor/pulp-axi/include", "+incdir+rtl/vendor/pulp-axi/src", "+incdir+tb/memory",
         "rtl/vendor/pulp-axi/src/axi_pkg.sv", "rtl/vendor/pulp-axi/src/axi_intf.sv",
-        "rtl/memory_interface/axi_memory_pkg.sv", "tb/memory/axi_sim/axi_sim_storage.sv",
+        "tb/memory/axi_sim/axi_memory_pkg.sv", "tb/memory/axi_sim/axi_sim_storage.sv",
         "tb/memory/axi_sim/axi_sim_loader_tb.sv", "tb/memory/axi_sim/axi_sim_model.sv"]
 else:
     sources += ["tb/memory/tc_sram/waivers.vlt", "rtl/vendor/tech_cells_generic/tc_sram.sv",

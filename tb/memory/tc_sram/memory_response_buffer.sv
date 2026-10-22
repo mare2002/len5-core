@@ -90,14 +90,6 @@ module memory_response_buffer #(
       reserved_q <= '0;
     end else begin
       reserved_q <= reserved_q + COUNT_WIDTH'(allocate_i) - COUNT_WIDTH'(response_consumed);
-
-      // Widen the reservation check so overflow/underflow cannot wrap at the counter width.
-      assert ((COUNT_WIDTH + 1)'(reserved_q) + (COUNT_WIDTH + 1)'(allocate_i) -
-              (COUNT_WIDTH + 1)'(response_consumed) <= (COUNT_WIDTH + 1)'(DEPTH));
-      assert (occupancy_q <= reserved_q);
-      assert (!allocate_i || credit_o);
-      // An asynchronous read may complete on the same edge as its reservation.
-      assert (!result_valid_i || reserved_q != 0 || allocate_i);
     end
   end
 

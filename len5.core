@@ -37,12 +37,12 @@ filesets:
     - rtl/vendor/pulp-axi/include/axi/typedef.svh: {is_include_file: true, include_path: rtl/vendor/pulp-axi/include}
     - rtl/vendor/pulp-axi/include/axi/assign.svh: {is_include_file: true, include_path: rtl/vendor/pulp-axi/include}
     - rtl/vendor/pulp-axi/src/axi_sim_mem.sv: {is_include_file: true}
-    - rtl/memory_interface/axi_memory_pkg.sv
+    - tb/memory/axi_sim/axi_memory_pkg.sv
     - tb/memory/tc_sram/memory_backend_pkg.sv
     - tb/memory/tc_sram/memory_access_check.sv
     - tb/memory/tc_sram/memory_response_buffer.sv
     - tb/memory/tc_sram/tc_sram_adapter.sv
-    - rtl/memory_interface/axi_sim_adapter.sv
+    - tb/memory/axi_sim/axi_sim_adapter.sv
     - tb/memory/memory_class.svh: {is_include_file : true}
     - rtl/vendor/tech_cells_generic/tc_sram.sv
     - tb/memory/tc_sram_storage.sv

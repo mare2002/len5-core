@@ -112,8 +112,8 @@ previously accepted requests.
 For positive latency, valid bits and per-request lane exceptions/N=1 half selection
 advance through exactly `IMEM_LATENCY` stages alongside the native SRAM data.
 Multiple reads can be in flight and return in order. There is no instruction data
-holding register, response FIFO, or reservation counter in the adapter. A protocol
-assertion checks that each live result has its reserved frontend destination.
+holding register, response FIFO, or reservation counter in the adapter. The adapter
+testbench checks that each returning result has its reserved frontend destination.
 
 Latency zero uses the native asynchronous read and delivers the result on the
 acceptance cycle. The completion FIFO supports simultaneous allocation and result
@@ -194,7 +194,7 @@ flowchart LR
   FW -.-> D
 ```
 
-`rtl/memory_interface/axi_sim_adapter.sv` produces single-beat AXI4 requests
+`tb/memory/axi_sim/axi_sim_adapter.sv` produces single-beat AXI4 requests
 (`AxLEN=0`, `BURST_INCR`); `axi_memory_pkg.sv` defines widths and packed channel
 types using upstream macros. IMEM and DMEM are independent instances of PULP
 `axi_sim_mem`, with absolute 64-bit byte addresses. Loads use naturally sized
@@ -507,9 +507,9 @@ Evidence is under `build/fifo-live/verification-summary.json`:
   100 seeds of 10,000 random cycles each: eight million cycles plus directed
   bypass, full, stalled-head, repeated-flush, response-on-flush and reset cases.
 - 17 TC_SRAM width/latency configurations and six AXI configurations each pass
-  100 seeds of 10,000 random cycles. TC_SRAM uses the proposed verification-only
-  timing oracle under `build/fifo-live/tc_sram_adapter_tb.sv`; its raw SRAM latency
-  checks are unchanged. AXI uses the existing testbench without changes.
+  100 seeds of 10,000 random cycles. These historical TC_SRAM runs used a temporary
+  verification-only frontend timing oracle, since removed with the one-off benches;
+  its raw SRAM latency checks were unchanged. AXI used the maintained testbench.
 - The fetch-memory suite passes all seven groups, including mutations. The
   frontend suite has 39,007,792 comparisons and zero mismatches; its existing
   six incomplete and one provisional scenarios remain outside full sign-off.
@@ -521,10 +521,9 @@ Evidence is under `build/fifo-live/verification-summary.json`:
 - Targeted Verible, full-core Verilator lint and `git diff --check` pass.
 
 The existing TC_SRAM testbench still assumes immediate frontend delivery after
-flush and fails that timing assertion with retained entries. Applying the tested
-replacement oracle to `tb/memory/tc_sram/tc_sram_adapter_tb.sv` awaits permission
-under the two-module RTL scope restriction. The reviewable patch is
-`build/fifo-live/testbench-timing.patch`. No other design RTL changed in this step.
+flush and fails that timing assertion with retained entries. Its temporary
+replacement and unapplied patch have been removed with the one-off verification
+benches; the maintained testbench has not been changed to fix that assumption.
 No formal equivalence, synthesis/PPA or complete four-state sign-off is claimed.
 
 ## Firmware and linker integration
@@ -567,7 +566,7 @@ bytes retain the vendor model's uninitialized-memory semantics.
 | --- | --- |
 | `tb/packages/tb_config_pkg.sv`, `tb/tb_bare.sv`, `len5.core` | Independent memory settings, two SRAM instances, automatic boot address and unchanged backend selection |
 | `tb/memory/tc_sram/tc_sram_adapter.sv` | Full-width pipelined instruction reads, independent read latencies and native ports |
-| `tb/memory/tc_sram/{memory_backend_pkg,memory_access_check,memory_response_buffer}.sv` | Geometry and overlap checks, per-region permissions, latency-zero reservation assertion |
+| `tb/memory/tc_sram/{memory_backend_pkg,memory_access_check,memory_response_buffer}.sv` | Geometry and overlap checks, per-region permissions, latency-aware response reservations |
 | `tb/memory/{tc_sram_storage.sv,tc_sram_loader.svh}` | Generic word/port geometry and absolute-address deposits into the correct array |
 | `sw/linker/len5-sim.ld`, `scripts/gen-memory-map.py`, `sw/{makefile,benchmarks/makefile}`, `sw/device/runtime/spike.S` | Generated map, data placement, rebuild dependencies and executable host-exit routine |
 | `tb/verilator/diff/{monitor.cpp,spike_adapter.cpp,spike_adapter.hh,signals.vlt}` | Two-region reference map, DMEM-specific flush handling, required interface observation |

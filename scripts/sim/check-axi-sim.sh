@@ -13,10 +13,10 @@ mkdir -p "$axi_build_dir"
   +incdir+rtl/vendor/pulp-common-cells/include +incdir+tb/memory \
   rtl/packages/util_pkg.sv "$axi_config" rtl/packages/len5_pkg.sv rtl/packages/fetch_pkg.sv "$axi_tb_config" \
   tb/memory/tc_sram/memory_backend_pkg.sv rtl/vendor/pulp-axi/src/axi_pkg.sv \
-  rtl/vendor/pulp-axi/src/axi_intf.sv rtl/memory_interface/axi_memory_pkg.sv \
+  rtl/vendor/pulp-axi/src/axi_intf.sv tb/memory/axi_sim/axi_memory_pkg.sv \
   rtl/common/modn_counter.sv rtl/common/modn_counter_updown.sv rtl/common/completion_fifo.sv rtl/vendor/pulp-common-cells/src/fifo_v3.sv \
   rtl/common/spill_cell_flush_cu.sv rtl/common/spill_cell_flush.sv rtl/frontend/fetch_mem_if.sv \
-  tb/memory/tc_sram/memory_access_check.sv rtl/memory_interface/axi_sim_adapter.sv \
+  tb/memory/tc_sram/memory_access_check.sv tb/memory/axi_sim/axi_sim_adapter.sv \
   tb/memory/axi_sim/axi_sim_storage.sv tb/memory/axi_sim/axi_variable_slave.sv \
   tb/memory/axi_sim/axi_sim_adapter_tb.sv tb/memory/axi_sim/axi_sim_model.sv \
   > "$axi_build_dir/build.log" 2>&1 || { tail -70 "$axi_build_dir/build.log"; exit 1; }
