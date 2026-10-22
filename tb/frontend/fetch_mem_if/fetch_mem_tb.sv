@@ -48,7 +48,8 @@ module fetch_mem_tb #(
   assign config_cause_bits_o=len5_pkg::EXCEPT_TYPE_LEN;
   assign config_req_skip_o=32'(len5_config_pkg::FETCH_REQ_SPILL_SKIP);
   assign config_ans_skip_o=32'(len5_config_pkg::FETCH_ANS_SPILL_SKIP);
-  fetch_mem_if #(.MAX_MEM_OUTSTANDING_REQUESTS(MEM_DEPTH)) dut (
+  // This existing oracle models a memory that cancels requests on flush.
+  fetch_mem_if #(.MAX_MEM_OUTSTANDING_REQUESTS(MEM_DEPTH), .DRAIN_ON_FLUSH(1'b0)) dut (
     .clk_i, .rst_ni, .flush_i, .fetch_valid_i, .fetch_ready_o,
     .fetch_pred_i(predictions), .valid_instr_i, .valid_instr_o,
     .issue_valid_o, .issue_ready_i, .issue_instr_o(instructions), .issue_pred_o(issue_predictions),

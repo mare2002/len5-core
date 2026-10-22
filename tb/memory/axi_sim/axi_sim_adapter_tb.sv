@@ -24,7 +24,7 @@ module axi_sim_adapter_tb #(
   } data_expected_t;
   /* verilator lint_off SYNCASYNCNET */
   bit clk;
-  bit protocol_reset_n = 0, cpu_reset_n = 0, instr_flush = 0, data_flush = 0;
+  bit rst_n = 0, instr_flush = 0, data_flush = 0;
   /* verilator lint_on SYNCASYNCNET */
   bit [2:0] req = '0, ready = '1;
   bit [6:0] block_channels = '0;
@@ -55,6 +55,9 @@ module axi_sim_adapter_tb #(
   dmem_axi_resp_t [1:0] previous_dmem_rsp;
   bit                   history_valid = 0;
   instruction_t expected_fetches[$], expected_buffered[$];
+  bit fetch_live[$];
+  logic [63:0] expected_pcs[$];
+  int stale_returns = 0;
   data_expected_t expected_loads [TagCount];
   except_code_t   expected_stores[TagCount];
   bit [TagCount-1:0] load_pending = '0, store_pending = '0;
@@ -67,40 +70,40 @@ module axi_sim_adapter_tb #(
   int unsigned random_state;
   logic        instr_request;
   initial clk = 0;
-  assign instr_request = req[0] && instr_credit;
-  assign instr_result  = '{data: rsp.instr_data, except: rsp.instr_except, code: rsp.instr_code};
-  completion_fifo #(
-    .META_T(logic),
-    .DATA_T(instruction_t),
-    .DEPTH (FetchDepth)
+  fetch_pkg::prediction_t [N-1:0] fetch_prediction, returned_prediction;
+  instr_t [N-1:0] returned_instruction;
+  logic [63:0] instr_address;
+  for (genvar lane = 0; lane < N; lane++) begin : gen_fetch_lanes
+    assign fetch_prediction[lane] = '{pc: addr[0] + 64'(4 * lane), hit: 1'b0, target: '0, taken: 1'b0};
+    assign buffered_instr.data[lane] = returned_instruction[lane].raw;
+  end
+  assign instr_result = '{data: rsp.instr_data, except: rsp.instr_except, code: rsp.instr_code};
+  fetch_mem_if #(
+    .MAX_MEM_OUTSTANDING_REQUESTS(FetchDepth),
+    .DRAIN_ON_FLUSH(1'b1)
   ) u_frontend (
-    .clk_i         (clk),
-    .rst_ni        (cpu_reset_n),
-    .flush_i       (instr_flush),
-    .allocate_i    (instr_request && rsp.instr_gnt),
-    .credit_o      (instr_credit),
-    .metadata_i    (1'b0),
-    .result_valid_i(rsp.instr_valid && allow_instruction),
-    .result_ready_o(instr_result_ready),
-    .result_i      (instr_result),
-    .valid_o       (buffered_instr_valid),
-    .ready_i       (ready[0]),
-    .metadata_o    (),
-    .data_o        (buffered_instr)
+    .clk_i(clk), .rst_ni(rst_n), .flush_i(instr_flush),
+    .fetch_valid_i(req[0]), .fetch_ready_o(instr_credit), .fetch_pred_i(fetch_prediction),
+    .valid_instr_i('1), .valid_instr_o(),
+    .issue_valid_o(buffered_instr_valid), .issue_ready_i(ready[0]),
+    .issue_instr_o(returned_instruction), .issue_pred_o(returned_prediction),
+    .issue_except_raised_o(buffered_instr.except), .issue_except_code_o(buffered_instr.code),
+    .instr_valid_i(rsp.instr_valid && allow_instruction), .instr_ready_i(rsp.instr_gnt),
+    .instr_ready_o(instr_result_ready), .instr_valid_o(instr_request), .instr_we_o(),
+    .instr_rdata_i(rsp.instr_data), .instr_addr_o(instr_address),
+    .instr_except_raised_i(rsp.instr_except), .instr_except_code_i(rsp.instr_code)
   );
   axi_sim_adapter #(
     .IMEM_SIZE_BYTES(Size),
     .DMEM_SIZE_BYTES(Size)
   ) dut (
     .clk_i        (clk),
-    .rst_ni       (protocol_reset_n),
-    .cpu_reset_ni (cpu_reset_n),
-    .instr_flush_i(instr_flush),
+    .rst_ni       (rst_n),
     .data_flush_i (data_flush),
     .initialized_i(imem_initialized && dmem_initialized),
     .instr_req_i  (instr_request),
     .instr_ready_i(instr_result_ready && allow_instruction),
-    .instr_addr_i (addr[0]),
+    .instr_addr_i (instr_address),
     .load_req_i   (req[1]),
     .load_ready_i (ready[1]),
     .load_addr_i  (addr[1]),
@@ -134,7 +137,7 @@ module axi_sim_adapter_tb #(
       .AXI_RESP_T      (imem_axi_resp_t)
     ) imem (
       .clk_i        (clk),
-      .rst_ni       (protocol_reset_n),
+      .rst_ni       (rst_n),
       .req_i        (imem_req),
       .rsp_o        (imem_rsp),
       .initialized_o(imem_initialized)
@@ -148,7 +151,7 @@ module axi_sim_adapter_tb #(
       .NUM_PORTS       (2)
     ) dmem (
       .clk_i        (clk),
-      .rst_ni       (protocol_reset_n),
+      .rst_ni       (rst_n),
       .req_i        (dmem_req),
       .rsp_o        (dmem_rsp),
       .initialized_o(dmem_initialized)
@@ -168,7 +171,7 @@ module axi_sim_adapter_tb #(
       .SIZE  (Size)
     ) slave (
       .clk_i     (clk),
-      .rst_ni    (protocol_reset_n),
+      .rst_ni    (rst_n),
       .block_i   (block_channels),
       .imem_req_i(imem_req),
       .imem_rsp_o(imem_rsp),
@@ -223,7 +226,7 @@ module axi_sim_adapter_tb #(
     return result;
   endfunction
 
-  task automatic tick(input bit pulse_cpu_reset = 0);
+  task automatic tick;
     instruction_t          expected_i;
     data_expected_t        expected_d;
     except_code_t          code;
@@ -231,20 +234,8 @@ module axi_sim_adapter_tb #(
     transaction_t          transaction;
     logic           [63:0] bundle_base;
     bit             [ 2:0] accepted_now;
-    if (pulse_cpu_reset) begin
-      #(AXI_CLOCK_HALF_PERIOD_PS / 4);
-      cpu_reset_n = 0;
-      #1;
-      expected_fetches.delete();
-      expected_buffered.delete();
-      load_order.delete();
-      load_pending  = '0;
-      store_pending = '0;
-      cpu_reset_n   = 1;
-      resets++;
-      #(AXI_CLOCK_HALF_PERIOD_PS - AXI_CLOCK_HALF_PERIOD_PS / 4 - 1);
-    end else #(AXI_CLOCK_HALF_PERIOD_PS);
-    if (history_valid && protocol_reset_n) begin
+    #(AXI_CLOCK_HALF_PERIOD_PS);
+    if (history_valid && rst_n) begin
       if (previous_imem_req.ar_valid && !previous_imem_rsp.ar_ready)
         assert (imem_req.ar_valid && imem_req.ar === previous_imem_req.ar)
         else $fatal(1, "Instruction AR changed under backpressure");
@@ -268,29 +259,40 @@ module axi_sim_adapter_tb #(
     previous_imem_rsp = imem_rsp;
     previous_dmem_req = dmem_req;
     previous_dmem_rsp = dmem_rsp;
-    history_valid = protocol_reset_n;
+    history_valid = rst_n;
     accepted_now = {
       req[2] && rsp.store_gnt, req[1] && rsp.load_gnt, instr_request && rsp.instr_gnt
     };
-    if (!cpu_reset_n) begin
-      expected_fetches.delete();
+    if (!rst_n) begin
       expected_buffered.delete();
+      expected_pcs.delete();
+      expected_fetches.delete();
+      fetch_live.delete();
+      expected_iar.delete();
+      expected_lar.delete();
+      expected_aw.delete();
+      expected_w.delete();
       load_order.delete();
       load_pending  = '0;
       store_pending = '0;
-      assert (!(rsp.instr_valid || rsp.load_valid || rsp.store_valid || (|accepted_now) || mmio));
+      assert (!(buffered_instr_valid || rsp.load_valid || rsp.store_valid || (|accepted_now) || mmio));
+      assert (outstanding == '0 && occupancy == '0)
+      else $fatal(1, "Reset retained memory transaction state");
     end else begin
       if (instr_flush) begin
-        expected_fetches.delete();
         expected_buffered.delete();
+        expected_pcs.delete();
+        foreach (fetch_live[i]) fetch_live[i] = 0;
         flushes++;
-        assert (!rsp.instr_valid && !rsp.instr_gnt);
+        assert (!instr_request);
       end
       if (data_flush) store_pending = '0;
       if (accepted_now[0]) begin
         expected_i = fetch_expected(addr[0]);
         expected_fetches.push_back(expected_i);
         expected_buffered.push_back(expected_i);
+        expected_pcs.push_back(addr[0]);
+        fetch_live.push_back(1);
         if (|expected_i.except) faults[0]++;
         bundle_base = N == 1 ? addr[0] : (addr[0] / 64'(4 * N)) * 64'(4 * N);
         if (addr[0] % 4 == 0 && fault(bundle_base, 4, 0) == E_UNKNOWN)
@@ -337,17 +339,10 @@ module axi_sim_adapter_tb #(
           addr[2], bytes_for(be[2]), 2
       ) == E_UNKNOWN && (addr[2] == SERIAL_ADDR || addr[2] == EXIT_ADDR)));
       if (mmio) mmios++;
-      if (rsp.instr_valid && instr_result_ready && allow_instruction) begin
-        assert (expected_fetches.size() != 0)
-        else $fatal(1, "Canceled instruction returned");
-        expected_i = expected_fetches.pop_front();
-        assert (instr_result === expected_i)
-        else $fatal(1, "Instruction data/exception/order mismatch at cycle %0d", cycle_no);
-      end
-      if (buffered_instr_valid && ready[0]) begin
+      if (buffered_instr_valid && ready[0] && !instr_flush) begin
         assert (expected_buffered.size() != 0);
         expected_i = expected_buffered.pop_front();
-        assert (buffered_instr === expected_i);
+        assert (buffered_instr === expected_i && returned_prediction[0].pc == expected_pcs.pop_front());
         completed[0]++;
       end
       if (rsp.load_valid && ready[1]) begin
@@ -374,6 +369,14 @@ module axi_sim_adapter_tb #(
         completed[2]++;
       end
       for (int p = 0; p < 3; p++) accepted[p] += int'(accepted_now[p]);
+    end
+    if (rsp.instr_valid && instr_result_ready && allow_instruction) begin
+      assert (expected_fetches.size() != 0)
+      else $fatal(1, "Unsolicited instruction response");
+      expected_i = expected_fetches.pop_front();
+      if (!fetch_live.pop_front()) stale_returns++;
+      assert (instr_result === expected_i)
+      else $fatal(1, "Instruction data/exception/order mismatch at cycle %0d", cycle_no);
     end
     assert(!imem_req.aw_valid && !imem_req.w_valid && !dmem_req[0].aw_valid && !dmem_req[0].w_valid && !dmem_req[1].ar_valid);
     if (imem_req.ar_valid && imem_rsp.ar_ready) begin
@@ -454,9 +457,8 @@ module axi_sim_adapter_tb #(
     store_tag    = '0;
     foreach (reference_mem[b]) reference_mem[b] = 8'(b ^ 8'ha5);
     repeat (3) tick();
-    protocol_reset_n = 1;
+    rst_n = 1;
     repeat (3) tick();
-    cpu_reset_n = 1;
     // Every supported size and byte lane; writes are read back only after B.
     for (int size = 1; size <= 8; size *= 2)
     for (int off = 0; off < 8; off += size) begin
@@ -523,8 +525,9 @@ module axi_sim_adapter_tb #(
     drain();
     store_we          = 1;
 
-    // CPU reset is asynchronous: a pulse between clock edges must still cancel
-    // frontend reservations and data completions without canceling AXI ownership.
+    // System reset cancels frontend reservations and memory transactions together.
+    // The native PULP model only observes its first reset release, so reset it
+    // while quiescent; the reset-capable slave also covers pending transactions.
     ready             = '0;
     allow_instruction = 0;
     block_channels    = 7'b0001010;
@@ -533,12 +536,14 @@ module axi_sim_adapter_tb #(
     addr[1] = DBase + 8;
     be[1]   = 255;
     request_once(1);
-    addr[2]  = DBase + 160;
-    be[2]    = 255;
-    wdata[2] = 64'hfedcba9876543210;
-    request_once(2);
     repeat (40) tick();
-    tick(1'b1);
+    if (NATIVE) drain();
+    rst_n = 0;
+    req = '0;
+    repeat (3) tick();
+    assert (outstanding == '0 && !instr_request && !buffered_instr_valid);
+    rst_n             = 1;
+    resets++;
     ready             = '1;
     allow_instruction = 1;
     block_channels    = '0;
@@ -638,10 +643,17 @@ module axi_sim_adapter_tb #(
       end
       tick();
       if (step == cycles / 2) begin
-        cpu_reset_n = 0;
-        req         = '0;
+        // Finish stores before reset so the byte oracle keeps committed writes.
+        drain();
+        ready[0] = 0;
+        block_channels[1] = 1;
+        addr[0] = IBase;
+        request_once(0);
+        if (NATIVE) drain();
+        rst_n = 0;
+        req = '0;
         repeat (3) tick();
-        cpu_reset_n = 1;
+        rst_n = 1;
         resets++;
         drain();
       end
@@ -656,7 +668,8 @@ module axi_sim_adapter_tb #(
       request_once(1);
       drain();
     end
-    assert (max_fetch > 1 && mmios > 0 && flushes > 1 && resets == 2);
+    assert (max_fetch > 1 && mmios > 0 && flushes > 1 && resets == 2 && stale_returns > 0);
+    $display("FETCH_DRAIN stale_returns=%0d", stale_returns);
     for (int p = 0; p < 3; p++) assert (accepted[p] > 0 && completed[p] > 0 && faults[p] > 0);
     if (!NATIVE)
       assert (reordered_loads > 0)

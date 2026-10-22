@@ -11,18 +11,31 @@ python3 scripts/sim/prepare-memory-backend.py AXI_SIM build/axi-source
 make -C build/axi-source verilator-build-debug
 ```
 
-The snapshot helper sets both the testbench backend and the CPU's
-`LOAD_BUFFER_DRAIN_ON_FLUSH` configuration. This CPU option retains accepted
-load tags across flushes; it defaults off and must be on only for AXI_SIM.
-`tb_bare` rejects inconsistent combinations at elaboration. This coordinated
-setting avoids passing a simulation-backend selector through the datapath or LSU.
-LEGACY and TC_SRAM keep their original Load Buffer flush behavior.
+The snapshot helper sets the testbench backend and two CPU protocol options:
+`FETCH_MEM_DRAIN_ON_FLUSH` is enabled for TC_SRAM and AXI_SIM, while
+`LOAD_BUFFER_DRAIN_ON_FLUSH` is enabled only for AXI_SIM. LEGACY retains its
+cancel-on-flush fetch contract; LEGACY and TC_SRAM retain their original Load
+Buffer behavior. `tb_bare` rejects inconsistent combinations at elaboration.
+These CPU options describe response ownership without importing the testbench's
+backend selector into the CPU.
+
+The CPU, frontend and memory transaction state share `rst_ni`. System reset
+cancels outstanding transactions and clears the completion FIFO pointers and live
+bits together. There is no separate memory-reset input or reset-event capture
+pipeline. Fetch flush remains a separate event: it invalidates reserved entries
+without clearing their ownership or resetting the memory system.
+
+The original upstream AXI model only observes its first reset release and does
+not restart its internal transaction queues on a later reset. Native-model runs
+therefore cover startup and quiescent reset; reset with pending AXI transactions
+is checked using the reset-capable variable-latency slave. Runtime reset with
+pending transactions in the upstream AXI model is not supported.
 
 ## TC_SRAM organization
 
 ```mermaid
 flowchart LR
-  FE["CPU fetch interface\nfrontend completion FIFO"] <--> IF["Instruction control\nvalid + metadata pipelines\nno response storage"]
+  FE["CPU fetch interface\ncompletion FIFO; per-entry live bits"] <--> IF["Instruction control\nvalid + metadata pipelines\nno response storage"]
   IF <--> I["Unmodified tc_sram\nIMEM: one read-only port\nmax(64, 32*N) bits"]
   LSU["CPU load/store interfaces"] <--> LD["Load decode, metadata pipeline\nbyte selection + response buffer"]
   LSU <--> ST["Store decode, byte enables\none-cycle completion + response buffer"]
@@ -78,6 +91,10 @@ must remain excluded from store-to-load forwarding by the CPU's `MMAP_MASK`.
 The CPU's `len5_config_pkg::FETCH_MEMIF_FIFO_DEPTH` independently configures the
 frontend completion FIFO (default eight, positive power of two). Its size is not
 derived from either memory latency. The adapter does not contain that FIFO.
+In drain mode this depth bounds all reserved entries, including canceled entries
+and completed entries waiting behind the head. Flush clears their live bits but
+preserves head/fill/tail positions. Space becomes available as completed heads
+retire; a canceled entry waiting for its response remains reserved.
 
 `LEN5_C_EN` and `ONLY_DOUBLEWORD_MEM_ACCESSES` remain explicitly unsupported by
 both native adapters. Fetch widths must match the CPU configuration and be one of
@@ -109,10 +126,25 @@ Those four results still arrive exactly ten cycles after their respective reques
 A small FIFO can limit sustained throughput at long latency without affecting
 correctness. The existing full-FIFO recovery bubble is unchanged.
 
-Instruction flush immediately suppresses grants and response-valid, then clears
-all latency valid bits together with frontend reservations. Already issued native
-reads finish, but their canceled validity cannot escape or complete a newer request.
-CPU reset clears protocol state without resetting or reloading SRAM contents.
+The TC_SRAM adapter has no instruction-flush input. Its valid/metadata pipeline
+returns every accepted request, including requests canceled by frontend flush.
+System reset clears its instruction valid/metadata pipeline together with the
+frontend FIFO. SRAM contents are neither cleared nor reloaded by reset.
+
+`fetch_mem_if` connects memory responses directly to `completion_fifo`; it has no
+outstanding or stale counters. In drain mode the FIFO adds one live bit per entry.
+Allocation sets that bit, and flush clears all live bits while preserving the three
+existing modulo pointers: tail reserves, fill records completion, and head retires.
+An invalid head retires only after its response exists, without waiting for issue
+readiness or publishing data/metadata. Each cycle retires at most one entry.
+
+A response may be accepted on the flush edge. It completes its existing reservation
+and can retire immediately if it is the head. Other canceled results can be stored
+behind older entries and discarded later. New allocations use free tail slots while
+older canceled entries drain; repeated flushes invalidate those newer allocations
+as well. Local access faults follow the same ordered completion path. Full-queue
+recovery retains its existing bubble. With `DRAIN_ON_FLUSH=0`, the FIFO keeps the
+original clear-on-flush behavior for memories that cancel outstanding requests.
 
 ## TC_SRAM data requests and exceptions
 
@@ -151,7 +183,7 @@ existing short-latency drain-on-flush contract. Stores are not canceled.
 
 ```mermaid
 flowchart LR
-  FE["Unchanged fetch interface\nfrontend completion FIFO"] <--> IF["AXI fetch control\none AR holding register\nmetadata FIFO; outstanding/stale counters"]
+  FE["Fetch interface\ncompletion FIFO; per-entry live bits"] <--> IF["AXI conversion\none AR holding register\nrequest metadata FIFO"]
   IF <-->|"ARID=0 / ordered R"| I["Upstream axi_sim_mem\nIMEM: one read-only port\nmax(64,32*N) bits"]
   LB["Load Buffer\nLOAD_S_KILLED retains tags"] <--> LD["Load AR holding register\nper-ID offset/mask ownership\none response register"]
   SB["Unchanged Store Buffer"] <--> ST["Independent AW/W holding\nper-ID ownership\none response register"]
@@ -182,25 +214,27 @@ metadata FIFO reuses the existing pinned common_cells `fifo_v3`.
 
 Every accepted CPU fetch reserves a frontend result slot and one adapter
 metadata entry (lane exceptions, local-fault classification, N=1 half selection).
-The adapter stores no instruction data: a live AXI R response remains on the
-slave interface until its reserved frontend slot accepts it. Local faults follow
-the same metadata order. Every instruction AR uses ID zero, so old and new
-instruction responses have one AXI ordering domain.
+The adapter stores no instruction data: AXI R holds data until the frontend
+accepts or drains it. Local faults follow the same metadata order. Every AR uses
+ID zero, so native instruction responses have one AXI ordering domain.
 
-The outstanding counter increments on AR handshake and decrements only on
-`RVALID && RREADY && RLAST`. The stale counter counts the canceled prefix of
-those transactions. On flush, it becomes the updated outstanding count,
-including an AR accepted on the same edge and excluding a completed RLAST.
-The metadata FIFO is flushed immediately; instruction grant/valid are suppressed
-on that edge. Stale responses are consumed regardless of frontend backpressure
-and never reach the frontend. New requests can be accepted while stale reads
-remain, subject to transaction capacity and frontend credits.
+Fetch cancellation belongs entirely to the frontend completion FIFO. A CPU fetch
+reserves a slot at its adapter handshake, including requests whose AR is held under
+backpressure. The adapter has no instruction stale counter, stale AR flag, or
+instruction-flush input. System reset clears its fetch metadata along with the
+frontend FIFO and memory transaction state.
 
-An AR already offered under backpressure cannot be withdrawn. Its address and
-VALID stay stable across flush; a stale bit on that single holding register
-marks it for discard when it eventually handshakes. Repeated flushes mark all
-currently committed requests stale again, without double counting. No PC epoch
-is needed because all instruction responses use the same ordered ID.
+On flush, the FIFO clears per-entry live bits and retains all reservations. Ordered
+responses still fill their original slots. Completed canceled heads are discarded
+independently of issue readiness; pending canceled heads wait for their response.
+New requests can occupy free slots while canceled entries drain. Repeated flushes
+clear all current live bits without changing pointer ownership. No independent
+outstanding/stale counter or instruction-data FIFO is needed in the adapter.
+
+A live response publishes with its original prediction metadata when it reaches
+the head. The existing answer spill cell retains issue timing and flush behavior.
+Disabling `FETCH_MEM_DRAIN_ON_FLUSH` removes the live-bit hardware and selects the
+original contract in which the memory cancels requests itself (LEGACY).
 
 ### Loads, killed tags, and store ordering
 
@@ -239,15 +273,14 @@ effect once, at legal CPU acceptance. The exit monitor is unchanged.
 
 ### Native model scheduling, reset, and initialization
 
-The upstream model uses timed tasks and keeps transaction queues after its
-initial reset release. The wrapper gives it a separate one-time power-on reset.
-Later CPU reset invalidates frontend metadata, marks fetches stale, drains old
-data responses and preserves already offered AR/AW/W obligations. IDs remain
-owned until those transactions drain, preventing reset-time tag aliasing.
-One asynchronous reset-event bit keeps cancellation active until a clock records
-it, including a pulse entirely between CPU edges. New CPU handshakes resume after
-that cleanup edge; no memory-request pipeline stage is added.
-Memory contents are neither cleared nor reloaded by CPU reset.
+The CPU, adapter and storage wrapper use the same `rst_ni`. Reset clears adapter
+ownership, held requests and frontend reservations together; no cleanup cycle is
+needed after release. This contract assumes the memory system also cancels all
+outstanding transactions. The unmodified upstream model uses timed tasks and
+only waits for its first reset release, so a later reset with native transactions
+still pending is outside its supported usage. The variable-latency verification
+slave resets its queues and covers that system-reset case. Memory contents are
+neither cleared nor reloaded by reset.
 
 `axi_sim_model.sv` includes the unchanged upstream source in a 1 ps time scope.
 The storage wrapper applies responses 1 ps after the CPU falling edge. It snapshots
@@ -269,8 +302,8 @@ cross-ID response order.
 
 Both AXI instances use the same shared firmware parser as TC_SRAM, depositing
 bytes directly into the appropriate native associative array at absolute
-addresses. Untouched addresses remain absent/uninitialized. No linker, runtime,
-fetch-stage, datapath, LSU interface, or Store Buffer changes are required.
+addresses. Untouched addresses remain absent/uninitialized. The linker, runtime,
+LSU interfaces, Store Buffer, and datapath/fetch-stage reset interfaces are unchanged.
 
 ### AXI verification commands
 
@@ -284,7 +317,9 @@ The adapter script accepts `AXI_CONFIG`, `AXI_TB_CONFIG`, `AXI_BUILD_DIR`, and
 `VERILATOR` for isolated width/map builds. The default test slave has independent
 AR/R/AW/W/B stalls, variable response delay, cross-ID read/B reordering, and
 injected R/B errors; `AXI_NATIVE=1` runs against both original PULP memories.
-The oracle independently checks CPU responses, native requests, payload stability
+Both adapter testbenches instantiate production `fetch_mem_if` in drain mode.
+The oracle independently checks all raw responses, including canceled requests,
+and separately checks live frontend delivery, native requests, payload stability
 under backpressure, and exactly-once accepted writes. It covers byte lanes,
 boundaries, wrong-memory access, unsupported masks, MMIO, simultaneous traffic,
 flushes and CPU reset. Native loader checks cover HEX/TXT/BIN, sparse boundaries,
@@ -298,7 +333,7 @@ and reorders responses, checks no stale CDB publication, simultaneous
 flush/request/response cases, repeated flushes, all-tags-killed capacity and store
 progress. Its compiled model accepts `+seed=<decimal>` for reproducible runs.
 
-### AXI_SIM verification results (2026-10-21)
+### AXI_SIM integration baseline (before frontend drain migration)
 
 - Fetch widths 1/2/4/8 against the variable-latency slave and original PULP
   models, plus N=8 with relocated memory/MMIO against each model: 10
@@ -365,6 +400,132 @@ bridge. Full-core execution is tested at N=4; all four widths are checked at
 the adapter boundary. Architectural trap recovery and uninitialized-read
 checking retain the existing Spike checker limitations. No formal equivalence,
 synthesis/PPA, complete four-state simulation, or ModelSim validation is claimed.
+
+## Frontend-owned instruction drain verification
+
+`FETCH_MEM_DRAIN_ON_FLUSH` selects frontend-owned cancellation for both native
+backends. The adapter benches use production `fetch_mem_if`, keep an independent
+oracle for every raw response, and separately check live bundle data, exceptions
+and PC metadata. They cover backpressure, repeated flushes, stalled AXI AR,
+responses on flush edges, and system reset. TC_SRAM and the reset-capable AXI
+slave cancel pending reads on reset; native AXI reset is tested only while
+quiescent. Per-entry live-bit hardware is absent in LEGACY cancel-on-flush mode.
+
+The shared spill controller now expresses its state-only valid/data-select
+outputs separately from the Mealy write controls. This preserves its state
+encodings, output truth table and cycle timing, while avoiding a false
+process-level dependency through early-jump flush in traced Verilator builds.
+A 10,000-cycle comparison against the committed controller passes.
+
+The memory performance monitor retains native fetch timestamps across flush,
+matching responses that the frontend drains. System reset clears all timestamp
+queues together with the corresponding transactions.
+
+The initial drain-ownership migration evidence, before the unified-reset
+simplification, is under `build/instr-drain/`:
+
+- 17 TC_SRAM configurations, each with 100 seeds and 10,000 random cycles:
+  N=1/2/4/8 at instruction latencies 0/1/4/10 and data latencies 0/1/3,
+  including latency 10 with a four-entry FIFO, plus the default I=4/D=1 case.
+- Six AXI configurations with the same seed/cycle counts: all four widths with
+  the variable-latency slave, N=4 with the original PULP models, and N=8 with
+  relocated memory/MMIO. Together the native-memory benches execute 23 million
+  random cycles plus their directed sequences.
+- N=4 Spike execution passes hello_world, load_store, shift and CRC32 on all
+  three backends. Retirement traces and serial output agree through accepted
+  exit. LEGACY and AXI_SIM cycle counts are unchanged from the integration
+  baseline. TC_SRAM gains one startup cycle while frontend reset bookkeeping
+  completes; no instruction-response pipeline stage was added.
+- The existing cancel-mode frontend suite passes all executed groups, with
+  39,007,792 comparisons and no mismatches. Its directed catalog retains six
+  incomplete and one provisional scenario; this is not complete frontend
+  specification sign-off. Fetch-memory directed/random/framework and mutation
+  checks separately exercise the retained cancel-mode contract.
+- All 35 SRAM configuration/generator checks and eight backend-selection checks
+  pass. Full-core Verilator lint and compilation pass. Targeted Verible finds
+  only the same four existing fetch-stage style findings as the committed
+  baseline; there are no new waivers or new lint findings.
+
+| Program | TC_SRAM cycles | AXI_SIM cycles | LEGACY cycles |
+| --- | ---: | ---: | ---: |
+| hello_world | 27,368 | 27,714 | 24,075 |
+| load_store | 2,913 | 2,911 | 2,860 |
+| shift | 2,909 | 2,908 | 2,857 |
+| crc32 | 30,916 | 32,176 | 30,838 |
+
+In this earlier counter-based baseline, the outstanding limit included stale
+requests until their responses arrived. Flush freed result storage immediately,
+while old transactions could still backpressure requests. System reset cleared
+both counters and frontend storage. The current per-entry cancellation scheme
+above retains reservations until completed heads retire. Independent CPU-only
+reset is not supported. Full-core execution is checked at N=4; adapter/frontend
+benches cover all four widths. No formal equivalence, PPA, complete four-state
+or ModelSim sign-off is claimed.
+
+### Unified system reset verification
+
+The separate memory-link reset and CPU-reset event capture have been removed.
+`rst_ni` now resets the frontend, adapters and memory transaction state together;
+`datapath` keeps its original reset interface. Fetch flush still marks accepted
+requests stale and drains their ordered responses. The performance monitor clears
+all timestamps on system reset.
+
+Updated evidence is under `build/unified-reset/verification-summary.json`:
+
+- The same 23 memory configurations pass 100 seeds of 10,000 random cycles each.
+  Reset checks require zero outstanding transactions and empty response storage.
+  The variable-latency AXI slave covers reset with requests pending; native AXI
+  reset is quiescent because the upstream model only observes its first release.
+- All 12 N=4 full-core Spike runs pass, with identical retirement traces and serial
+  output across backends. Removing reset cleanup saves one startup cycle for both
+  TC_SRAM and AXI_SIM relative to the separate-reset implementation; LEGACY is
+  unchanged.
+- The fetch-memory suite passes all seven groups. All five frontend execution
+  groups pass, with 39,007,792 comparisons and zero mismatches; the existing six
+  incomplete and one provisional directed scenario remain.
+- All 35 configuration checks, eight backend-selection checks, current full-core
+  Verilator lint, syntax checks and `git diff --check` pass. Verible reports only
+  the four existing fetch-stage style findings. Upstream AXI checksums match.
+
+| Program | TC_SRAM cycles | AXI_SIM cycles | LEGACY cycles |
+| --- | ---: | ---: | ---: |
+| hello_world | 27,367 | 27,713 | 24,075 |
+| load_store | 2,912 | 2,910 | 2,860 |
+| shift | 2,908 | 2,907 | 2,857 |
+| crc32 | 30,915 | 32,175 | 30,838 |
+
+### Per-entry fetch cancellation verification
+
+Cancellation now uses a live bit in each completion FIFO entry, without separate
+frontend outstanding/stale counters. The three existing modulo pointers are
+preserved on flush; canceled heads retire only when complete. LEGACY retains its
+clear-on-flush contract. The request and answer spill cells are unchanged.
+
+Evidence is under `build/fifo-live/verification-summary.json`:
+
+- An independent queue oracle passes depths 1/2/4/8 in both flush modes, with
+  100 seeds of 10,000 random cycles each: eight million cycles plus directed
+  bypass, full, stalled-head, repeated-flush, response-on-flush and reset cases.
+- 17 TC_SRAM width/latency configurations and six AXI configurations each pass
+  100 seeds of 10,000 random cycles. TC_SRAM uses the proposed verification-only
+  timing oracle under `build/fifo-live/tc_sram_adapter_tb.sv`; its raw SRAM latency
+  checks are unchanged. AXI uses the existing testbench without changes.
+- The fetch-memory suite passes all seven groups, including mutations. The
+  frontend suite has 39,007,792 comparisons and zero mismatches; its existing
+  six incomplete and one provisional scenarios remain outside full sign-off.
+- All 12 N=4 Spike runs pass for the four representative programs and three
+  backends. Retirement traces and serial output match. LEGACY cycles are
+  unchanged. Retained canceled slots add recovery cycles: hello_world changes
+  from 27,367 to 27,780 cycles for TC_SRAM and 27,713 to 29,044 for AXI_SIM.
+  Full program measurements are in `build/fifo-live/performance-comparison.json`.
+- Targeted Verible, full-core Verilator lint and `git diff --check` pass.
+
+The existing TC_SRAM testbench still assumes immediate frontend delivery after
+flush and fails that timing assertion with retained entries. Applying the tested
+replacement oracle to `tb/memory/tc_sram/tc_sram_adapter_tb.sv` awaits permission
+under the two-module RTL scope restriction. The reviewable patch is
+`build/fifo-live/testbench-timing.patch`. No other design RTL changed in this step.
+No formal equivalence, synthesis/PPA or complete four-state sign-off is claimed.
 
 ## Firmware and linker integration
 

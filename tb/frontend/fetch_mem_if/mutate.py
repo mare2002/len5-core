@@ -48,7 +48,7 @@ def main():
         ('lane-word-swap','03','FM06','fetch_mem_if.sv','issue_instr_o[i].raw     = ans_reg_out.instr[i];','issue_instr_o[i].raw     = ans_reg_out.instr[(i+1)%LEN5_MULTIPLE_ISSUES];',1),
         ('lost-error-response','15','FM07','fetch_mem_if.sv','.result_valid_i(instr_valid_i),','.result_valid_i(instr_valid_i && !instr_except_raised_i[0]),',1),
         ('missing-answer-flush','26','FM14','fetch_mem_if.sv','.flush_i,\n      .valid_i(response_valid)',".flush_i(1'b0),\n      .valid_i(response_valid)",1),
-        ('missing-metadata-flush','25','FM14','completion_fifo.sv','.clr_i  (flush_i),\n    .en_i   (allocate_entry),', ".clr_i  (1'b0),\n    .en_i   (allocate_entry),",1),
+        ('missing-metadata-flush','25','FM14','completion_fifo.sv','.clr_i  (clear_pointers),\n    .en_i   (allocate_entry),', ".clr_i  (1'b0),\n    .en_i   (allocate_entry),",1),
         ('ready-on-flush','25','FM09','completion_fifo.sv','active && (pending_result || allocate_i);','rst_ni && (pending_result || allocate_i);',1),
         ('ready-on-full','11','FM09','spill_cell_flush_cu.sv',"ready_o = 1'b0;  // do not accept new data","ready_o = 1'b1;  // deliberately admit while full",2),
         ('duplicate-answer','03','FM07','spill_cell_flush_cu.sv','else if (!valid_i && ready_i) next_state = NO_DATA;','else if (!valid_i && ready_i) next_state = curr_state;',2),

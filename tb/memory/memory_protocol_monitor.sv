@@ -72,7 +72,7 @@ module memory_protocol_monitor #(
         rsp_stall[p] = 0;
       end
     end else if (!finished) begin
-      if (flush_i) clear_queue(0);
+      if (flush_i && !len5_config_pkg::FETCH_MEM_DRAIN_ON_FLUSH) clear_queue(0);
       if (load_flush_i) clear_queue(1);
       cycles++;
       retired += 64'(retire_i);
@@ -91,10 +91,14 @@ module memory_protocol_monitor #(
           accepted[p]++;
           push_time(p, cycles);
         end
-        if (valid_i[p] && ready_i[p] && !(p == 0 && flush_i) && !(p == 1 && load_flush_i) && queue_size(p) != 0) begin
+        if (valid_i[p] && ready_i[p] &&
+            !(p == 0 && flush_i && !len5_config_pkg::FETCH_MEM_DRAIN_ON_FLUSH) &&
+            !(p == 1 && load_flush_i) && queue_size(p) != 0) begin
           start_cycle = pop_time(p);
-          completed[p]++;
-          latency[p] += cycles - start_cycle;
+          if (start_cycle != 0) begin
+            completed[p]++;
+            latency[p] += cycles - start_cycle;
+          end
         end
       end
       if (stop_i) begin

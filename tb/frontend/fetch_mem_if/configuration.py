@@ -38,6 +38,7 @@ def sources():
     paths.update([ROOT/'rtl/packages.core', ROOT/'rtl/misc/packages-waivers.vlt',
                   ROOT/'rtl/frontend/fetch_mem_if.sv', ROOT/'rtl/common/completion_fifo.sv',
                   ROOT/'rtl/common/spill_cell_flush.sv', ROOT/'rtl/common/spill_cell_flush_cu.sv', ROOT/'rtl/common/modn_counter.sv',
+                  ROOT/'rtl/common/modn_counter_updown.sv',
                   ROOT/'tb/frontend/early_jump_unit/early_jump_instructions.cpp', ROOT/'tb/frontend/early_jump_unit/early_jump_instructions.hh', ROOT/'tb/verilator/verilator-common.core',
                   ROOT/'tb/verilator/tb_macros.cpp', ROOT/'tb/verilator/tb_macros.hh',
                   ROOT/'tb/frontend/pc_gen/pc_gen_model.cpp', ROOT/'tb/frontend/pc_gen/pc_gen_model.hh',

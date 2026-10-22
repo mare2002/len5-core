@@ -6,7 +6,8 @@
 module completion_fifo #(
   parameter type META_T = logic [63:0],
   parameter type DATA_T = logic [63:0],
-  parameter int unsigned DEPTH = 2
+  parameter int unsigned DEPTH = 2,
+  parameter bit DRAIN_ON_FLUSH = 1'b0
 ) (
   input  logic  clk_i,
   input  logic  rst_ni,
@@ -33,7 +34,8 @@ module completion_fifo #(
   logic [POINTER_WIDTH-1:0] head_q, fill_q, tail_q;
   logic [ADDRESS_WIDTH-1:0] head_addr, fill_addr, tail_addr;
   logic reserved_empty, reserved_full, head_complete, pending_result;
-  logic active, allocate_entry, result_accepted, response_consumed, store_result;
+  logic active, clear_pointers, allocate_entry, result_accepted, response_consumed;
+  logic head_has_result, head_live, discard_head, advance_head, store_result;
 
   // DEPTH must be a positive power of two. The MSB distinguishes the two laps;
   // the remaining bits select storage. A depth-one FIFO has only address zero.
@@ -49,19 +51,40 @@ module completion_fifo #(
   assign pending_result    = fill_q != tail_q;
 
   assign active            = rst_ni && !flush_i;
+  assign clear_pointers    = flush_i && !DRAIN_ON_FLUSH;
   assign allocate_entry    = active && allocate_i;
   // No pop lookahead: retain the full-queue recovery bubble.
   assign credit_o          = active && !reserved_full;
-  // Allocation also permits a response from a zero-latency producer.
-  assign result_ready_o    = active && (pending_result || allocate_i);
   assign result_accepted   = result_valid_i && result_ready_o;
-  assign valid_o           = active && (head_complete || result_accepted);
+  assign head_has_result   = head_complete || result_accepted;
+  assign valid_o           = active && head_has_result && head_live;
   assign response_consumed = valid_o && ready_i;
+  assign advance_head      = response_consumed || discard_head;
+
+  if (DRAIN_ON_FLUSH) begin : gen_drain_entries
+    logic [DEPTH-1:0] live_q;
+
+    // Flush cancels publication, but each accepted request keeps its reservation.
+    always_ff @(posedge clk_i or negedge rst_ni) begin : update_live
+      if (!rst_ni) live_q <= '0;
+      else if (flush_i) live_q <= '0;
+      else if (allocate_entry) live_q[tail_addr] <= 1'b1;
+    end
+
+    // An empty-queue allocation can complete before its live bit is registered.
+    assign head_live = reserved_empty ? allocate_entry : live_q[head_addr];
+    assign result_ready_o = rst_ni && (pending_result || allocate_entry);
+    assign discard_head = rst_ni && head_has_result && (flush_i || !head_live);
+  end else begin : gen_cancel_entries
+    assign head_live = 1'b1;
+    assign result_ready_o = active && (pending_result || allocate_i);
+    assign discard_head = 1'b0;
+  end
 
   // An arriving head bypasses storage; older completed entries always take priority.
   assign metadata_o        = !reserved_empty ? metadata_q[head_addr] : metadata_i;
   assign data_o            = head_complete ? data_q[head_addr] : result_i;
-  assign store_result      = result_accepted && !(!head_complete && response_consumed);
+  assign store_result      = result_accepted && !(!head_complete && advance_head);
 
   // Payload banks need no reset; pointer ownership qualifies every read.
   always_ff @(posedge clk_i) begin : write_entries
@@ -74,8 +97,8 @@ module completion_fifo #(
   ) u_head_counter (
     .clk_i,
     .rst_ni,
-    .clr_i  (flush_i),
-    .en_i   (response_consumed),
+    .clr_i  (clear_pointers),
+    .en_i   (advance_head),
     .count_o(head_q),
     .tc_o   ()
   );
@@ -84,7 +107,7 @@ module completion_fifo #(
   ) u_fill_counter (
     .clk_i,
     .rst_ni,
-    .clr_i  (flush_i),
+    .clr_i  (clear_pointers),
     .en_i   (result_accepted),
     .count_o(fill_q),
     .tc_o   ()
@@ -94,7 +117,7 @@ module completion_fifo #(
   ) u_tail_counter (
     .clk_i,
     .rst_ni,
-    .clr_i  (flush_i),
+    .clr_i  (clear_pointers),
     .en_i   (allocate_entry),
     .count_o(tail_q),
     .tc_o   ()

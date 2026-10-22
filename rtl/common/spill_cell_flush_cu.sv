@@ -110,52 +110,54 @@ module spill_cell_flush_cu (
     endcase
   end
 
+  // These outputs are Moore signals; keep them independent of incoming data.
+  always_comb begin : state_outputs
+    valid_o = 1'b0;
+    b_sel_o = 1'b0;
+    case (curr_state)
+      A_FULL, AB_FULL_SEL_A: valid_o = 1'b1;
+      B_FULL, AB_FULL_SEL_B: begin
+        valid_o = 1'b1;
+        b_sel_o = 1'b1;
+      end
+      default: ;
+    endcase
+  end
+
   // Output evaluation
   // NOTE: Mealy machine that uses valid_i to enable the regs and save power
   always_comb begin : cu_out_eval
     // Default values
     ready_o = 1'b0;
-    valid_o = 1'b0;
     a_en_o  = 1'b0;
     b_en_o  = 1'b0;
-    b_sel_o = 1'b0;
 
     case (curr_state)
       RESET:   ;  // use default values
       NO_DATA: begin
         ready_o = !flush_i;  // new data can be accepted
-        valid_o = 1'b0;  // no valid data in A or B
         a_en_o  = valid_i;  // save incoming data in A
         b_en_o  = 1'b0;  // use A instead
-        b_sel_o = 1'b0;
       end
       A_FULL: begin
         ready_o = !flush_i;  // new data can be accepted
-        valid_o = 1'b1;  // valid data in A
         a_en_o  = 1'b0;  // keep old data in A
         b_en_o  = valid_i;  // store new data in B
-        b_sel_o = 1'b0;  // select data in A
       end
       B_FULL: begin
         ready_o = !flush_i;  // new data can be accepted
-        valid_o = 1'b1;  // valid data in B
         a_en_o  = valid_i;  // store new data in A
         b_en_o  = 1'b0;  // keep old data in B
-        b_sel_o = 1'b1;  // select data in B
       end
       AB_FULL_SEL_A: begin
         ready_o = 1'b0;  // do not accept new data
-        valid_o = 1'b1;  // valid data in A
         a_en_o  = 1'b0;  // no data to store
         b_en_o  = 1'b0;  // no data to store
-        b_sel_o = 1'b0;  // select data in A
       end
       AB_FULL_SEL_B: begin
         ready_o = 1'b0;  // do not accept new data
-        valid_o = 1'b1;  // valid data in B
         a_en_o  = 1'b0;  // no data to store
         b_en_o  = 1'b0;  // no data to store
-        b_sel_o = 1'b1;  // select data in B
       end
       default: ;  // use default values
     endcase

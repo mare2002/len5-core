@@ -13,9 +13,7 @@ module axi_sim_adapter #(
   parameter int unsigned COUNT_WIDTH = axi_memory_pkg::CountWidth
 ) (
   input logic clk_i,
-  input logic rst_ni,  // AXI power-on reset, independent of CPU recovery
-  input logic cpu_reset_ni,
-  input logic instr_flush_i,
+  input logic rst_ni,
   input logic data_flush_i,
   input logic initialized_i,
   input logic instr_req_i,
@@ -46,7 +44,6 @@ module axi_sim_adapter #(
   import memory_backend_pkg::*;
   import axi_memory_pkg::*;
   localparam int unsigned InstrBytes = InstrDataWidth / 8;
-  localparam int unsigned FetchCountWidth = $clog2(MAX_INSTR_OUTSTANDING + 1);
   localparam int unsigned MetadataAddrWidth = MAX_INSTR_OUTSTANDING > 1 ? $clog2(
       MAX_INSTR_OUTSTANDING
   ) : 1;
@@ -73,7 +70,7 @@ module axi_sim_adapter #(
     except_code_t code;
   } data_response_t;
 
-  logic cpu_active, cpu_reset, cpu_reset_pending_q, instr_cancel, store_cancel;
+  logic cpu_active, cpu_reset, instr_active, store_cancel;
   logic [63:0] fetch_bundle_addr;
   logic        fetch_misaligned;
   logic [N-1:0] fetch_sram, fetch_mmio, fetch_except;
@@ -81,13 +78,10 @@ module axi_sim_adapter #(
   fetch_metadata_t fetch_metadata, fetch_head;
   fetch_response_t fetch_result;
   logic metadata_full, metadata_empty, metadata_pop;
-  logic [MetadataAddrWidth-1:0] unused_metadata_usage;
-  logic instr_accepted, instr_ar_fire, instr_r_fire, instr_r_done, instr_stale_result;
-  logic instr_ar_valid_q, instr_ar_stale_q;
+  logic [MetadataAddrWidth-1:0] metadata_usage;
+  logic instr_accepted, instr_ar_fire;
+  logic instr_ar_valid_q;
   imem_axi_ar_chan_t instr_ar_q;
-  logic [FetchCountWidth-1:0] instr_outstanding_q, instr_outstanding_d;
-  logic [FetchCountWidth-1:0] instr_stale_q, instr_stale_d;
-  logic instr_capacity;
 
   logic load_sram, load_mmio, load_except;
   except_code_t load_code;
@@ -117,15 +111,9 @@ module axi_sim_adapter #(
     endcase
   endfunction
 
-  // CPU reservations reset asynchronously, including pulses between AXI edges.
-  // Keep cancellation active until a clock has recorded the old transactions.
-  always_ff @(posedge clk_i or negedge rst_ni or negedge cpu_reset_ni) begin : remember_cpu_reset
-    if (!rst_ni || !cpu_reset_ni) cpu_reset_pending_q <= 1'b1;
-    else cpu_reset_pending_q <= 1'b0;
-  end
-  assign cpu_reset         = !cpu_reset_ni || cpu_reset_pending_q;
-  assign cpu_active        = rst_ni && !cpu_reset && initialized_i;
-  assign instr_cancel      = instr_flush_i || cpu_reset;
+  assign cpu_reset         = !rst_ni;
+  assign cpu_active        = rst_ni && initialized_i;
+  assign instr_active      = rst_ni && initialized_i;
   assign store_cancel      = data_flush_i || cpu_reset;
   assign fetch_bundle_addr = N == 1 ? instr_addr_i : instr_addr_i & ~64'(N * 4 - 1);
   assign fetch_misaligned  = instr_addr_i[1:0] != 0;
@@ -149,33 +137,29 @@ module axi_sim_adapter #(
   assign fetch_metadata.code       = fetch_misaligned ? {N{E_I_ADDR_MISALIGNED}} : fetch_code;
 
   // This queue holds request metadata only. Instruction data stays on AXI until
-  // its frontend reservation accepts it; locally detected faults use the same order.
+  // its frontend accepts or drains it. Every accepted request returns, including
+  // across flush; locally detected faults use the same order. System reset
+  // cancels both memory transactions and their metadata.
   fifo_v3 #(
     .dtype(fetch_metadata_t),
     .DEPTH(MAX_INSTR_OUTSTANDING)
   ) u_fetch_metadata (
     .clk_i,
     .rst_ni,
-    .flush_i   (instr_cancel),
+    .flush_i   (1'b0),
     .testmode_i(1'b0),
     .full_o    (metadata_full),
     .empty_o   (metadata_empty),
-    .usage_o   (unused_metadata_usage),
+    .usage_o   (metadata_usage),
     .data_i    (fetch_metadata),
     .push_i    (instr_accepted),
     .data_o    (fetch_head),
     .pop_i     (metadata_pop)
   );
-  assign instr_capacity = (COUNT_WIDTH'(instr_outstanding_q) + COUNT_WIDTH'(instr_ar_valid_q)) <
-                          COUNT_WIDTH'(MAX_INSTR_OUTSTANDING);
-  assign response_o.instr_gnt = cpu_active && !instr_cancel && !metadata_full &&
-      (!fetch_metadata.use_axi || (instr_capacity && (!instr_ar_valid_q || imem_rsp_i.ar_ready)));
+  assign response_o.instr_gnt = instr_active && !metadata_full &&
+      (!fetch_metadata.use_axi || !instr_ar_valid_q || imem_rsp_i.ar_ready);
   assign instr_accepted = instr_req_i && response_o.instr_gnt;
   assign instr_ar_fire = instr_ar_valid_q && imem_rsp_i.ar_ready;
-  assign instr_r_fire = imem_rsp_i.r_valid && imem_req_o.r_ready;
-  assign instr_r_done = instr_r_fire && imem_rsp_i.r.last;
-  assign instr_stale_result = instr_cancel || instr_stale_q != 0 ||
-      (instr_outstanding_q == 0 && instr_ar_fire && instr_ar_stale_q);
 
   assign imem_req_o.aw = '0;
   assign imem_req_o.aw_valid = 1'b0;
@@ -184,10 +168,10 @@ module axi_sim_adapter #(
   assign imem_req_o.b_ready = 1'b0;
   assign imem_req_o.ar = instr_ar_q;
   assign imem_req_o.ar_valid = instr_ar_valid_q;
-  assign imem_req_o.r_ready = instr_stale_result ||
-      (!metadata_empty && fetch_head.use_axi && (!imem_rsp_i.r.last || instr_ready_i));
-  assign response_o.instr_valid = cpu_active && !instr_cancel && !metadata_empty &&
-      (!fetch_head.use_axi || (!instr_stale_result && imem_rsp_i.r_valid && imem_rsp_i.r.last));
+  assign imem_req_o.r_ready = !metadata_empty && fetch_head.use_axi &&
+                            (!imem_rsp_i.r.last || instr_ready_i);
+  assign response_o.instr_valid = instr_active && !metadata_empty &&
+      (!fetch_head.use_axi || (imem_rsp_i.r_valid && imem_rsp_i.r.last));
   assign metadata_pop = response_o.instr_valid && instr_ready_i;
   assign {response_o.instr_data, response_o.instr_except, response_o.instr_code} = fetch_result;
 
@@ -206,31 +190,14 @@ module axi_sim_adapter #(
     end
   end
 
-  always_comb begin : count_instruction_transactions
-    instr_outstanding_d = instr_outstanding_q + FetchCountWidth'(instr_ar_fire) - FetchCountWidth'(instr_r_done);
-    if (instr_cancel) begin
-      // Includes AR accepted on the flush edge, excludes RLAST consumed on it.
-      instr_stale_d = instr_outstanding_d;
-    end else begin
-      instr_stale_d = instr_stale_q + FetchCountWidth'(instr_ar_fire && instr_ar_stale_q) -
-          FetchCountWidth'(instr_r_done && instr_stale_result);
-    end
-  end
   always_ff @(posedge clk_i or negedge rst_ni) begin : update_instruction_port
     if (!rst_ni) begin
       instr_ar_valid_q    <= 1'b0;
-      instr_ar_stale_q    <= 1'b0;
       instr_ar_q          <= '0;
-      instr_outstanding_q <= '0;
-      instr_stale_q       <= '0;
     end else begin
-      instr_outstanding_q <= instr_outstanding_d;
-      instr_stale_q       <= instr_stale_d;
       if (instr_ar_fire) instr_ar_valid_q <= 1'b0;
-      if (instr_cancel && instr_ar_valid_q) instr_ar_stale_q <= 1'b1;
       if (instr_accepted && fetch_metadata.use_axi) begin
         instr_ar_valid_q <= 1'b1;
-        instr_ar_stale_q <= 1'b0;
         instr_ar_q       <= '0;
         instr_ar_q.addr  <= fetch_bundle_addr & ~64'(InstrBytes - 1);
         instr_ar_q.size  <= axi_pkg::size_t'($clog2(InstrBytes));
@@ -238,9 +205,6 @@ module axi_sim_adapter #(
         // ID zero orders every instruction response, including canceled reads.
         instr_ar_q.id    <= '0;
       end
-      assert (instr_outstanding_d <= FetchCountWidth'(MAX_INSTR_OUTSTANDING));
-      assert (instr_stale_d <= instr_outstanding_d);
-      assert (!instr_r_done || instr_outstanding_q != 0 || instr_ar_fire);
       if (imem_rsp_i.r_valid) assert (imem_rsp_i.r.id == 0);
     end
   end
@@ -275,7 +239,7 @@ module axi_sim_adapter #(
   );
 
   // Loads accepted by LEN5 remain owned through flush, including an unaccepted AR.
-  // CPU reset discards their eventual responses without reusing a still-busy ID.
+  // System reset clears their ownership together with the memory system.
   assign load_response_space = !load_response_valid_q || load_ready_i;
   assign response_o.load_gnt = cpu_active && !load_busy_q[load_tag_i] && !(|store_discard_q) &&
       (load_sram ? (!load_ar_valid_q || dmem_rsp_i[0].ar_ready) :
@@ -449,13 +413,13 @@ module axi_sim_adapter #(
     end
   end
 
-  assign outstanding_o[0] = COUNT_WIDTH'(instr_outstanding_q) + COUNT_WIDTH'(instr_ar_valid_q);
+  assign outstanding_o[0] = metadata_full ? COUNT_WIDTH'(MAX_INSTR_OUTSTANDING) : COUNT_WIDTH'(metadata_usage);
   assign outstanding_o[1] = COUNT_WIDTH'($countones(load_busy_q));
   assign outstanding_o[2] = COUNT_WIDTH'($countones(store_busy_q));
   assign occupancy_o[0]   = '0;
   assign occupancy_o[1]   = COUNT_WIDTH'(load_response_valid_q);
   assign occupancy_o[2]   = COUNT_WIDTH'(store_response_valid_q);
-  wire unused_decode = &{1'b0, fetch_mmio, unused_metadata_usage, load_mmio,
+  wire unused_decode = &{1'b0, fetch_mmio, load_mmio,
                          imem_rsp_i, fetch_sram, store_response_q.data};
 
   initial begin : check_configuration

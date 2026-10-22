@@ -16,7 +16,8 @@ module fetch_stage #(
   parameter int unsigned HLEN = 4,
   parameter int unsigned BTB_BITS = 4,
   parameter longint unsigned BOOT_PC = 64'h0,
-  parameter int unsigned MEMIF_FIFO_DEPTH = 2  // equal to the max number of outstanding requests the memory can accept
+  parameter int unsigned MEMIF_FIFO_DEPTH = 2,  // maximum memory transactions and completion reservations
+  parameter bit MEM_DRAIN_ON_FLUSH = len5_config_pkg::FETCH_MEM_DRAIN_ON_FLUSH
 ) (
   input logic clk_i,
   input logic rst_ni,
@@ -178,7 +179,8 @@ module fetch_stage #(
   // MEMORY INTERFACE
   // ----------------
   fetch_mem_if #(
-    .MAX_MEM_OUTSTANDING_REQUESTS(MEMIF_FIFO_DEPTH)
+    .MAX_MEM_OUTSTANDING_REQUESTS(MEMIF_FIFO_DEPTH),
+    .DRAIN_ON_FLUSH(MEM_DRAIN_ON_FLUSH)
   ) u_mem_if (
     .clk_i                (clk_i),
     .rst_ni               (rst_ni),

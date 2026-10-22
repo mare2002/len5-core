@@ -23,7 +23,6 @@ module tc_sram_adapter #(
 ) (
   input logic clk_i,
   input logic rst_ni,
-  input logic instr_flush_i,
   input logic load_flush_i,
   input logic initialized_i,
   input logic instr_req_i,
@@ -134,7 +133,7 @@ module tc_sram_adapter #(
   assign fetch_metadata.except = fetch_pc_misaligned ? '1 : fetch_lane_except;
   assign fetch_metadata.code = fetch_pc_misaligned ? {N{E_I_ADDR_MISALIGNED}} : fetch_lane_code;
 
-  assign instr_active = initialized_i && rst_ni && !instr_flush_i;
+  assign instr_active = initialized_i && rst_ni;
   assign instr_accepted = instr_req_i && response_o.instr_gnt;
   assign imem_req_o = instr_accepted && !fetch_pc_misaligned && fetch_lane_sram[0];
   assign imem_addr_o = IMEM_ADDR_WIDTH'((fetch_bundle_addr - IMEM_BASE_ADDR) >> IMEM_ADDR_SHIFT);
@@ -158,8 +157,6 @@ module tc_sram_adapter #(
       if (!rst_ni) begin
         pending_q <= '0;
         foreach (metadata_q[stage]) metadata_q[stage] <= '0;
-      end else if (instr_flush_i) begin
-        pending_q <= '0;
       end else begin
         pending_q[0] <= instr_accepted;
         if (instr_accepted) metadata_q[0] <= fetch_metadata;

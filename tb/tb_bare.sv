@@ -143,6 +143,10 @@ module tb_bare #(
         "LOAD_BUFFER_DRAIN_ON_FLUSH must be enabled only for AXI_SIM; use prepare-memory-backend.py"
     );
   end
+  if (FETCH_MEM_DRAIN_ON_FLUSH != (MEMORY_BACKEND == MEM_BACKEND_TC_SRAM ||
+                                  MEMORY_BACKEND == MEM_BACKEND_AXI_SIM)) begin : gen_fetch_protocol_error
+    $fatal(1, "FETCH_MEM_DRAIN_ON_FLUSH must be enabled for native memories; use prepare-memory-backend.py");
+  end
 
   // Command-line options and configuration
   // --------------------------------------
@@ -461,7 +465,6 @@ module tb_bare #(
       ) u_adapter (
         .clk_i,
         .rst_ni,
-        .instr_flush_i(dp2mem_flush),
         .load_flush_i (dp2mem_load_flush),
         .initialized_i(sram_initialized),
         .instr_req_i  (dp2mem_instr_valid),
@@ -535,11 +538,6 @@ module tb_bare #(
       axi_memory_pkg::imem_axi_resp_t       axi_imem_rsp;
       axi_memory_pkg::dmem_axi_req_t  [1:0] axi_dmem_req;
       axi_memory_pkg::dmem_axi_resp_t [1:0] axi_dmem_rsp;
-      bit                                   axi_reset_n;
-      initial axi_reset_n = 0;
-      // The upstream model retains its queues after its first reset release.
-      // Keep the adapter's AXI ownership alive while CPU reset drains old work.
-      always @(negedge clk_i) axi_reset_n <= 1;
       assign sram_initialized = imem_initialized && dmem_initialized;
       assign imem_rdata       = '0;
       assign dmem_rdata       = '0;
@@ -557,9 +555,7 @@ module tb_bare #(
         .EXIT_ADDR  (EXIT_ADDR)
       ) u_adapter (
         .clk_i,
-        .rst_ni       (axi_reset_n),
-        .cpu_reset_ni (rst_ni),
-        .instr_flush_i(dp2mem_flush),
+        .rst_ni,
         .data_flush_i (dp2mem_load_flush),
         .initialized_i(sram_initialized),
         .instr_req_i  (dp2mem_instr_valid),
@@ -597,7 +593,7 @@ module tb_bare #(
         .AXI_RESP_T      (axi_memory_pkg::imem_axi_resp_t)
       ) u_imem (
         .clk_i,
-        .rst_ni       (axi_reset_n),
+        .rst_ni,
         .req_i        (axi_imem_req),
         .rsp_o        (axi_imem_rsp),
         .initialized_o(imem_initialized)
@@ -611,7 +607,7 @@ module tb_bare #(
         .NUM_PORTS       (2)
       ) u_dmem (
         .clk_i,
-        .rst_ni       (axi_reset_n),
+        .rst_ni,
         .req_i        (axi_dmem_req),
         .rsp_o        (axi_dmem_rsp),
         .initialized_o(dmem_initialized)

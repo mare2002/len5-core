@@ -120,6 +120,9 @@ package len5_config_pkg;
   // Fetch memory interface
   // verilog_lint: waive parameter-name-style
   localparam int unsigned FETCH_MEMIF_FIFO_DEPTH = 32'd8;  // completion queue entries (positive power of two)
+  // Drain ordered fetch responses when memory cannot cancel accepted requests.
+  // verilog_lint: waive parameter-name-style
+  localparam bit FETCH_MEM_DRAIN_ON_FLUSH = 1'b1;
   // Retain accepted load tags across flush when the memory cannot cancel requests.
   // verilog_lint: waive parameter-name-style
   localparam bit LOAD_BUFFER_DRAIN_ON_FLUSH = 1'b0;

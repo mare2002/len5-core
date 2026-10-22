@@ -12,7 +12,7 @@ module axi_sim_storage #(
   parameter bit LOAD_FIRMWARE = 1
 ) (
   input logic clk_i,
-  input logic rst_ni,  // one-time AXI power-on reset; CPU reset is handled by the adapter
+  input logic rst_ni,
   input AXI_REQ_T [NUM_PORTS-1:0] req_i,
   output AXI_RESP_T [NUM_PORTS-1:0] rsp_o,
   output bit initialized_o

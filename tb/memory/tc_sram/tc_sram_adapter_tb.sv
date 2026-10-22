@@ -7,6 +7,7 @@ module tc_sram_adapter_tb;
   localparam int N = LEN5_MULTIPLE_ISSUES;
   localparam int Capacity = SRAM_RESPONSE_DEPTH;
   localparam int FetchDepth = FETCH_MEMIF_FIFO_DEPTH;
+  localparam int FrontendCapacity = FetchDepth + (FETCH_ANS_SPILL_SKIP ? 0 : 2);
   localparam int Size = 256;
   localparam int IWidth = N > 2 ? 32 * N : 64;
   localparam int IBytes = IWidth / 8;
@@ -36,33 +37,33 @@ module tc_sram_adapter_tb;
     logic [N-1:0] except;
     except_code_t [N-1:0] code;
   } fetch_response_t;
-  fetch_response_t instr_result, instr_response;
+  fetch_response_t instr_response;
   logic instr_request, instr_credit, instr_result_ready, instr_response_valid;
   logic [63:0] instr_response_addr;
   assign initialized   = imem_initialized && dmem_initialized;
 
-  // Match fetch_mem_if: every accepted read owns a frontend completion slot.
-  // Downstream stalls consume credits without blocking already accepted SRAM results.
-  assign instr_request = req[0] && instr_credit;
-  assign instr_result  = '{data: rsp.instr_data, except: rsp.instr_except, code: rsp.instr_code};
-  completion_fifo #(
-    .META_T(logic [63:0]),
-    .DATA_T(fetch_response_t),
-    .DEPTH (FetchDepth)
+  fetch_pkg::prediction_t [N-1:0] fetch_prediction, returned_prediction;
+  instr_t [N-1:0] returned_instruction;
+  logic [63:0] instr_address;
+  for (genvar lane = 0; lane < N; lane++) begin : gen_fetch_lanes
+    assign fetch_prediction[lane] = '{pc: addr[0] + 64'(4 * lane), hit: 1'b0, target: '0, taken: 1'b0};
+    assign instr_response.data[lane] = returned_instruction[lane].raw;
+  end
+  assign instr_response_addr = returned_prediction[0].pc;
+  fetch_mem_if #(
+    .MAX_MEM_OUTSTANDING_REQUESTS(FetchDepth),
+    .DRAIN_ON_FLUSH(1'b1)
   ) u_frontend_responses (
-    .clk_i         (clk),
-    .rst_ni        (rst),
-    .flush_i       (flush),
-    .allocate_i    (instr_request && rsp.instr_gnt),
-    .credit_o      (instr_credit),
-    .metadata_i    (addr[0]),
-    .result_valid_i(rsp.instr_valid),
-    .result_ready_o(instr_result_ready),
-    .result_i      (instr_result),
-    .valid_o       (instr_response_valid),
-    .ready_i       (ready[0]),
-    .metadata_o    (instr_response_addr),
-    .data_o        (instr_response)
+    .clk_i(clk), .rst_ni(rst), .flush_i(flush),
+    .fetch_valid_i(req[0]), .fetch_ready_o(instr_credit), .fetch_pred_i(fetch_prediction),
+    .valid_instr_i('1), .valid_instr_o(),
+    .issue_valid_o(instr_response_valid), .issue_ready_i(ready[0]),
+    .issue_instr_o(returned_instruction), .issue_pred_o(returned_prediction),
+    .issue_except_raised_o(instr_response.except), .issue_except_code_o(instr_response.code),
+    .instr_valid_i(rsp.instr_valid), .instr_ready_i(rsp.instr_gnt),
+    .instr_ready_o(instr_result_ready), .instr_valid_o(instr_request), .instr_we_o(),
+    .instr_rdata_i(rsp.instr_data), .instr_addr_o(instr_address),
+    .instr_except_raised_i(rsp.instr_except), .instr_except_code_i(rsp.instr_code)
   );
   tc_sram_adapter #(
     .IMEM_SIZE_BYTES(Size),
@@ -70,12 +71,11 @@ module tc_sram_adapter_tb;
   ) dut (
     .clk_i        (clk),
     .rst_ni       (rst),
-    .instr_flush_i(flush),
     .load_flush_i (load_flush),
     .initialized_i(initialized),
     .instr_req_i  (instr_request),
     .instr_ready_i(instr_result_ready),
-    .instr_addr_i (addr[0]),
+    .instr_addr_i (instr_address),
     .load_req_i   (req[1]),
     .load_ready_i (ready[1]),
     .load_addr_i  (addr[1]),
@@ -150,6 +150,7 @@ module tc_sram_adapter_tb;
     int due;
   } expected_t;
   typedef struct packed {
+    logic live;
     logic [63:0] address;
     logic [N-1:0][31:0] data;
     except_code_t [N-1:0] code;
@@ -163,7 +164,7 @@ module tc_sram_adapter_tb;
   int accepted[3], completed[3], errors[3], native_count[3], blocked[3], stalled[3];
   int max_out[3], max_occ[3], sum_out[3], sum_occ[3], latency_sum[3];
   int all_three = 0, collision = 0, flush_count = 0, mmio_count = 0;
-  int max_fetch_reserved = 0, fetch_return_count = 0;
+  int max_fetch_reserved = 0, fetch_return_count = 0, stale_returns = 0;
 
   function automatic int unsigned random32();
     rng ^= rng << 13;
@@ -231,10 +232,11 @@ module tc_sram_adapter_tb;
     logic [63:0] fetch_base;
     int          size;
     #5;
-    grant        = {rsp.store_gnt, rsp.load_gnt, rsp.instr_gnt && instr_credit};
-    valid        = {rsp.store_valid, rsp.load_valid, instr_response_valid};
+    grant        = {rsp.store_gnt, rsp.load_gnt, instr_credit};
+    valid        = {rsp.store_valid, rsp.load_valid, instr_response_valid && !flush};
     native_req   = {dmem_req, imem_req};
     accepted_now = req & grant;
+    if (flush) foreach (fetch_returns[i]) fetch_returns[i].live = 0;
     if (!rst) begin
       loads.delete();
       stores.delete();
@@ -242,10 +244,11 @@ module tc_sram_adapter_tb;
       fetch_returns.delete();
       assert (native_req == 0 && valid == 0 && grant == 0)
       else $fatal(1, "Activity during reset");
+      assert (outstanding == '0 && occupancy == '0)
+      else $fatal(1, "Reset retained memory transaction state");
     end else begin
       if (flush) begin
         fetches.delete();
-        fetch_returns.delete();
         flush_count++;
         assert (!valid[0] && !grant[0])
         else $fatal(1, "Fetch activity during flush");
@@ -265,6 +268,7 @@ module tc_sram_adapter_tb;
       if (accepted_now[0]) begin
         fetch_base = N == 1 ? addr[0] : addr[0] / (N * 4) * (N * 4);
         f          = '0;
+        f.live     = 1;
         f.address  = addr[0];
         f.issued   = cycle_no;
         f.due      = cycle_no + int'(IMEM_LATENCY);
@@ -314,21 +318,7 @@ module tc_sram_adapter_tb;
       end
       if (loads.size() != 0 && cycle_no >= loads[0].due) assert (valid[1]);
       if (stores.size() != 0 && cycle_no >= stores[0].due) assert (valid[2]);
-      if (fetches.size() != 0 && cycle_no >= fetches[0].due) assert (valid[0]);
-      // Check native completion separately from frontend delivery: a FIFO must not
-      // hide a late, reordered, or corrupt adapter response.
-      if (fetch_returns.size() != 0) begin
-        assert (rsp.instr_valid == (cycle_no == fetch_returns[0].due))
-        else $fatal(1, "IMEM response did not match configured latency");
-      end else assert (!rsp.instr_valid);
-      if (rsp.instr_valid) begin
-        f = fetch_returns.pop_front();
-        assert (instr_result_ready && rsp.instr_data === f.data && rsp.instr_code == f.code)
-        else $fatal(1, "Pipelined IMEM response mismatch");
-        for (int lane = 0; lane < N; lane++)
-        assert (rsp.instr_except[lane] == (f.code[lane] != E_UNKNOWN));
-        fetch_return_count++;
-      end
+      if (fetches.size() != 0 && cycle_no >= fetches[0].due + int'(FETCH_ANS_SPILL_SKIP == 0)) assert (valid[0]);
       // Every visible payload must remain the oldest expected response even while stalled.
       if (valid[0]) begin
         assert (fetches.size() != 0)
@@ -408,6 +398,21 @@ module tc_sram_adapter_tb;
       if (&dmem_req && dmem_addr[0] == dmem_addr[1]) collision++;
       if (fetches.size() > max_fetch_reserved) max_fetch_reserved = fetches.size();
     end
+    // Check native completion separately from frontend delivery: a FIFO must not
+    // hide a late, reordered, or corrupt adapter response.
+    if (fetch_returns.size() != 0) begin
+      assert (rsp.instr_valid == (cycle_no == fetch_returns[0].due))
+      else $fatal(1, "IMEM response did not match configured latency");
+    end else assert (!rsp.instr_valid);
+    if (rsp.instr_valid) begin
+      f = fetch_returns.pop_front();
+      assert (instr_result_ready && rsp.instr_data === f.data && rsp.instr_code == f.code)
+      else $fatal(1, "Pipelined IMEM response mismatch");
+      for (int lane = 0; lane < N; lane++)
+      assert (rsp.instr_except[lane] == (f.code[lane] != E_UNKNOWN));
+      fetch_return_count++;
+      if (!f.live) stale_returns++;
+    end
     clk = 1;
     #5;
     clk = 0;
@@ -436,6 +441,8 @@ module tc_sram_adapter_tb;
     repeat (3) tick();
     rst   = 1;
     ready = 7;
+    // Let the spill controllers leave RESET before checking normal response timing.
+    tick();
     for (int size = 1; size <= 8; size *= 2) begin
       for (int off = 0; off < 8; off += size) begin
         addr[0]  = IBase + (64'(off) & ~64'd3);
@@ -519,9 +526,9 @@ module tc_sram_adapter_tb;
         assert (accepted[0] - start_fetch == i + 1)
         else $fatal(1, "IMEM serialized outstanding requests");
       end
-      repeat (IMEM_LATENCY + 2) tick();
-      assert (accepted[0] - start_fetch == FetchDepth && fetch_returns.size() == 0 &&
-              fetches.size() == FetchDepth)
+      repeat (2 * IMEM_LATENCY + FetchDepth + 4) tick();
+      assert (accepted[0] - start_fetch == FrontendCapacity && fetch_returns.size() == 0 &&
+              fetches.size() == FrontendCapacity)
       else
         $fatal(1, "Full frontend FIFO did not backpressure requests while receiving all results");
       drain();
@@ -593,6 +600,8 @@ module tc_sram_adapter_tb;
         rst = 0;
         repeat (2) tick();
         rst = 1;
+        req = 0;
+        tick();
       end
     end
     drain();
@@ -604,7 +613,9 @@ module tc_sram_adapter_tb;
     end
     drain();
     assert (all_three > 0 && collision > 0 && mmio_count > 0 && flush_count > 0);
-    assert (max_fetch_reserved == FetchDepth && fetch_return_count > 0);
+    assert (max_fetch_reserved == FrontendCapacity && fetch_return_count > 0);
+    if (IMEM_LATENCY > 0) assert (stale_returns > 0);
+    $display("FETCH_DRAIN stale_returns=%0d", stale_returns);
     for (int p = 0; p < 3; p++) begin
       assert (errors[p] > 0 &&
               max_out[p] == (p == 0 ? (int'(IMEM_LATENCY) < FetchDepth ? int'(IMEM_LATENCY) : FetchDepth) : Capacity) &&

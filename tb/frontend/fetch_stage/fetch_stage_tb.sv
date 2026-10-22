@@ -60,7 +60,7 @@ module fetch_stage_tb #(
   assign config_cause_bits_o=len5_pkg::EXCEPT_TYPE_LEN;
   assign config_boot_o=BOOT_PC;
   fetch_stage #(.HLEN(fetch_pkg::HLEN),.BTB_BITS(fetch_pkg::BTB_BITS),
-    .BOOT_PC(BOOT_PC),.MEMIF_FIFO_DEPTH(MEM_DEPTH)) dut (
+    .BOOT_PC(BOOT_PC),.MEMIF_FIFO_DEPTH(MEM_DEPTH),.MEM_DRAIN_ON_FLUSH(1'b0)) dut (
     .clk_i,.rst_ni,.flush_i,.flush_bpu_i,.instr_valid_i,.instr_ready_i,.instr_ready_o,
     .instr_valid_o,.instr_we_o,.instr_rdata_i(words),.instr_addr_o,.early_jump_mem_flush_o,
     .instr_except_raised_i,.instr_except_code_i(causes),.issue_ready_i,.issue_valid_o,

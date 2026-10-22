@@ -31,4 +31,7 @@ cpu_config = dest / "rtl/packages/len5_config_pkg.sv"
 cpu_config.write_text(re.sub(r"(LOAD_BUFFER_DRAIN_ON_FLUSH\s*=\s*)1'b[01]",
                             r"\g<1>1'b" + ("1" if a.backend == "AXI_SIM" else "0"),
                             cpu_config.read_text()))
+cpu_config.write_text(re.sub(r"(FETCH_MEM_DRAIN_ON_FLUSH\s*=\s*)1'b[01]",
+                            r"\g<1>1'b" + ("0" if a.backend == "LEGACY" else "1"),
+                            cpu_config.read_text()))
 print(dest)

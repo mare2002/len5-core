@@ -7,9 +7,10 @@ mkdir -p "$test_build_dir"
   -MAKEFLAGS "OBJCACHE= CXX=${CXX:-/usr/bin/g++}" --Mdir "$test_build_dir" --top-module tc_sram_adapter_tb \
   -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY \
   tb/memory/tc_sram/waivers.vlt rtl/misc/packages-waivers.vlt \
-  rtl/packages/util_pkg.sv "${TC_SRAM_CONFIG:-rtl/packages/len5_config_pkg.sv}" rtl/packages/len5_pkg.sv \
+  rtl/packages/util_pkg.sv "${TC_SRAM_CONFIG:-rtl/packages/len5_config_pkg.sv}" rtl/packages/len5_pkg.sv rtl/packages/fetch_pkg.sv \
   "${TC_SRAM_TB_CONFIG:-tb/packages/tb_config_pkg.sv}" \
-  rtl/common/modn_counter.sv rtl/common/completion_fifo.sv \
+  rtl/common/modn_counter.sv rtl/common/modn_counter_updown.sv rtl/common/completion_fifo.sv \
+  rtl/common/spill_cell_flush_cu.sv rtl/common/spill_cell_flush.sv rtl/frontend/fetch_mem_if.sv \
   tb/memory/tc_sram/memory_backend_pkg.sv tb/memory/tc_sram/memory_access_check.sv \
   tb/memory/tc_sram/memory_response_buffer.sv tb/memory/tc_sram/tc_sram_adapter.sv \
   rtl/vendor/tech_cells_generic/tc_sram.sv +incdir+tb/memory tb/memory/tc_sram_storage.sv \

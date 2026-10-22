@@ -10,8 +10,9 @@
 //
 
 module fetch_mem_if #(
-    // At least the number of requests that the memory can accept simultaneously
-    parameter int unsigned MAX_MEM_OUTSTANDING_REQUESTS = 2
+    // Completion reservations include canceled requests until their entries retire.
+    parameter int unsigned MAX_MEM_OUTSTANDING_REQUESTS = 2,
+    parameter bit DRAIN_ON_FLUSH = len5_config_pkg::FETCH_MEM_DRAIN_ON_FLUSH
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -97,7 +98,8 @@ module fetch_mem_if #(
   completion_fifo #(
       .META_T(fetch_metadata_t),
       .DATA_T(fetch_result_t),
-      .DEPTH (MAX_MEM_OUTSTANDING_REQUESTS)
+      .DEPTH (MAX_MEM_OUTSTANDING_REQUESTS),
+      .DRAIN_ON_FLUSH(DRAIN_ON_FLUSH)
   ) u_response_queue (
       .clk_i,
       .rst_ni,
