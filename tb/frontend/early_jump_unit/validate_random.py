@@ -25,6 +25,8 @@ def main():
     command += [str(source/f'early_jump_{part}.cpp') for part in ['instructions','model','scoreboard','scoreboard_unit']]
     command += [str(source.parent/'pc_gen/pc_gen_model.cpp'),str(source.parents[1]/'verilator/tb_macros.cpp'),'-o',str(confidence)]
     with (root/'confidence-build.log').open('w') as log: subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True)
+    subprocess.run([str(confidence),str(root/'buffered-output-failure'),'output-failure'],check=True)
+    print('PASS: buffered report write failure is rejected',flush=True)
     for kind in ['unverified','matched','definitive']:
         d=root/('confidence-'+kind)
         with (root/('confidence-'+kind+'.log')).open('w') as log: result=subprocess.run([str(confidence),str(d),kind],stdout=log,stderr=subprocess.STDOUT)

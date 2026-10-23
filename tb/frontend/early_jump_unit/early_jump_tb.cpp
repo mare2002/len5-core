@@ -95,5 +95,7 @@ int main(int argc,char** argv) {
     catch(const EnvironmentError& e) { if(sim) sim->scoreboard().problem("environment_error",e.what()); else { TB_ERR("%s",e.what()); return 2; } }
     catch(const std::invalid_argument& e) { TB_ERR("SCB > build/configuration failure: %s",e.what()); return 2; }
     catch(const std::exception& e) { if(sim) sim->scoreboard().problem("framework_error",e.what()); else { TB_ERR("%s",e.what()); return 2; } }
-    return sim?sim->scoreboard().finish(reason,!o.random && o.selection=="all" && o.inject.empty(),o.random?"random":o.selection):2;
+    try {
+        return sim?sim->scoreboard().finish(reason,!o.random && o.selection=="all" && o.inject.empty(),o.random?"random":o.selection):2;
+    } catch(const std::exception& e) { TB_ERR("SCB > output failure: %s",e.what()); return 2; }
 }

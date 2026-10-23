@@ -3,6 +3,9 @@
 #include "pc_gen_environment.hh"
 #include <iostream>
 #include <functional>
+#include <iomanip>
+#include <random>
+#include <sstream>
 using namespace len5::pcgen;
 
 namespace {
@@ -20,6 +23,24 @@ void edge(ReferenceModel& m, const Inputs& i) { m.input_change(i); m.rising_edge
 }
 int main() {
     try {
+        for (unsigned byte=0; byte<256; ++byte) {
+            std::ostringstream expected;
+            expected << '"';
+            if (byte=='"' || byte=='\\') expected << '\\' << char(byte);
+            else if (byte<32) expected << "\\u" << std::hex << std::setw(4) << std::setfill('0') << byte;
+            else expected << char(byte);
+            expected << '"';
+            require(json_quote(std::string(1,char(byte)))==expected.str(),"JSON quoting preserves every byte");
+        }
+        require(json_quote("")=="\"\"", "empty JSON string");
+        require(json_quote(std::string("a\0b",3))=="\"a\\u0000b\"", "embedded NUL is escaped");
+        std::mt19937_64 formatting(17);
+        for (unsigned n=0; n<1024; ++n) {
+            const uint64_t value=n==0?0:n==1?UINT64_MAX:formatting();
+            std::ostringstream expected;
+            expected << "0x" << std::hex << std::setw(16) << std::setfill('0') << value;
+            require(hex64(value)==expected.str(),"64-bit hex keeps width, case and all bits");
+        }
         Config cfg; Contract contract; ReferenceModel m(cfg,contract);
         require(!m.cursor().known,"model starts unknown");
         Inputs i; i.rst_n=false; m.input_change(i);

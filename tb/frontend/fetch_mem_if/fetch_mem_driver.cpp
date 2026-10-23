@@ -80,7 +80,8 @@ void Simulator::step(Stimulus s) {
     const auto t=model_->plan(s,cycle_);environment_->validate(s,t,cycle_);
     if(options_.inject=="environment"&&s.inputs.rst_n)throw EnvironmentError("intentional invalid memory-protocol injection");
     if(logger.getLogLvl()>=LOG_HIGH)TB_LOG(LOG_HIGH,"REQ > id=%s cycle=%" PRIu64 " inputs=%s",scenario_.c_str(),cycle_,inputs_json(s.inputs,cfg_.lanes).c_str());
-    if(!sample(s,previous,t,"pre"))throw StopOnMismatch("public request/response controls diverged; physical episode stopped without oracle repair");dump();
+    if(!sample(s,previous,t,"pre"))throw StopOnMismatch("public request/response controls diverged; physical episode stopped without oracle repair");
+    dump();
     if(options_.inject=="framework")throw std::logic_error("intentional framework injection");
     environment_->consume(s,t,cycle_);model_->rising_edge(t);last_=t;
     context_->timeInc(1);dut_->clk_i=1;dut_->eval();const bool controls=sample(s,previous,t,"post");dump();

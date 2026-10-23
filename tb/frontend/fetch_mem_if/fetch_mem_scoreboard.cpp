@@ -221,7 +221,9 @@ int Scoreboard::finish(const std::string& reason,bool all,const std::string& sel
     const int status=environment_||framework_?2:field_errors_?1:incomplete?3:0;
     std::ofstream cov(directory_+"/coverage.json");cov<<coverage.json()<<'\n';
     std::ofstream chr(directory_+"/characterization.jsonl");for(const auto& p:observations_)chr<<"{\"observation\":"<<json_quote(p.first)<<",\"samples\":"<<p.second<<",\"representative\":"<<characterization_.at(p.first)<<"}\n";
-    journal_.close();std::ofstream o(directory_+"/report.json");
+    journal_.close();
+    if(!journal_)throw std::runtime_error("observed-sample journal write failed");
+    std::ofstream o(directory_+"/report.json");
     o<<"{\"status\":"<<json_quote(status==0?"passed":status==1?"failed":status==2?"invalid":"incomplete")<<",\"reason\":"<<json_quote(reason.empty()&&pending?"unfulfilled temporal obligations":reason)
         <<",\"exit_status\":"<<status<<",\"full_contract_signoff\":false,\"selection\":"<<json_quote(selection)<<",\"seed\":"<<seed_<<",\"config\":"<<config_json(cfg_)<<",\"contract\":"<<contract_.json()
         <<",\"cycles_executed\":"<<cycles_<<",\"sampled_records\":"<<samples_<<",\"pre_edge_records\":"<<pre_<<",\"transactions\":"<<transactions_<<",\"errors\":"<<errors_<<",\"field_checks\":"<<checks_<<",\"field_errors\":"<<field_errors_
@@ -232,6 +234,7 @@ int Scoreboard::finish(const std::string& reason,bool all,const std::string& sel
     o<<",\"assumption_checks\":";map_json(o,assumptions_);o<<",\"unknown_output_samples\":";map_json(o,unknowns_);o<<",\"dont_care_output_samples\":";map_json(o,dont_cares_);o<<",\"scenario_samples\":";map_json(o,scenarios_);
     o<<",\"discrepancies\":[";for(unsigned k=0;k<discrepancies_.size();++k){if(k)o<<',';o<<discrepancies_[k];}o<<"],\"campaigns\":{";
     for(unsigned c=0;c<3;++c){if(c)o<<',';o<<json_quote(name(Campaign(c)))<<":{\"cycles\":"<<campaign_cycles_[c]<<",\"checks\":"<<campaign_checks_[c]<<",\"mismatches\":"<<campaign_errors_[c]<<",\"obligations\":"<<counters_json(final_.campaigns[c],[&](){uint64_t count=0;for(const auto& q:final_.outstanding)count+=q.id&&unsigned(q.campaign)==c;for(const auto& a:final_.completed)count+=a.request.id&&unsigned(a.request.campaign)==c;for(const auto& a:final_.answers)count+=a.request.id&&unsigned(a.request.campaign)==c;return count;}())<<'}';}o<<"}}\n";
+    o.close();cov.close();chr.close();
     if(!o||!cov||!chr)throw std::runtime_error("report write failed");
     if(status)TB_ERR("TEST FAILED > errors: %" PRIu64 "/%" PRIu64,errors_,transactions_);else TB_SUCCESS(LOG_LOW,"TEST SUCCEEDED > errors: %" PRIu64 "/%" PRIu64,errors_,transactions_);
     TB_LOG(LOG_LOW,"SCB > cycles=%" PRIu64 " comparisons=%" PRIu64 " mismatches=%" PRIu64 " delivered=%" PRIu64 " canceled=%" PRIu64 " pending=%" PRIu64 " report=%s/report.json",cycles_,checks_,field_errors_,final_.totals.delivered,final_.totals.canceled,pending,directory_.c_str());

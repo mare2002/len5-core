@@ -27,7 +27,7 @@ package tb_config_pkg;
   // verilog_lint: waive parameter-name-style
   localparam int unsigned IMEM_SIZE_BYTES = 256 * 1024;
   // verilog_lint: waive parameter-name-style
-  localparam int unsigned IMEM_LATENCY = 4;  // Read cycles; independent of frontend FIFO depth.
+  localparam int unsigned IMEM_LATENCY = 10;  // Read cycles; independent of frontend FIFO depth.
   // verilog_lint: waive parameter-name-style
   localparam logic [63:0] DMEM_BASE_ADDR = 64'h0005_0000;
   // verilog_lint: waive parameter-name-style

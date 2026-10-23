@@ -289,7 +289,7 @@ check-alu: | .check-fusesoc
 .PHONY: check-frontend
 # Serialize suites even with make -j; each suite retains its own JOBS/TEST_JOBS.
 .NOTPARALLEL: check-frontend
-check-frontend: check-pc-gen check-early-jump check-fetch-mem-if check-fetch-stage
+check-frontend: check-pc-gen check-early-jump check-fetch-mem-if check-fetch-mem-if-drain check-fetch-stage
 
 .PHONY: check-pc-gen check-pc-gen-run pc-gen-build check-pc-gen-framework
 check-pc-gen: REQUIRE_MATRIX ?= true
@@ -451,6 +451,11 @@ check-fetch-mem-if-regression: fetch-mem-if-build
 
 check-fetch-mem-if-mutations: fetch-mem-if-build
 	@python3 tb/frontend/fetch_mem_if/mutate.py --binary "$(FETCH_MEM_BINARY)" --output "$(BUILD_DIR)/fetch-mem-if/mutation" --jobs "$(JOBS)"
+
+# Directed native-memory drain protocol at the source-selected depth and width.
+.PHONY: check-fetch-mem-if-drain
+check-fetch-mem-if-drain:
+	@$(FUSESOC) run --target drain --tool verilator --build-root "$(BUILD_DIR)/fetch-mem-if/drain" polito:len5:fetch-mem-if-tb
 
 # Closed-loop complete production frontend. Only source-selected configuration.
 STRICT_COMPLETION ?= false

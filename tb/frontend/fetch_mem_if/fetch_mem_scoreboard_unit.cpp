@@ -13,6 +13,17 @@ int main(int argc,char** argv){if(argc!=3)return 2;const std::string dir=argv[1]
             const auto path=dir+"/"+std::to_string(n);std::filesystem::create_directories(path);std::ofstream(path+"/coverage.json")<<cov.json()<<'\n';}return 0;
     }
     Config c;c.lanes=4;std::filesystem::create_directories(dir);Scoreboard b(c,Contract{},7,dir,true);Sample s;s.phase="pre";s.cycle=0;s.stimulus.scenario="synthetic-confidence";
+    if(kind=="output-failure") {
+        s.expected.write=known(0,"FM01");
+        b.sample(s);
+        std::filesystem::create_symlink("/dev/full",std::filesystem::path(dir)/"report.json");
+        b.final_state(State{});
+        try { b.finish({},false,"output-failure"); }
+        catch(const std::runtime_error& e) {
+            return std::string(e.what())=="report write failed"?0:2;
+        }
+        return 1;
+    }
     // Exact independent values survive unrelated unknown associations.
     if(kind=="unverified"){
         s.expected.valid=known(1,"FM09","I","FQ05:unverified-output-timing (I)");s.actual.valid=false;

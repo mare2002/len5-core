@@ -206,7 +206,8 @@ public:
         test(21,"held JAL correction and readiness-dependent memory flush",[&]{
             for(unsigned length:{1u,2u,cfg.lanes,cfg.lanes+1,40u}) {
                 auto s=word(0x100,jal(1,-4)); s.inputs.ready=false;
-                for(unsigned k=0;k<length;++k) send(s); s.inputs.ready=true; send(s); idle(); ret();
+                for(unsigned k=0;k<length;++k) send(s);
+                s.inputs.ready=true; send(s); idle(); ret();
             }
         });
         test(22,"held return top stable while confirmed history changes",[&]{
@@ -222,7 +223,9 @@ public:
         test(25,"independent P/C full and overflow histories",[&]{
             for(unsigned n:{0u,1u,cfg.depth-1,cfg.depth,cfg.depth+1,2*cfg.depth+1}) {
                 reset(); for(unsigned k=0;k<n;++k) { call(0x104+0x100*k); confirm(true,0x804+0x100*k); }
-                for(unsigned k=0;k<=cfg.depth;++k) ret(); recover(); for(unsigned k=0;k<=cfg.depth;++k) ret();
+                for(unsigned k=0;k<=cfg.depth;++k) ret();
+                recover();
+                for(unsigned k=0;k<=cfg.depth;++k) ret();
             }
         });
         test(26,"empty predictive and confirmed pops",[&]{ ret(); ret(); confirm(false,0xdeadbeef); recover(); ret(); });

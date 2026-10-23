@@ -37,6 +37,17 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: four pure coverage configurations; no alternate RTL build\n"; return 0;
     }
     Scoreboard scb(c,contract,1,directory,true);
+    if(test=="output-failure") {
+        Sample matched; matched.phase="pre";
+        matched.expected.early={0,true,"EJ06","D",{}, {}};
+        scb.sample(matched);
+        std::filesystem::create_symlink("/dev/full",std::filesystem::path(directory)/"report.json");
+        try { scb.finish("",false,"output-failure"); }
+        catch(const std::runtime_error& e) {
+            return std::string(e.what())=="report write failed"?0:2;
+        }
+        return 1;
+    }
     Stimulus probe; probe.guard_probe=true; probe.inputs.valid=true; probe.inputs.mask=1; probe.inputs.words[0]=jalr(0,1,0);
     auto take=[&](Stimulus s,std::string phase,uint64_t cycle,bool fault) {
         s.inputs.feedback=model.feedback(s.inputs); Sample sample; sample.stimulus=s; sample.phase=phase; sample.cycle=cycle;

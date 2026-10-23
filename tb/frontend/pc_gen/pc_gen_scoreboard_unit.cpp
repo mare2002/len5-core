@@ -39,6 +39,17 @@ int main(int argc,char** argv) {
     const bool matched=std::string(argv[2])=="matched";
     std::filesystem::create_directories(argv[1]);
     Scoreboard scb(Config{},Contract{},1,argv[1]);
+    if(std::string(argv[2])=="output-failure") {
+        Sample matched; matched.phase="pre";
+        matched.expected.valid={1,true,"C7","D",{}, {}}; matched.actual.valid=true;
+        scb.sample(matched);
+        std::filesystem::create_symlink("/dev/full",std::filesystem::path(argv[1])/"report.json");
+        try { scb.finish("",false,"output-failure"); }
+        catch(const std::runtime_error& e) {
+            return std::string(e.what())=="cannot write verification report"?0:2;
+        }
+        return 1;
+    }
     Sample s; s.phase="pre"; s.stimulus.scenario="confidence-context";
     s.stimulus.test_name="SYNTHETIC evidence: hold versus selecting current prediction";
     s.observed_inputs.early=s.observed_inputs.prediction=true;

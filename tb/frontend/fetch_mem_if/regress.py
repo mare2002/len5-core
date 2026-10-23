@@ -13,6 +13,29 @@ import tempfile
 import time
 
 
+def read_coverage(path, active):
+    """A missing or truncated denominator is invalid evidence, never zero gaps."""
+    try:
+        coverage = json.loads(path.read_text())
+        expected = {(row,) for row in range(8)}
+        fields = ('row',)
+        for campaign in active:
+            matrix = coverage['campaigns'][campaign]['matrix']
+            keys = {tuple(entry[field] for field in fields) for entry in matrix}
+            if len(matrix) != len(expected) or keys != expected:
+                raise ValueError(campaign + ': incomplete or duplicate coverage matrix')
+            for entry in matrix:
+                key = tuple(entry[field] for field in fields)
+                required = True
+                if (any(type(value) is not int for value in key) or
+                        type(entry['required']) is not bool or entry['required'] != required or
+                        type(entry['count']) is not int or entry['count'] < 0):
+                    raise ValueError(campaign + ': invalid coverage matrix entry')
+        return coverage, ''
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return {}, str(error)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -36,6 +59,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix=f'{args.campaign}-{args.contract}-', dir=args.output.resolve()))
     start = time.monotonic()
+    active = ['architectural', 'interface_stress', 'characterization'] if args.campaign == 'all' else [dict(stress='interface_stress').get(args.campaign, args.campaign)]
 
     def run(seed):
         directory = root / f'seed-{seed}'
@@ -50,11 +74,12 @@ def main():
         report_path = directory / 'logs/report.json'
         report = json.loads(report_path.read_text()) if report_path.exists() else {}
         coverage_path = directory / 'logs/coverage.json'
-        coverage = json.loads(coverage_path.read_text()) if coverage_path.exists() else {}
-        ok = result.returncode == 0 and report.get('exit_status') == 0 and report.get('cycles_executed') == args.cycles and report.get('field_checks', 0) > 0 and report.get('obligations_conserved') and report.get('obligations', {}).get('pending') == 0
+        coverage, coverage_error = read_coverage(coverage_path, active)
+        ok = not coverage_error and result.returncode == 0 and report.get('exit_status') == 0 and report.get('cycles_executed') == args.cycles and report.get('field_checks', 0) > 0 and report.get('obligations_conserved') and report.get('obligations', {}).get('pending') == 0
         return {'seed': seed, 'passed': ok, 'exit_status': result.returncode,
                 'seconds': time.monotonic()-begin, 'command': shlex.join(command),
-                'report': report, 'coverage': coverage, 'artifacts': str(directory)}
+                'report': report, 'coverage': coverage, 'coverage_error': coverage_error,
+                'artifacts': str(directory)}
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         futures = [pool.submit(run, seed) for seed in range(args.seed, args.seed+args.seeds)]
@@ -97,7 +122,6 @@ def main():
             for entry in cov['matrix']:
                 key = entry['row']
                 matrix.setdefault(key, dict(entry, count=0))['count'] += entry['count']
-    active = ['architectural', 'interface_stress', 'characterization'] if args.campaign == 'all' else [dict(stress='interface_stress').get(args.campaign, args.campaign)]
     coverage = {}
     gaps = []
     for campaign in active:
@@ -148,6 +172,8 @@ def main():
     for run in runs:
         if not run['passed']:
             print(f"FAILED seed {run['seed']}: {run['artifacts']}; replay: {run['command']}")
+            if run['coverage_error']:
+                print('Invalid coverage evidence: ' + run['coverage_error'])
     print(f'Regression evidence: {root}/summary.json')
     print('Test successfully passed: fetch_mem_if regression' if passed else 'Test failed: fetch_mem_if regression', flush=True)
     return 0 if passed else 1

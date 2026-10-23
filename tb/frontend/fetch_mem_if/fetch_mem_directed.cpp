@@ -58,7 +58,7 @@ static void late(Simulator& s){auto a=s.offer(0x400,0,s.config().mask(),1);s.tic
 static void scenario(Simulator& s,unsigned n){const auto c=s.config();
     switch(n){
     case 1:{s.tick();auto a=s.offer(0);single(s,a);s.reset();single(s,s.offer(0x100));break;}
-    case 2:{for(unsigned k=0;k<12;++k){Stimulus x;x.inputs.consumer_ready=k%2;x.inputs.grant=k%3;x.inputs.mask=c.mask();x.inputs.response.errors=c.mask();for(unsigned j=0;j<c.lanes;++j){x.inputs.predictions[j]={UINT64_MAX-j,0x1234567800000000+k,true,true};x.inputs.response.words[j]=0xffffffff;x.inputs.response.causes[j]=31;}s.step(x);}break;}
+    case 2:{for(unsigned k=0;k<12;++k){Stimulus x;x.inputs.consumer_ready=k%2;x.inputs.grant=k%3;x.inputs.mask=c.mask();x.inputs.response.errors=c.mask();for(unsigned j=0;j<c.lanes;++j){x.inputs.predictions[j]={UINT64_MAX-j,UINT64_C(0x1234567800000000)+k,true,true};x.inputs.response.words[j]=0xffffffff;x.inputs.response.causes[j]=31;}s.step(x);}break;}
     case 3:single(s,s.offer(0x100,2));break;
     case 4:{auto a=s.offer(0x100);for(unsigned k=0;k<24;++k){a.predictions[0].target=0x800+k*4;a.predictions[0].hit=k&1;a.predictions[0].taken=k&2;a.mask=request_mask(a.start,a.predictions,c);s.tick(&a,false,true,false);}single(s,a);break;}
     case 5:for(unsigned k=0;k<c.lanes;++k){auto a=s.offer(0x400+k*4);live(a,c);single(s,a);}break;

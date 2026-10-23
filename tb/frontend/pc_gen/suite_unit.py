@@ -4,6 +4,7 @@
 import argparse
 from contextlib import redirect_stdout
 import io
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -59,6 +60,10 @@ def main():
     summaries = [json.loads(path.read_text()) for path in (root/'aggregate').glob('*/summary.json')]
     assert {r['status'] for r in summaries} == {'passed', 'failed'}
     print('Test successfully passed: aggregate success/failure messages and exit status')
+    spec = importlib.util.spec_from_file_location('reused_eju_coverage_checks', Path(__file__).resolve().parent.parent/'early_jump_unit/suite_unit.py')
+    checks = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checks)
+    checks.check_coverage_receipts(root, Path(suite.__file__).resolve())
     print('Test successfully passed: pc_gen suite orchestration')
     print('Suite self-test evidence: '+str(root))
     return 0

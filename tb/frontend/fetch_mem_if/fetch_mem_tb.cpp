@@ -19,7 +19,7 @@ static RunOptions options(int argc,char** argv) {
         else if(key=="--weights")o.weights=value;else if(key=="--journal")o.journal=value;else if(key=="--contract")o.contract.profile=value;
         else if(key=="--inject_failure")o.inject=value;else if(key=="--expect_issues")o.expect_issues=number(value);else if(key=="--expect_depth")o.expect_depth=number(value);
         else if(key=="--log_level"){const std::vector<std::string> names={"LOG_NONE","LOG_LOW","LOG_MEDIUM","LOG_HIGH","LOG_FULL","LOG_DEBUG"};auto p=std::find(names.begin(),names.end(),value);if(p==names.end())throw std::invalid_argument("use canonical LOG_* names");logger.setLogLvl(int(p-names.begin()));}
-        else if(key=="--help"){std::printf("fetch_mem_if: --scenario=all|FM-T01..FM-T40 --random --seed=N --cycles=N --campaign=all|architectural|stress|characterization --contract=integrated|established --guided=true|false --weights=name=percent,... --journal=auto|full|failures --dump_waves=true|false --run_dir=NEW_DIRECTORY --expect_issues=N --expect_depth=N (guards only)\n");std::exit(0);}
+        else if(key=="--help"){std::printf("fetch_mem_if: --scenario=all|FM-T01..FM-T44 --random --seed=N --cycles=N --campaign=all|architectural|stress|characterization --contract=integrated|established --guided=true|false --weights=name=percent,... --journal=auto|full|failures --dump_waves=true|false --run_dir=NEW_DIRECTORY --expect_issues=N --expect_depth=N (guards only)\n");std::exit(0);}
         else throw std::invalid_argument("unknown option: "+key);
     }
     if(!o.max_cycles || (o.random&&!o.cycles))throw std::invalid_argument("positive cycle limits required");
@@ -41,5 +41,7 @@ int main(int argc,char** argv){std::unique_ptr<Simulator> sim;RunOptions o;std::
     catch(const EnvironmentError& e){if(sim)sim->scoreboard().problem("environment_error",e.what());else{TB_ERR("%s",e.what());return 2;}}
     catch(const std::invalid_argument& e){TB_ERR("SCB > build/configuration failure: %s",e.what());return 2;}
     catch(const std::exception& e){if(sim)sim->scoreboard().problem("framework_error",e.what());else{TB_ERR("%s",e.what());return 2;}}
-    return sim?sim->finish(reason,!o.random&&o.selection=="all"&&o.inject.empty(),o.random?"random":o.selection):2;
+    try {
+        return sim?sim->finish(reason,!o.random&&o.selection=="all"&&o.inject.empty(),o.random?"random":o.selection):2;
+    } catch(const std::exception& e){TB_ERR("SCB > output failure: %s",e.what());return 2;}
 }

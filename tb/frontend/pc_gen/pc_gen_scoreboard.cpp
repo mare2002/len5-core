@@ -373,6 +373,7 @@ void Coverage::write(const std::string& path, const std::map<std::string,uint64_
     f<<",\"dont_care_output_samples\":"; map_json(f,dont_cares);
     f<<",\"unresolved_questions\":[\"Q1\",\"Q3\",\"Q4\",\"Q5\",\"Q9\"]";
     f<<",\"specification_status\":"<<specification_status_json()<<"}\n";
+    f.close();
     if (!f) throw std::runtime_error("cannot write functional coverage report");
 }
 Scoreboard::Scoreboard(Config cfg, Contract c, uint64_t seed, const std::string& directory, bool full_journal)
@@ -489,6 +490,7 @@ void Scoreboard::problem(const std::string& kind, const std::string& reason) {
 }
 int Scoreboard::finish(const std::string& reason, bool complete_suite, const std::string& selection) {
     journal_.close();
+    if (!journal_) throw std::runtime_error("cannot write observed-sample journal");
     const bool holes = complete_suite && (coverage.matrix_holes() || coverage.reset_holes() || scenarios_.size()!=22);
     const bool incomplete = !reason.empty() || !field_checks_ || holes;
     const int result = (environment_errors_ || framework_errors_) ? 2 : field_errors_ ? 1 : incomplete ? 3 : 0;
@@ -497,6 +499,7 @@ int Scoreboard::finish(const std::string& reason, bool complete_suite, const std
     coverage.write(directory_ + "/coverage.json",campaign_requirement_checks_,assumption_checks_,unknowns_,dont_cares_);
     std::ofstream observations(directory_+"/characterization.jsonl");
     for(const auto& p:observations_) observations<<sample_json(p.second)<<'\n';
+    observations.close();
     if(!observations) throw std::runtime_error("cannot write characterization observations");
     std::ofstream f(directory_ + "/report.json");
     f << "{\"status\":" << json_quote(result==0?"passed":result==1?"failed":result==2?"invalid":"incomplete")
@@ -531,6 +534,7 @@ int Scoreboard::finish(const std::string& reason, bool complete_suite, const std
     f << ",\"campaign_samples\":"; map_json(f,campaigns_);
     f << ",\"discrepancies\":["; first=true;
     for (const auto& d : discrepancies_) { if (!first) f<<','; first=false; f<<'\n'<<d; } f << "]}\n";
+    f.close();
     if (!f) throw std::runtime_error("cannot write verification report");
     for(unsigned c=0;c<3;++c) if(campaign_cycles_[c]) {
         const auto campaign=static_cast<Campaign>(c);

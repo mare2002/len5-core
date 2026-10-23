@@ -9,7 +9,9 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import resource
 import shutil
+import signal
 import subprocess
 import tempfile
 import configuration as cfg
@@ -29,6 +31,30 @@ def native(binary,root,label,flags=(),expected=0):
     if not ok:raise AssertionError('%s: expected exit%d, got%d; %s'%(label,expected,status,d))
     print('PASS: %s expected_exit=%d comparisons=%d errors=%d'%(label,expected,report.get('field_checks',0),report.get('field_errors',0)),flush=True)
     return dict(label=label,exit=status,expected_exit=expected,expected_verification_status=expected_class,validator_status='PASS',report=report,artifacts=str(d),command=command)
+
+def evidence_tests(binary,root):
+    checks=[]
+    for filename in ('report.json','samples.jsonl','training.jsonl','characterization.jsonl','coverage.json','obligations-1.json'):
+        d=root/('existing-'+filename);(d/'logs').mkdir(parents=True)
+        artifact=d/'logs'/filename;original=b'prior interrupted run evidence\n';artifact.write_bytes(original)
+        command=[str(binary),'--scenario=FE-T01','--log_level=LOG_NONE','--run_dir='+str(d)]
+        process=subprocess.run(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=120)
+        (d/'console.log').write_text(process.stdout)
+        assert process.returncode==2 and artifact.read_bytes()==original, 'existing evidence overwritten: '+filename
+        assert 'existing evidence cannot be overwritten' in process.stdout, 'missing fresh-directory diagnostic'
+        checks.append(dict(label='preserve-'+filename,exit=process.returncode,artifacts=str(d),command=command))
+    def limit_file_size():
+        signal.signal(signal.SIGXFSZ,signal.SIG_IGN)
+        resource.setrlimit(resource.RLIMIT_FSIZE,(1,1))
+    for label,scenario,diagnostic in (('buffered-output','empty','coverage output failure'),('program-output','FE-T01','program output failure')):
+        d=root/label;d.mkdir()
+        command=[str(binary),'--scenario='+scenario,'--journal=failures','--log_level=LOG_NONE','--run_dir='+str(d)]
+        process=subprocess.run(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=120,preexec_fn=limit_file_size)
+        (d/'console.log').write_text(process.stdout)
+        assert process.returncode==2 and diagnostic in process.stdout, 'undetected buffered write failure: '+label
+        checks.append(dict(label=label,exit=process.returncode,artifacts=str(d),command=command,file_size_limit=1))
+    print('PASS: interrupted evidence preserved and buffered output failures rejected',flush=True)
+    return checks
 
 def units(root):
     python_tests=subprocess.run(['python3',str(cfg.HERE/'results_unit.py')],capture_output=True,text=True)
@@ -169,6 +195,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--binary',type=Path,required=True);p.add_argument('--output',type=Path,default=cfg.ROOT/'build/fetch-stage/validation');p.add_argument('--random',action='store_true');a=p.parse_args()
     a.output.mkdir(parents=True,exist_ok=True);root=Path(tempfile.mkdtemp(prefix='random-' if a.random else 'framework-',dir=a.output));binary=a.binary.resolve();runs=[]
     if not a.random:units(root)
+    output_checks=evidence_tests(binary,root) if not a.random else []
     flags=['--random','--cycles=4096','--journal=full'] if a.random else ['--journal=full']
     runs.append(native(binary,root,'baseline',flags))
     runs.append(native(binary,root,'replay',flags))
@@ -188,7 +215,11 @@ def main():
     runs.append(native(binary,root,'incomplete',['--random','--cycles=1'],3))
     runs.append(native(binary,root,'wrong-width',['--expect_issues=99'],2))
     if not a.random:
-        for label,flag in [('bad-campaign','--campaign=invalid'),('bad-bool','--guided=invalid'),('bad-weight','--weights=grant=1junk'),('bad-latency','--exec_latency_min=0')]:
+        for label,flag in [('bad-campaign','--campaign=invalid'),('bad-bool','--guided=invalid'),
+                           ('bad-weight','--weights=grant=1junk'),('missing-weight','--weights=grant'),
+                           ('nonnumeric-weight','--weights=grant=no'),('negative-weight','--weights=grant=-1'),
+                           ('large-weight','--weights=grant=101'),('unknown-weight','--weights=unknown=1'),
+                           ('bad-latency','--exec_latency_min=0')]:
             runs.append(native(binary,root,label,[flag],2))
     runs.append(native(binary,root,'wrong-fingerprint',['--expect_fingerprint=invalid'],2))
     if not a.random:
@@ -205,7 +236,7 @@ def main():
     runs.append(replay_fault)
     if a.random:
         for seed in (2,7,19):runs.append(native(binary,root,'seed-'+str(seed),[*flags,'--seed='+str(seed)]))
-    summary=dict(status='passed',runs=runs,public_audits=audits,obligation_audits=obligations,replay_sha256=hashlib.sha256(journals[0]).hexdigest(),full_contract_signoff=False)
+    summary=dict(status='passed',runs=runs,output_checks=output_checks,public_audits=audits,obligation_audits=obligations,replay_sha256=hashlib.sha256(journals[0]).hexdigest(),full_contract_signoff=False)
     (root/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
     print('Test successfully passed: frontend framework; evidence:',root)
     return 0

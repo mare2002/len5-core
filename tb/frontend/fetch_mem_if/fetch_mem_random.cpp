@@ -90,7 +90,9 @@ void run_random(Simulator& sim,const RunOptions& o){
         }
         sim.step(stimulus);
         if(sim.last().k)pending.reset();
-        if(request_stall)--request_stall;if(consumer_stall)--consumer_stall;if(response_gap)--response_gap;
+        if(request_stall)--request_stall;
+        if(consumer_stall)--consumer_stall;
+        if(response_gap)--response_gap;
     }
     metadata();TB_LOG(LOG_LOW,"SCB > Random completed seed=%" PRIu64 " campaign=%s cycles=%" PRIu64 " comparisons=%" PRIu64 " guided_choices=%" PRIu64,o.seed,o.campaign.c_str(),sim.cycles(),sim.scoreboard().checks(),guided);
 }

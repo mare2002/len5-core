@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #include "pc_gen_model.hh"
-#include <iomanip>
+#include <cinttypes>
+#include <cstdio>
+#include <initializer_list>
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
@@ -130,23 +132,34 @@ Transition ReferenceModel::plan(const Inputs& i, bool /*malformed*/) const {
     return t;
 }
 std::string hex64(uint64_t v) {
-    std::ostringstream s; s << "0x" << std::hex << std::setw(16) << std::setfill('0') << v; return s.str();
+    char result[19];
+    std::snprintf(result, sizeof(result), "0x%016" PRIx64, v);
+    return result;
 }
 std::string json_quote(const std::string& v) {
-    std::ostringstream s; s << '"';
+    constexpr char hex[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(v.size() + 2);
+    result += '"';
     for (unsigned char c : v) {
-        if (c == '"' || c == '\\') s << '\\' << c;
-        else if (c < 32) s << "\\u" << std::hex << std::setw(4) << std::setfill('0') << unsigned(c);
-        else s << c;
+        if (c == '"' || c == '\\') {
+            result += '\\';
+            result += c;
+        } else if (c < 32) {
+            result += "\\u00";
+            result += hex[c >> 4];
+            result += hex[c & 15];
+        } else result += c;
     }
-    s << '"'; return s.str();
+    result += '"';
+    return result;
 }
 std::string inputs_json(const Inputs& i) {
     std::ostringstream s;
     s << "{\"rst_n\":" << i.rst_n << ",\"E\":" << i.commit << ",\"branch_valid\":" << i.branch_valid
       << ",\"mispredict\":" << i.mispredict << ",\"taken\":" << i.taken << ",\"P\":" << i.prediction
       << ",\"M\":" << i.ready << ",\"J\":" << i.early;
-    for (const auto& p : std::vector<std::pair<const char*,uint64_t>>{{"commit_pc",i.commit_pc},
+    for (const auto& p : std::initializer_list<std::pair<const char*,uint64_t>>{{"commit_pc",i.commit_pc},
         {"branch_pc",i.branch_pc},{"branch_target",i.branch_target},{"prediction_target",i.prediction_target},
         {"early_base",i.early_base},{"early_offset",i.early_offset}})
         s << ',' << json_quote(p.first) << ':' << json_quote(hex64(p.second));

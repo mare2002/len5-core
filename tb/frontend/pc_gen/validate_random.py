@@ -32,6 +32,8 @@ def main():
             str(source / 'pc_gen_scoreboard.cpp'), str(source / 'pc_gen_model.cpp'),
             str(source.parents[1] / 'verilator/tb_macros.cpp'), '-o', str(confidence_binary)],
             stdout=log, stderr=subprocess.STDOUT, check=True)
+    subprocess.run([str(confidence_binary), str(root/'buffered-output-failure'), 'output-failure'], check=True)
+    print('PASS: buffered report write failure is rejected', flush=True)
     for case in ['unverified', 'matched', 'definitive']:
         evidence = root / ('synthetic-confidence-'+case)
         with (root / ('confidence-'+case+'.log')).open('w') as log:

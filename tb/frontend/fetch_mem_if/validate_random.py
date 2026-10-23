@@ -86,6 +86,8 @@ def main():
     cmd += [str(source/f'fetch_mem_{part}.cpp') for part in ['model','scoreboard','scoreboard_unit']]
     cmd += [str(source.parent/'pc_gen/pc_gen_model.cpp'),str(source.parent/'early_jump_unit/early_jump_instructions.cpp'),str(source.parents[1]/'verilator/tb_macros.cpp'),'-o',str(confidence)]
     with (root/'confidence-build.log').open('w') as log:subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT,check=True)
+    subprocess.run([str(confidence),str(root/'buffered-output-failure'),'output-failure'],check=True)
+    print('PASS: buffered report write failure is rejected',flush=True)
     for kind in ['unverified','matched','definitive']:
         d=root/('confidence-'+kind)
         with (root/(kind+'.log')).open('w') as log:r=subprocess.run([str(confidence),str(d),kind],stdout=log,stderr=subprocess.STDOUT)

@@ -2,6 +2,7 @@
 #include "fetch_stage_components.hh"
 #include "fetch_stage_composition.hh"
 #include "fetch_stage_ras_witness.hh"
+#include <algorithm>
 #include <iostream>
 #include <numeric>
 using namespace len5::frontend;
@@ -394,6 +395,47 @@ int main() {
             auto duplicate = valid;
             duplicate.push_back(duplicate.front());
             rejects([&] { validate_backend_history(duplicate); }, "double completion/retirement record rejected");
+            {
+                std::vector<Instruction> sparse(3);
+                for (unsigned k = 0; k < sparse.size(); ++k) {
+                    auto &r = sparse[k];
+                    r.id = 10 + 7 * k;
+                    r.dep_a = k ? sparse[k - 1].id : 0;
+                    r.dispatch = 8 * k;
+                    r.issue = r.dispatch + 1;
+                    r.start = r.dispatch + 2;
+                    r.execute = r.dispatch + 3;
+                    r.publication = r.dispatch + 4;
+                    r.retire = r.dispatch + 5;
+                    r.issued = r.completed = r.retired = true;
+                }
+                validate_backend_history(sparse);
+                auto reversed = sparse;
+                std::reverse(reversed.begin(), reversed.end());
+                validate_backend_history(reversed);
+                check(true, "sparse identities and reordered history remain valid");
+                const auto diagnosis = [&](const std::vector<Instruction> &history, const char *expected) {
+                    std::string actual;
+                    try { validate_backend_history(history); }
+                    catch (const std::logic_error &e) { actual = e.what(); }
+                    check(actual == expected, "backend history rejection diagnostic preserved");
+                };
+                const char *identity = "FE17: duplicate dynamic identity/completion/retirement record";
+                const char *dependency = "FE16/17: invalid dependency/forwarding history";
+                auto bad = sparse; bad.front().id = 0; diagnosis(bad, identity);
+                bad = sparse; bad.push_back(bad.front()); diagnosis(bad, identity);
+                bad = sparse; bad.back().dep_a = 999; diagnosis(bad, dependency);
+                bad = sparse; bad.front().dep_a = bad.back().id; diagnosis(bad, dependency);
+                bad = sparse; bad[1].canceled = true; bad[1].retired = false; diagnosis(bad, dependency);
+                bad.back().canceled = true; bad.back().retired = false;
+                validate_backend_history(bad);
+                check(true, "canceled dependent may retain a canceled producer");
+                bad = sparse; bad[1].publication = UINT64_MAX; bad[1].retired = false; diagnosis(bad, dependency);
+                bad = sparse; bad[1].publication = bad.back().start; bad[1].retire = bad.back().start + 1;
+                diagnosis(bad, dependency);
+                bad = sparse; bad.front().issue = 0; bad.push_back(bad.front());
+                diagnosis(bad, "FE17/18: backend lifecycle/latency violation");
+            }
             Backend ports(c, fixed, 1);
             ports.dispatch(bundle(0, {immediate(0,2,0,1), immediate(0,3,0,2)}), 0);
             for (uint64_t t=0; t<16; ++t) ports.advance(t);

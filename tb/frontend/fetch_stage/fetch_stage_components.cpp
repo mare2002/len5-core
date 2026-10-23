@@ -287,10 +287,13 @@ void validate_lifecycle(const Instruction &r) {
         throw std::logic_error("FE17/18: backend lifecycle/latency violation");
 }
 void validate_backend_history(const std::vector<Instruction> &records) {
-    std::set<uint64_t> ids;
+    std::map<uint64_t, const Instruction *> by_id;
+    // Retain the first occurrence so duplicate and dependency diagnostics keep their order.
+    for (const auto &r : records)
+        by_id.emplace(r.id, &r);
     std::map<uint64_t, unsigned> issues, publications, retirements, alu_starts, branch_starts;
     for (const auto &r : records) {
-        if (!r.id || !ids.insert(r.id).second)
+        if (!r.id || by_id.at(r.id) != &r)
             throw std::logic_error("FE17: duplicate dynamic identity/completion/retirement record");
         validate_lifecycle(r);
         if (r.issued && ++issues[r.issue] > 1)
@@ -303,9 +306,9 @@ void validate_backend_history(const std::vector<Instruction> &records) {
             throw std::logic_error("FE17: excess retirement bandwidth");
         for (auto id : {r.dep_a, r.dep_b})
             if (id) {
-                auto p = std::find_if(records.begin(), records.end(), [&](const Instruction &o) { return o.id == id; });
-                if (p == records.end() || id >= r.id || (!r.canceled && p->canceled) ||
-                    (r.start != UINT64_MAX && (p->publication == UINT64_MAX || r.start <= p->publication)))
+                auto p = by_id.find(id);
+                if (p == by_id.end() || id >= r.id || (!r.canceled && p->second->canceled) ||
+                    (r.start != UINT64_MAX && (p->second->publication == UINT64_MAX || r.start <= p->second->publication)))
                     throw std::logic_error("FE16/17: invalid dependency/forwarding history");
             }
     }

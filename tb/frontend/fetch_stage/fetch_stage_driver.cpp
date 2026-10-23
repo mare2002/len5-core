@@ -88,12 +88,14 @@ Simulator::Simulator(Options o, int argc, char **argv)
     if (o.expect_issues && o.expect_issues != cfg_.lanes)
         throw std::invalid_argument("FE01: replay issue width mismatch");
     auto dir = o.run_dir + "/logs";
-    if (std::filesystem::exists(dir + "/report.json"))
-        throw std::invalid_argument("choose a fresh run directory");
+    if (std::filesystem::exists(dir) && !std::filesystem::is_empty(dir))
+        throw std::invalid_argument("choose a fresh run directory; existing evidence cannot be overwritten");
     std::filesystem::create_directories(dir);
     journal_.open(dir + "/samples.jsonl");
     training_.open(dir + "/training.jsonl");
     characterization_.open(dir + "/characterization.jsonl");
+    if (!journal_ || !training_ || !characterization_)
+        throw std::runtime_error("cannot create frontend evidence files");
     context_->commandArgs(argc, argv);
     context_->randSeed(int(o.seed & 0x7fffffff));
     context_->traceEverOn(o.waves);
@@ -112,7 +114,6 @@ Simulator::Simulator(Options o, int argc, char **argv)
         dut_->trace(trace_.get(), 1);
         trace_->open((dir + "/waves.fst").c_str());
     }
-    logger.setSimContext(context_.get());
     TB_CONFIG("LEN5_MULTIPLE_ISSUES=%u BOOT_PC=%s HLEN=%u BTB_BITS=%u "
               "INIT_C2B=%u RAS_DEPTH=%u "
               "metadata_depth=%u source/elaboration verified",
@@ -144,6 +145,7 @@ Simulator::Simulator(Options o, int argc, char **argv)
         else
             throw std::invalid_argument("unknown event weight " + key);
     }
+    logger.setSimContext(context_.get());
 }
 Simulator::~Simulator() {
     if (dut_)
@@ -556,8 +558,8 @@ void Simulator::step(Inputs i, bool schedule_backend) {
                     (goal.pc / 4) % (uint64_t(1) << cfg_.btb_bits) ==
                         (i.feedback.resolution.pc / 4) % (uint64_t(1) << cfg_.btb_bits))
                     goal.superseded = cycle_;
-            learning_.push_back({i.feedback.id, i.feedback.resolution.pc, cycle_, false, false, false});
-            learning_.back().window = reset_window_;
+            learning_.push_back({i.feedback.id, i.feedback.resolution.pc, cycle_, false, false, false,
+                                 UINT64_MAX, reset_window_, {}});
             counter("update");
         }
         if (i.feedback.call || i.feedback.ret) {
@@ -975,8 +977,11 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
     }
     program_.validate();
     programs_.push_back(program_.json());
-    std::ofstream(options_.run_dir + "/program-" + s.id + "-" + std::to_string(instance_) + ".json")
-        << "{\"scenario\":" << json_quote(s.id) << "," << program_.json().substr(1) << '\n';
+    std::ofstream image(options_.run_dir + "/program-" + s.id + "-" + std::to_string(instance_) + ".json");
+    image << "{\"scenario\":" << json_quote(s.id) << "," << program_.json().substr(1) << '\n';
+    image.close();
+    if (!image)
+        throw std::runtime_error("program output failure");
     TB_LOG(LOG_LOW, "REQ > starting %s %s program=%s digest=%s", s.id.c_str(), s.title.c_str(),
            program_.family.c_str(), program_.digest().c_str());
     try {
@@ -1345,6 +1350,9 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
         obligations << backend_ledger_[k];
     }
     obligations << "],\"resources\":" << backend_->stats.json() << "}\n";
+    obligations.close();
+    if (!obligations)
+        throw std::runtime_error("obligation output failure");
     if (options_.profile == "predictor-agnostic")
         missing.push_back("FEQ01:fully-predictor-agnostic-path-oracle-not-implemented");
     const bool mismatch = stats.field_errors != errors_before;
@@ -1425,6 +1433,11 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
                 missing.size(), reason.c_str());
 }
 int Simulator::finish() {
+    journal_.close();
+    training_.close();
+    characterization_.close();
+    if (!journal_ || !training_ || !characterization_)
+        throw std::runtime_error("evidence output failure");
     const bool incomplete = incomplete_results_ != 0;
     const bool warnings = incomplete || provisional_results_;
     if (stats.requests != stats.delivered + stats.canceled)
@@ -1452,6 +1465,9 @@ int Simulator::finish() {
            "poisoned-feedback stress\",\"internal occupancy and raw overwritten "
            "BPU state are "
            "inferred\",\"N-dependent lane crosses require active N\"]}\n";
+    cov.close();
+    if (!cov)
+        throw std::runtime_error("coverage output failure");
     std::string replay =
         "'" + options_.executable + "' --scenario=" + options_.scenario +
         " --seed=" + std::to_string(options_.seed) + " --cycles=" + std::to_string(options_.cycles) +
@@ -1568,7 +1584,8 @@ int Simulator::finish() {
     report << "],\"known_defects\":[\"EQ08 exception-contaminated confirmed "
               "RAS\",\"FQ12 delayed exception "
               "recovery window\"]}\n";
-    if (!report || !cov || !training_ || !journal_)
+    report.close();
+    if (!report)
         throw std::runtime_error("report output failure");
     if (status == 1 || status == 2)
         TB_ERR("TEST FAILED > errors: %" PRIu64 "/%" PRIu64, stats.failed_samples, stats.transactions);

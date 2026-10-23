@@ -45,11 +45,32 @@ filesets:
         is_include_file: true
     - ../early_jump_unit/early_jump_instructions.cpp
     file_type: cppSource
+  drain:
+    files:
+    - fetch_mem_drain_tb.sv
+    file_type: systemVerilogSource
   waivers:
     files:
     - fetch_mem_waivers.vlt
     file_type: vlt
 targets:
+  drain:
+    default_tool: verilator
+    toplevel: fetch_mem_drain_tb
+    filesets: [dut, drain, waivers]
+    tools:
+      verilator:
+        mode: binary
+        verilator_options:
+        - --timing
+        - --assert
+        - --timescale
+        - 1ns/1ps
+        - -Wall
+        - -Wpedantic
+        - -j
+        - '4'
+        - '-MAKEFLAGS "OBJCACHE= CXX=/usr/bin/g++"'
   sim:
     default_tool: verilator
     toplevel: fetch_mem_tb

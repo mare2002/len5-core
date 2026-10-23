@@ -307,6 +307,7 @@ void Scoreboard::problem(const std::string& kind,const std::string& reason) {
 }
 int Scoreboard::finish(const std::string& reason,bool complete_directed,const std::string& selection) {
     journal_.close();
+    if(!journal_) throw std::runtime_error("observed-sample journal write failed");
     const bool incomplete=!reason.empty() || !checks_ || (complete_directed && scenarios_.size()!=34);
     const int status=environment_errors_ || framework_errors_?2:field_errors_?1:incomplete?3:0;
     std::ofstream coverage_file(directory_+"/coverage.json"); coverage_file<<coverage.json()<<'\n';
@@ -335,6 +336,7 @@ int Scoreboard::finish(const std::string& reason,bool complete_directed,const st
     for(unsigned c=0;c<3;++c) { if(c) f<<','; f<<json_quote(name(Campaign(c)))<<":{\"cycles\":"<<campaign_cycles_[c]
         <<",\"checks\":"<<campaign_checks_[c]<<",\"mismatches\":"<<campaign_errors_[c]<<'}'; }
     f<<"}}\n";
+    f.close(); coverage_file.close(); character.close();
     if(!f || !coverage_file || !character) throw std::runtime_error("report write failed");
     if(status) TB_ERR("TEST FAILED > errors: %" PRIu64 "/%" PRIu64,errors_,transactions_);
     else TB_SUCCESS(LOG_LOW,"TEST SUCCEEDED > errors: %" PRIu64 "/%" PRIu64,errors_,transactions_);
