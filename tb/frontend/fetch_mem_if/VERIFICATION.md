@@ -1119,7 +1119,9 @@ Future Make commands, **proposed and not installed**:
 
 ```text
 fetch-mem-if-build
-check-fetch-mem-if                 # build once; parallel independent groups
+check-fetch-mem-if                 # cancel suite plus directed drain checks
+check-fetch-mem-if-cancel          # build once; parallel independent C++ groups
+check-fetch-mem-if-drain           # directed native drain-on-flush checks
 check-fetch-mem-if-run             # directed all / SCENARIO=FM-Txx
 check-fetch-mem-if-framework
 check-fetch-mem-if-random

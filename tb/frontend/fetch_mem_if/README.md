@@ -20,7 +20,10 @@ make check-fetch-mem-if-regression SEEDS=100 CYCLES=10000 JOBS=4 REQUIRE_MATRIX=
 make check-fetch-mem-if-mutations JOBS=2
 ```
 
-`make check-fetch-mem-if` builds once and runs all seven groups concurrently:
+`make check-fetch-mem-if` runs both `check-fetch-mem-if-cancel` and
+`check-fetch-mem-if-drain` sequentially, including under `make -j`.
+
+`make check-fetch-mem-if-cancel` builds once and runs all seven C++ groups concurrently:
 directed, framework, random-framework, one random run, regression, mutations and
 reused suite-orchestration tests. It prints `All tests passed` only if every group
 succeeds; otherwise `Test failed` and nonzero status. Independent groups finish
@@ -31,7 +34,8 @@ worker, so choose JOBS according to available memory/CPUs.
 | Target | Purpose |
 | --- | --- |
 | `fetch-mem-if-build` | Compile only the source-selected DUT and native harness. |
-| `check-fetch-mem-if` | Complete parallel verification suite; default regression 100×10000, required matrix enabled. |
+| `check-fetch-mem-if` | Aggregate cancel-on-flush C++ suite and native drain-on-flush SV checks. |
+| `check-fetch-mem-if-cancel` | Complete parallel C++ verification suite; default regression 100×10000, required matrix enabled. |
 | `check-fetch-mem-if-run` | All forty directed scenarios, or `SCENARIO=FM-Txx`. |
 | `check-fetch-mem-if-framework` | Pure units, both profiles, native failure paths, log/replay/FST/configuration guards. |
 | `check-fetch-mem-if-random` | One seeded weighted/guided random run. |
@@ -40,7 +44,7 @@ worker, so choose JOBS according to available memory/CPUs.
 | `check-fetch-mem-if-mutations` | Disposable RTL copies with original-before/after and source integrity checks. |
 | `check-fetch-mem-if-drain` | Separate directed SV checks for native-memory drain-on-flush at the source-selected width and `FETCH_MEMIF_FIFO_DEPTH`. |
 
-The ordinary C++ suite explicitly selects cancel-on-flush mode. The separate
+The `check-fetch-mem-if-cancel` C++ suite explicitly selects cancel-on-flush mode. The
 `check-fetch-mem-if-drain` target checks retained full-queue credits, stale returns
 under issue backpressure, repeated/returning-response flush collisions, exact
 new-epoch metadata/payload/faults, current-answer consumption on an early flush,

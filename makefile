@@ -288,8 +288,8 @@ check-alu: | .check-fusesoc
 # Build once, then run independent native groups without concurrent FuseSoC setup.
 .PHONY: check-frontend
 # Serialize suites even with make -j; each suite retains its own JOBS/TEST_JOBS.
-.NOTPARALLEL: check-frontend
-check-frontend: check-pc-gen check-early-jump check-fetch-mem-if check-fetch-mem-if-drain check-fetch-stage
+.NOTPARALLEL: check-frontend check-fetch-mem-if
+check-frontend: check-pc-gen check-early-jump check-fetch-mem-if check-fetch-stage
 
 .PHONY: check-pc-gen check-pc-gen-run pc-gen-build check-pc-gen-framework
 check-pc-gen: REQUIRE_MATRIX ?= true
@@ -425,13 +425,15 @@ check-early-jump-mutations: early-jump-build
 	@python3 tb/frontend/early_jump_unit/mutate.py --binary "$(EARLY_JUMP_BINARY)" --output "$(BUILD_DIR)/early-jump/mutation" --jobs "$(JOBS)"
 
 # Standalone fetch_mem_if: actual FIFO/spill dependencies; RTL source selects N.
-.PHONY: fetch-mem-if-build check-fetch-mem-if check-fetch-mem-if-run check-fetch-mem-if-framework check-fetch-mem-if-random check-fetch-mem-if-random-framework check-fetch-mem-if-regression check-fetch-mem-if-mutations
+.PHONY: fetch-mem-if-build check-fetch-mem-if check-fetch-mem-if-cancel check-fetch-mem-if-run check-fetch-mem-if-framework check-fetch-mem-if-random check-fetch-mem-if-random-framework check-fetch-mem-if-regression check-fetch-mem-if-mutations
 FETCH_MEM_BINARY = $$(python3 tb/frontend/fetch_mem_if/configuration.py --binary --build-dir '$(BUILD_DIR)')
 fetch-mem-if-build:
 	@FETCH_MEM_BUILD_ONLY=true bash scripts/sim/check-fetch-mem-if.sh
 
-check-fetch-mem-if: REQUIRE_MATRIX ?= true
-check-fetch-mem-if: fetch-mem-if-build
+check-fetch-mem-if: check-fetch-mem-if-cancel check-fetch-mem-if-drain
+
+check-fetch-mem-if-cancel: REQUIRE_MATRIX ?= true
+check-fetch-mem-if-cancel: fetch-mem-if-build
 	@python3 tb/frontend/fetch_mem_if/suite.py --binary "$(FETCH_MEM_BINARY)" --output "$(BUILD_DIR)/fetch-mem-if/suite" --test-jobs "$(or $(TEST_JOBS),$(JOBS))" --jobs "$(JOBS)" --seed "$(or $(SEED),1)" --seeds "$(or $(SEEDS),100)" --cycles "$(or $(CYCLES),10000)" --max-cycles "$(MAX_CYCLES)" --campaign "$(or $(CAMPAIGN),all)" --contract "$(or $(FETCH_MEM_CONTRACT),integrated)" --weights "$(WEIGHTS)" --guided "$(or $(GUIDED),true)" --journal "$(or $(JOURNAL),auto)" --log-level "$(LOG_LEVEL)" --waves "$(or $(DUMP_WAVES),false)" --require-matrix "$(REQUIRE_MATRIX)" $(if $(INJECT_FAILURE),--inject-failure=$(INJECT_FAILURE))
 
 check-fetch-mem-if-run:
