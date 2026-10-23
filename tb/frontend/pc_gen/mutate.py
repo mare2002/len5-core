@@ -7,12 +7,12 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
-import re
 import shlex
 import subprocess
+import shutil
 import tempfile
 import time
-from configuration import ROOT, configuration, fingerprint, write_manifest
+from configuration import ROOT, configuration, fingerprint, write_manifest, sources
 
 
 def main():
@@ -23,7 +23,6 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('jobs must be positive')
-    source = ROOT/'tb/frontend/pc_gen'
     rtl = ROOT/'rtl/frontend/pc_gen.sv'
     original = rtl.read_bytes()
     built_boot = next(line.split('=', 1)[1] for line in
@@ -31,6 +30,7 @@ def main():
     config = configuration(int(built_boot))
     config['fingerprint'] = fingerprint(config)
     args.output.mkdir(parents=True, exist_ok=True)
+    (args.output/'FUSESOC_IGNORE').touch()
     root = Path(tempfile.mkdtemp(prefix='audit-', dir=args.output.resolve()))
     started = time.monotonic()
     def original_run(label):
@@ -84,21 +84,20 @@ def main():
             print('Test failed: mutation '+label+'; replacement site changed', flush=True)
             raise ValueError('mutation site changed: '+label)
         (directory/'pc_gen.sv').write_text(text.replace(before, after, 1))
-        core = (source/'pc_gen_tb.core').read_text()
-        name = 'polito:len5:pc-gen-mut-'+root.name+'-'+label
-        core = core.replace('polito:len5:pc-gen-tb:0.1.0', name+':0.1.0')
-        def absolute_file(match):
-            filename, suffix = match[1], match[2] or ''
-            path = directory/'pc_gen.sv' if filename == '../../../rtl/frontend/pc_gen.sv' else (source/filename).resolve()
-            return '    - '+str(path)+suffix
-        core = re.sub(r'^    - ([^ :]+\.(?:sv|cpp|hh))(:.*)?$', absolute_file, core, flags=re.M)
-        (directory/'mutation.core').write_text(core)
+        staging = directory/'source'
+        for path in sources():
+            dest = staging/path.relative_to(ROOT)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, dest)
+        (staging/'rtl/frontend/pc_gen.sv').write_bytes((directory/'pc_gen.sv').read_bytes())
+        (staging/'fusesoc.conf').write_text('[library.len5]\nlocation = .\nsync-type = local\n')
         model = directory/'model'
-        command = [os.environ.get('FUSESOC', 'fusesoc'), '--cores-root', str(directory), 'run', '--no-export',
-                   '--target', 'sim', '--tool', 'verilator', '--build-root', str(model), '--setup', '--build', name,
+        command = [os.environ.get('FUSESOC', 'fusesoc'), 'run', '--no-export',
+                   '--target', 'sim', '--tool', 'verilator', '--build-root', str(model),
+                   '--setup', '--build', 'polito:len5:pc-gen-tb',
                    '--BOOT_PC_HI='+str(config['boot_pc']>>32), '--BOOT_PC_LO='+str(config['boot_pc'] & 0xffffffff)]
         with (directory/'build.log').open('w') as log:
-            built = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+            built = subprocess.run(command, cwd=staging, stdout=log, stderr=subprocess.STDOUT)
         result = dict(mutation=label, behavior=behavior, scenario=scenario, requirement=requirement,
                       build_command=shlex.join(command), build_status=built.returncode, artifacts=str(directory),
                       mutation_source_sha256=hashlib.sha256((directory/'pc_gen.sv').read_bytes()).hexdigest())

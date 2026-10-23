@@ -12,6 +12,7 @@ import results
 
 def build(build_dir):
     root,c=cfg.model_directory(build_dir);root.mkdir(parents=True,exist_ok=True)
+    (Path(build_dir).resolve()/'FUSESOC_IGNORE').touch()
     binary=root/'sim-verilator/Vfetch_stage_tb'
     with (root/'build.lock').open('w') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)

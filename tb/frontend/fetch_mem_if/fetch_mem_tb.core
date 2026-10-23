@@ -4,14 +4,9 @@ description: Independent event-driven fetch_mem_if transport and exception verif
 filesets:
   dut:
     depend:
-    - polito:len5:packages
+    - polito:len5:common
+    - polito:len5:frontend
     files:
-    - ../../../rtl/common/modn_counter.sv
-    - ../../../rtl/common/modn_counter_updown.sv
-    - ../../../rtl/common/completion_fifo.sv
-    - ../../../rtl/common/spill_cell_flush_cu.sv
-    - ../../../rtl/common/spill_cell_flush.sv
-    - ../../../rtl/frontend/fetch_mem_if.sv
     - fetch_mem_tb.sv
     file_type: systemVerilogSource
   harness:
@@ -55,6 +50,9 @@ filesets:
     file_type: vlt
 targets:
   drain:
+    flags:
+      standalone_frontend: true
+      fetch_mem_tb: true
     default_tool: verilator
     toplevel: fetch_mem_drain_tb
     filesets: [dut, drain, waivers]
@@ -72,6 +70,9 @@ targets:
         - '4'
         - '-MAKEFLAGS "OBJCACHE= CXX=/usr/bin/g++"'
   sim:
+    flags:
+      standalone_frontend: true
+      fetch_mem_tb: true
     default_tool: verilator
     toplevel: fetch_mem_tb
     filesets:

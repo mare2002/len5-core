@@ -29,7 +29,7 @@ def sources():
     paths = set((ROOT/'rtl/packages').glob('*.sv'))
     paths.update([ROOT/'rtl/packages.core', ROOT/'rtl/misc/packages-waivers.vlt',
                   ROOT/'rtl/frontend/early_jump_unit.sv', ROOT/'rtl/frontend/ras.sv',
-                  ROOT/'rtl/common/prio_enc.sv', ROOT/'tb/verilator/verilator-common.core',
+                  ROOT/'rtl/common/prio_enc.sv', ROOT/'tb/verilator/verilator-common.core', ROOT/'rtl/frontend.core', ROOT/'rtl/common.core',
                   ROOT/'tb/verilator/tb_macros.cpp', ROOT/'tb/verilator/tb_macros.hh',
                   ROOT/'tb/frontend/pc_gen/pc_gen_model.cpp', ROOT/'tb/frontend/pc_gen/pc_gen_model.hh',
                   ROOT/'tb/frontend/pc_gen/configuration.py', ROOT/'scripts/sim/check-early-jump.sh'])

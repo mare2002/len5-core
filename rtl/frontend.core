@@ -23,6 +23,25 @@ filesets:
     - frontend/instr_mixer.sv
    file_type: systemVerilogSource
 
+ pc-gen-rtl:
+   depend:
+   - polito:len5:packages
+   files:
+   - frontend/pc_gen.sv
+   file_type: systemVerilogSource
+ early-jump-rtl:
+   depend:
+   - polito:len5:packages
+   files:
+   - frontend/ras.sv
+   - frontend/early_jump_unit.sv
+   file_type: systemVerilogSource
+ fetch-mem-rtl:
+   depend:
+   - polito:len5:packages
+   files:
+   - frontend/fetch_mem_if.sv
+   file_type: systemVerilogSource
  verilator-waivers:
    files:
     - misc/frontend-waivers.vlt
@@ -31,5 +50,10 @@ filesets:
 targets:
     default:
         filesets:
-        - frontend-rtl
-        - tool_verilator ? (verilator-waivers)
+        - "!standalone_frontend ? (frontend-rtl)"
+        - "pc_gen_tb ? (pc-gen-rtl)"
+        - "early_jump_tb ? (early-jump-rtl)"
+        - "fetch_mem_tb ? (fetch-mem-rtl)"
+        - "fetch_stage_tb ? (frontend-rtl)"
+        - "!standalone_frontend ? (tool_verilator ? (verilator-waivers))"
+        - "fetch_stage_tb ? (tool_verilator ? (verilator-waivers))"

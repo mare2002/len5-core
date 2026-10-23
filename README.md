@@ -82,6 +82,21 @@ verification test suite has been removed. Compiled Spike libraries live in
 `build/spike-build`. Use `make clean-keep-spike` to remove other build outputs
 while retaining that cache. See the guide for coverage and known RTL discrepancies.
 
+## Testbench manifests
+
+Standalone testbench filesets and targets live in their respective `.core` files
+under `tb/`. Their production RTL comes from the owning manifests in `rtl/`,
+including `common.core` and `frontend.core`; the standalone targets select only
+the required RTL filesets. The shared C++ logger remains in
+`tb/verilator/verilator-common.core`.
+
+`len5.core` owns the whole-system targets `sim` and `sim-diff`, along with their
+shared testbench imports. The recovery core requests those imports through its
+`bare_tb` flag. Existing `make` commands and standalone FuseSoC core names are
+retained. Frontend cache fingerprints include their local and owning manifests.
+Build helpers and mutation outputs use `FUSESOC_IGNORE` markers so generated
+source snapshots cannot replace production cores during library discovery.
+
 ## TODO
 - [x] Fix RTL simulation
 - [x] Map some benchmark

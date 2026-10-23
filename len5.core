@@ -129,6 +129,7 @@ targets:
   default: &default
     filesets:
     - rtl-bare
+    - bare_tb ? (rtl-bare-tb)
     - tool_verilator ? (verilator-waivers)
     toplevel: datapath
 

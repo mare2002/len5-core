@@ -21,6 +21,89 @@ Spike runs pass, including a latency-32 waveform proving eight loads returned
 after flush and their tags remained owned until response. All 35 SRAM configuration
 and nine backend-selection cases pass. No performance improvement is claimed.
 
+## Manifest ownership update (2026-10-23)
+
+The requested layout supersedes the temporary centralized-target layout.
+Standalone targets and their testbench filesets live in their respective `.core`
+files under `tb/`, including the shared Verilator logger. Production imports
+remain in the owning `rtl/common.core` and `rtl/frontend.core` filesets. The
+standalone target flags preserve the selected RTL subsets and existing waivers.
+`len5.core` retains whole-system targets and shared `rtl-bare-tb` imports; the local
+recovery target requests those imports with `bare_tb`, avoiding a second list of
+memory-model dependencies.
+
+The supported `make` commands, standalone FuseSoC core names, and target output
+directories are restored. Fingerprints include the local and owning manifests.
+Mutation builders stage these same manifests and selected sources before mutating
+private RTL copies. No SV or C++ implementation changes are part of this layout
+update. The temporary centralized layout's evidence remains under
+`build/core-layout/`; final-layout validation is recorded under
+`build/core-layout-local/`.
+
+Final-layout checks:
+
+- All nine standalone/system targets resolve with identical source sets and tops
+  to the temporary layout. SHA-256 checks confirm `common.core` and
+  `frontend.core` are byte-identical to that layout. All seven local manifests
+  are present; none repeats a production RTL source import.
+- Fresh directed builds/runs of all four frontend benches retain identical
+  stimulus digests and comparison counts, with zero mismatches. Fetch-stage
+  retains its six incomplete and one provisional scenario; this is not complete
+  specification sign-off.
+- All seven PC-generator groups pass, including the 100-seed × 10,000-cycle
+  required-matrix regression and eight detected mutations. Focused EJU,
+  fetch-memory, and fetch-stage mutations each compile and detect their selected
+  defect through the local cores and owning RTL manifests.
+- The fetch-memory drain target passes, and the local recovery target compiles.
+  Recovery is build-only. Rebuilt Spike execution passes `hello_world` (14,122
+  commits) and `load_store` (2,716 commits), both with application exit zero and
+  no discrepancies. Whole-system execution uses Spike only.
+- The ALU build still stops on the same 13 existing Verilator warning
+  rules/locations as before. No RTL fix or extra waiver is introduced. Python
+  syntax, manifest parsing, and `git diff --check` pass.
+
+Executed commands include:
+
+```sh
+BUILD_DIR="$PWD/build/core-layout-local/after" bash scripts/sim/check-pc-gen.sh
+BUILD_DIR="$PWD/build/core-layout-local/after" bash scripts/sim/check-early-jump.sh
+BUILD_DIR="$PWD/build/core-layout-local/after" bash scripts/sim/check-fetch-mem-if.sh
+BUILD_DIR="$PWD/build/core-layout-local/after" python3 tb/frontend/fetch_stage/run.py
+make check-pc-gen BUILD_DIR="$PWD/build/core-layout-local/after" SEEDS=100 CYCLES=10000 JOBS=4 TEST_JOBS=2 REQUIRE_MATRIX=true DUMP_WAVES=false
+make check-fetch-mem-if-drain BUILD_DIR="$PWD/build/core-layout-local/after"
+fusesoc run --target sim --tool verilator --build-root "$PWD/build/core-layout-local/after/recovery-build" --setup --build polito:len5:recovery-audit
+make verilator-build-debug DEBUG_BUILD_DIR="$PWD/build/core-layout-local/spike" VERILATOR=/home/markospremic/Documents/epfl_len5/tool/verilator/5.040/bin/verilator JOBS=4
+make check-alu
+```
+
+Exact target-resolution, mutation, and Spike arguments are in the JSON receipts
+under `build/core-layout-local/`. No performance improvement or expanded
+verification coverage is claimed for this manifest organization change.
+
+### Cold-build discovery repair validation (2026-10-23)
+
+The discovery failure above was reproduced against the user's stale PC mutation
+snapshots before the repair. No generated snapshots were deleted. After the
+repair, actual FuseSoC resolution selects all early-jump inputs from the real
+source tree. Four independent cold custom build directories, each containing
+duplicate incomplete production-core manifests, also pass real FuseSoC setup
+through the corresponding normal build helper. Those four checks validate
+discovery only, with compilation disabled by a recorded wrapper.
+
+The complete requested gate then exits zero:
+
+```sh
+PATH=/home/markospremic/Documents/epfl_len5/tool/verilator/5.040/bin:/home/markospremic/miniconda3/envs/core-len5/bin:$PATH make check-frontend SEEDS=100 CYCLES=10000 JOBS=4 TEST_JOBS=2 REQUIRE_MATRIX=true DUMP_WAVES=false
+```
+
+PC-generator, early-jump and fetch-memory each pass all seven groups, including
+their 100-seed regressions and mutation checks. Fetch-drain passes. Fetch-stage
+executes all five groups with 39,007,792 comparisons and zero mismatches; its six
+incomplete and one provisional scenario remain, so execution passes with warnings
+and full specification sign-off is still incomplete. Evidence and exact
+resolution/check commands are under `build/frontend-core-discovery-audit/`, with
+the complete console log in `check-frontend.log`.
+
 ## Outcome and scope
 
 C++ cleanup, verification infrastructure repairs, focused coverage, and frontend regression execution are complete. **PC-generator, early-jump, and fetch-memory suites pass all seven groups. Fetch-stage executes all five groups without mismatches but remains verification-incomplete.** Its exit status 0 means success with warnings, not specification sign-off.
@@ -40,6 +123,7 @@ Artifacts are under `build/tb-audit/`, `build/audit-infrastructure/`, `build/aud
 | --- | --- | --- |
 | High | **Missing coverage could falsely pass a regression.** `tb/frontend/pc_gen/regress.py:15`, `early_jump_unit/regress.py:16`, `fetch_mem_if/regress.py:16` previously substituted `{}` for a missing receipt. `--require-matrix` could then accept a denominator of zero. | Each active campaign must supply the exact matrix schema, unique coordinates, valid required flags, and nonnegative integer counts. Failed seeds retain `coverage_error` and make the aggregate fail, including when matrix closure is optional. Before-fix synthetic producers passed all three CLIs with missing coverage and 0/0 combinations. After-fix tests exercise 22 producer cases per suite; real million-cycle regressions also pass. |
 | High | **Buffered output errors could escape final verification status.** PC `pc_gen_scoreboard.cpp:492`, EJU `early_jump_scoreboard.cpp:309`, FM `fetch_mem_scoreboard.cpp:216`, and FE `fetch_stage_driver.cpp:1435` checked streams before their final buffered writes. FE omitted its characterization stream; immutable program/obligation writes were also unchecked. | Explicitly close and check evidence, coverage, characterization, and report streams; check FE program/obligation outputs. EJU/FM finalization errors now return status 2 with a diagnostic instead of escaping main. Pure scoreboard fixtures direct a small report to `/dev/full`: the original matched scoreboard returned normally; repaired code rejects it. FE framework tests additionally induce final buffered/program write errors using `RLIMIT_FSIZE=1`. |
+| Medium | **Generated manifests shadowed production cores after mutation testing.** `tb/frontend/pc_gen/mutate.py:32` and `early_jump_unit/mutate.py:29` copied owning manifests with their original core names without excluding the output directories from discovery. A subsequent early-jump build resolved packages, logger, common and frontend inputs inside an incomplete PC mutation snapshot and failed on three missing RTL files. | Mark PC/EJU mutation output roots, matching the existing fetch-memory/fetch-stage behavior. All four frontend build helpers mark `BUILD_DIR` before invoking FuseSoC, also protecting existing stale snapshots. The failing cold build is reproduced; fresh resolution selects real sources without deleting artifacts, and all four cold custom-build-directory discovery checks pass. Evidence: `build/frontend-core-discovery-audit/`. Earlier layout checks had a pre-existing parent ignore marker and missed this cold-build condition. |
 | Medium | **An interrupted fetch-stage run could lose evidence on reuse.** `fetch_stage_driver.cpp:91` protected only an existing `report.json`; other logs were silently truncated. | Reject any nonempty existing logs directory and check stream creation. Six independent preservation cases keep the original bytes and require status 2. No existing evidence is deleted. |
 | Medium | **Invalid weights left a dangling logger context.** FE registered `context_.get()` before its throwing weight parser. On constructor failure, members were destroyed without running `Simulator::~Simulator`; main's `TB_ERR` then read the freed context. `fetch_stage_driver.cpp:128`, `fetch_stage_tb.cpp:468`. | Register the logger only after parsing succeeds (`fetch_stage_driver.cpp:147`). Existing malformed-number checks plus missing, nonnumeric, negative, oversized, and unknown weight cases return status 2. Static ownership/lifetime proof is definite; sanitizer execution is not claimed (see limits). |
 | Medium | **Current GCC blocked verification builds.** EJU `early_jump_directed.cpp:209` and `:226`; FM `fetch_mem_directed.cpp:61`, `fetch_mem_driver.cpp:83`, `fetch_mem_random.cpp:93`; FE `fetch_stage_driver.cpp:561`. | Separate misleadingly indented independent statements, make an unsigned address literal explicit, and supply the existing `Learning` defaults explicitly. No warnings were disabled. EJU builds and the formerly failing FM/FE mutation builds now compile and execute. |

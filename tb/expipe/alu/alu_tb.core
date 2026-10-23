@@ -78,8 +78,6 @@ targets:
         - '--x-assign unique'
         - '--x-initial unique'
         - '--report-unoptflat'
-        - '--exe'
-        - 'alu_tb.cpp'
         - '-Wall'
         - '-Wpedantic'
 

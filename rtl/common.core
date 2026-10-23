@@ -37,6 +37,22 @@ filesets:
     - common/modn_counter_special.sv
    file_type: systemVerilogSource
 
+  priority-rtl:
+    depend:
+    - polito:len5:packages
+    files:
+    - common/prio_enc.sv
+    file_type: systemVerilogSource
+  fetch-memory-rtl:
+    depend:
+    - polito:len5:packages
+    files:
+    - common/modn_counter.sv
+    - common/modn_counter_updown.sv
+    - common/completion_fifo.sv
+    - common/spill_cell_flush_cu.sv
+    - common/spill_cell_flush.sv
+    file_type: systemVerilogSource
   verilator-waivers:
    files:
     - misc/common-waivers.vlt
@@ -45,5 +61,9 @@ filesets:
 targets:
     default:
         filesets:
-        - common-rtl
-        - tool_verilator ? (verilator-waivers)
+        - "!standalone_frontend ? (common-rtl)"
+        - "early_jump_tb ? (priority-rtl)"
+        - "fetch_mem_tb ? (fetch-memory-rtl)"
+        - "fetch_stage_tb ? (fetch-memory-rtl)"
+        - "fetch_stage_tb ? (priority-rtl)"
+        - "!standalone_frontend ? (tool_verilator ? (verilator-waivers))"

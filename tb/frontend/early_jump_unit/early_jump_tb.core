@@ -6,11 +6,9 @@ description: Standalone encoded-instruction early_jump_unit and real instantiate
 filesets:
   dut:
     depend:
-    - polito:len5:packages
+    - polito:len5:common
+    - polito:len5:frontend
     files:
-    - ../../../rtl/common/prio_enc.sv
-    - ../../../rtl/frontend/ras.sv
-    - ../../../rtl/frontend/early_jump_unit.sv
     - early_jump_tb.sv
     file_type: systemVerilogSource
   harness:
@@ -50,6 +48,9 @@ filesets:
     file_type: vlt
 targets:
   sim:
+    flags:
+      standalone_frontend: true
+      early_jump_tb: true
     default_tool: verilator
     toplevel: early_jump_tb
     filesets:

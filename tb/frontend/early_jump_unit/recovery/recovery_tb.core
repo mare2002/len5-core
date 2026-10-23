@@ -6,11 +6,6 @@ filesets:
       - polito:len5:len5
       - polito:len5:verilator-common
     files:
-      - ../../../memory/memory_class.svh: {is_include_file: true}
-      - ../../../memory/memory_if.sv
-      - ../../../memory/memory_bare_emu.sv
-      - ../../../len5_utils.svh: {is_include_file: true}
-      - ../../../tb_bare.sv
       - recovery_tb.sv
     file_type: systemVerilogSource
   driver:
@@ -18,6 +13,8 @@ filesets:
     file_type: cppSource
 targets:
   sim:
+    flags:
+      bare_tb: true
     default_tool: verilator
     filesets: [test, driver]
     toplevel: recovery_tb

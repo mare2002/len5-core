@@ -8,6 +8,7 @@ build_root=${BUILD_DIR:-"$repo_root/build"}/early-jump
 model_dir=$(python3 tb/frontend/early_jump_unit/configuration.py --model-dir --build-dir "${BUILD_DIR:-$repo_root/build}")
 fingerprint=${model_dir##*-}
 mkdir -p "$model_dir"
+touch "${BUILD_DIR:-$repo_root/build}/FUSESOC_IGNORE"
 exec 9>"$model_dir/build.lock"
 flock 9
 if [[ ${VERILATOR:-verilator} == */* ]]; then export PATH="$(dirname -- "$VERILATOR"):$PATH"; fi

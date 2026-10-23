@@ -8,10 +8,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import time
 import yaml
-from configuration import ROOT, configuration, fingerprint, write_manifest
+from configuration import ROOT, configuration, fingerprint, write_manifest, sources
 
 
 def main():
@@ -22,7 +23,7 @@ def main():
     p.add_argument('--only',default='',help='comma-separated mutation names for a focused audit')
     args=p.parse_args()
     if args.jobs<1:p.error('jobs must be positive')
-    source=Path(__file__).resolve().parent; binary=args.binary.resolve()
+    binary=args.binary.resolve()
     files={name+'.sv':ROOT/('rtl/frontend/'+name+'.sv') for name in ['fetch_stage','gshare','btb','gen_valid_instr','fetch_mem_if']}
     originals={name:path.read_bytes() for name,path in files.items()}
     config=configuration(); config['fingerprint']=fingerprint(config)
@@ -66,26 +67,18 @@ def main():
         text=originals[file].decode()
         if text.count(old)!=count:raise ValueError(f'{label}: expected {count} sites, found {text.count(old)}')
         (d/file).write_text(text.replace(old,new))
-        core=yaml.safe_load((source/'fetch_stage_tb.core').read_text())
-        # Resolve existing files once; only the two DUT source files point to private copies.
-        core['name']='polito:len5:fetch-stage-mutant:0.1.0'
-        # Deliberate disconnections introduce unused-input/coarse-dependency
-        # warnings. Mutants still must compile and fail checked public outputs;
-        # a warning/build failure is never counted as detection.
-        core['targets']['sim']['tools']['verilator']['verilator_options'].append('-Wno-fatal')
-        for fileset in core['filesets'].values():
-            resolved=[]
-            for entry in fileset.get('files',[]):
-                name=next(iter(entry)) if isinstance(entry,dict) else entry
-                path=(d/Path(name).name) if Path(name).name in originals else (source/name).resolve()
-                resolved.append({str(path):entry[name]} if isinstance(entry,dict) else str(path))
-            fileset['files']=resolved
-        (d/'fetch_stage_mutant.core').write_text('CAPI=2:\n'+yaml.safe_dump({k:v for k,v in core.items() if k!='CAPI=2'},sort_keys=False))
-        # Export dependencies into this isolated build: deeply nested relative
-        # source names can otherwise resolve through Verilator include paths to
-        # a different checkout's package. The elaboration guard caught this at N=2.
-        command=[os.environ.get('FUSESOC','fusesoc'),'--cores-root',str(d),'run','--target','sim','--tool','verilator','--build-root',str(d/'model'),'--setup','--build','polito:len5:fetch-stage-mutant','--MEM_DEPTH='+str(config['metadata_depth']),'--BOOT_PC='+str(config['boot_pc'])]
-        with (d/'build.log').open('w') as log:built=subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
+        staging=d/'source'
+        for path in sources():
+            dest=staging/path.relative_to(ROOT); dest.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(path,dest)
+        for name,path in files.items():(staging/path.relative_to(ROOT)).write_bytes((d/name).read_bytes())
+        (staging/'fusesoc.conf').write_text('[library.len5]\nlocation = .\nsync-type = local\n')
+        core=staging/'tb/frontend/fetch_stage/fetch_stage_tb.core'; data=yaml.safe_load(core.read_text())
+        # A compiler failure is never counted as a checked mutation detection.
+        data['targets']['sim']['tools']['verilator']['verilator_options'].append('-Wno-fatal')
+        core.write_text('CAPI=2:\n'+yaml.safe_dump({k:v for k,v in data.items() if k!='CAPI=2'},sort_keys=False))
+        command=[os.environ.get('FUSESOC','fusesoc'),'run','--target','sim','--tool','verilator','--build-root',str(d/'model'),'--setup','--build','polito:len5:fetch-stage-tb','--MEM_DEPTH='+str(config['metadata_depth']),'--BOOT_PC='+str(config['boot_pc'])]
+        with (d/'build.log').open('w') as log:built=subprocess.run(command,cwd=staging,stdout=log,stderr=subprocess.STDOUT)
         result=dict(mutation=label,behavior=f'{old} -> {new}',requirement=req,scenario='FE-T'+scenario,build_status=built.returncode,artifacts=str(d))
         if built.returncode:
             result.update(status='not_executed_build_failed'); print('Test failed: mutation '+label+' did not compile',flush=True); return result

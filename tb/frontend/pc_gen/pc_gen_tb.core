@@ -6,9 +6,8 @@ description: Standalone port-only pc_gen directed and constrained-random verific
 filesets:
   dut:
     depend:
-    - polito:len5:packages
+    - polito:len5:frontend
     files:
-    - ../../../rtl/frontend/pc_gen.sv
     - pc_gen_tb.sv
     file_type: systemVerilogSource
   harness:
@@ -32,6 +31,9 @@ filesets:
 
 targets:
   sim:
+    flags:
+      standalone_frontend: true
+      pc_gen_tb: true
     default_tool: verilator
     toplevel: pc_gen_tb
     filesets: [dut, harness]

@@ -15,6 +15,7 @@ read -r boot_high boot_low <<< "$boot_fields"
 seed=${SEED:-1}
 scenario=${SCENARIO:-all}
 mkdir -p "$build_root"
+touch "${BUILD_DIR:-$repo_root/build}/FUSESOC_IGNORE"
 # The executable name is fixed by the test-only top. Distinct boot parameters
 # have distinct build directories. FuseSoC still owns compilation and execution.
 model_dir=$(python3 tb/frontend/pc_gen/configuration.py --model-dir --boot "$boot_pc" --build-dir "${BUILD_DIR:-$repo_root/build}")

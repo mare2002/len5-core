@@ -148,7 +148,7 @@ the unrelated existing processor regression.
 | [pc_gen_random.hh](pc_gen_random.hh), [pc_gen_random.cpp](pc_gen_random.cpp) | Seeded semantic scenarios, weighted actions, bounded coverage feedback and reproducible payload/latency streams. |
 | [suite.py](suite.py), [suite_unit.py](suite_unit.py) | Build-once parallel group orchestration, aggregate status/logs, and independent concurrency/failure-propagation checks. |
 | [regress.py](regress.py), [validate_random.py](validate_random.py), [mutate.py](mutate.py) | Isolated parallel seed regressions, coverage merging, native replay/causality/coverage/failure validation. |
-| [pc_gen_tb.core](pc_gen_tb.core) | Native FuseSoC integration; depends only on LEN5 packages and the shared logger. Compiles only this production module and the test-only wrapper. |
+| [pc_gen_tb.core](pc_gen_tb.core), [frontend.core](../../../rtl/frontend.core) | Local simulation target and shared logger dependency; production RTL comes from its owning fileset. Compiles only this production module and the test-only wrapper. |
 | [pc_gen_unit.cpp](pc_gen_unit.cpp), [pc_gen_scoreboard_unit.cpp](pc_gen_scoreboard_unit.cpp), [validate.py](validate.py) | Model/causality invariants and native integration/failure-path validation. |
 | [check-pc-gen.sh](../../../scripts/sim/check-pc-gen.sh) | Build serialization, private run directories and console capture. |
 

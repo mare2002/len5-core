@@ -45,19 +45,23 @@ def configuration(boot=0, source=SOURCE, packages=PACKAGES):
                 source=str(source.resolve()))
 
 
-def fingerprint(config):
+def sources():
     # All compiled sources, package/core definitions and harness headers enter
     # the key. No generated evidence or file timestamps enter it.
     paths = set((ROOT / 'rtl/packages').glob('*.sv'))
     paths.update([ROOT/'rtl/packages.core', ROOT/'rtl/misc/packages-waivers.vlt',
-                  ROOT/'rtl/frontend/pc_gen.sv', ROOT/'tb/verilator/verilator-common.core',
+                  ROOT/'rtl/frontend/pc_gen.sv', ROOT/'tb/verilator/verilator-common.core', ROOT/'rtl/frontend.core', ROOT/'rtl/common.core',
                   ROOT/'tb/verilator/tb_macros.cpp', ROOT/'tb/verilator/tb_macros.hh',
                   ROOT/'scripts/sim/check-pc-gen.sh'])
     paths.update(p for p in HERE.iterdir()
                  if p.suffix in ('.cpp', '.hh', '.sv', '.core') and not p.name.endswith('_unit.cpp'))
     paths.add(Path(__file__).resolve())
+    return sorted(paths)
+
+
+def fingerprint(config):
     digest = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
-    for path in sorted(paths):
+    for path in sources():
         digest.update(str(path.relative_to(ROOT)).encode()+b'\0'+path.read_bytes()+b'\0')
     return digest.hexdigest()
 

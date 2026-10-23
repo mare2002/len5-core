@@ -9,6 +9,7 @@ model_dir=$(python3 tb/frontend/fetch_mem_if/configuration.py --model-dir --buil
 fingerprint=${model_dir##*-}
 metadata_depth=$(python3 tb/frontend/fetch_mem_if/configuration.py --depth)
 mkdir -p "$model_dir"
+touch "${BUILD_DIR:-$repo_root/build}/FUSESOC_IGNORE"
 exec 9>"$model_dir/build.lock"
 flock 9
 if [[ ${VERILATOR:-verilator} == */* ]]; then export PATH="$(dirname -- "$VERILATOR"):$PATH"; fi

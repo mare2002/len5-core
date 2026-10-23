@@ -45,7 +45,8 @@ def sources():
         paths.add(ROOT/('rtl/common/'+name+'.sv'))
     for name in ['pc_gen/pc_gen_model','early_jump_unit/early_jump_model','early_jump_unit/early_jump_instructions','fetch_mem_if/fetch_mem_model']:
         for suffix in ['.hh','.cpp']: paths.add(HERE.parent/(name+suffix))
-    paths.update([HERE.parent/'pc_gen/configuration.py',ROOT/'rtl/packages.core',ROOT/'rtl/misc/packages-waivers.vlt',ROOT/'rtl/misc/frontend-waivers.vlt',ROOT/'tb/verilator/verilator-common.core',ROOT/'tb/verilator/tb_macros.hh',ROOT/'tb/verilator/tb_macros.cpp'])
+    paths.update([HERE.parent/'pc_gen/configuration.py',ROOT/'rtl/packages.core',ROOT/'rtl/misc/packages-waivers.vlt',ROOT/'tb/verilator/verilator-common.core', ROOT/'rtl/frontend.core', ROOT/'rtl/common.core',
+                  ROOT/'rtl/misc/frontend-waivers.vlt',ROOT/'tb/verilator/tb_macros.hh',ROOT/'tb/verilator/tb_macros.cpp'])
     paths.update(p for p in HERE.iterdir() if p.suffix in ['.hh','.cpp','.sv','.core','.vlt','.py'])
     return sorted(paths)
 
