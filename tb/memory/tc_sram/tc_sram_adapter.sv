@@ -23,7 +23,6 @@ module tc_sram_adapter #(
 ) (
   input logic clk_i,
   input logic rst_ni,
-  input logic load_flush_i,
   input logic initialized_i,
   input logic instr_req_i,
   input logic instr_ready_i,
@@ -96,7 +95,7 @@ module tc_sram_adapter #(
 
   logic [1:0][DataCountWidth-1:0] data_outstanding, data_occupancy;
 
-  logic load_accepted, load_credit, load_flush;
+  logic load_accepted, load_credit;
   logic load_sram, load_except, unused_load_mmio;
   except_code_t load_code;
   logic         load_result_valid;
@@ -212,8 +211,7 @@ module tc_sram_adapter #(
     .code_o  (store_code)
   );
 
-  // Preserve the latency-one drain-on-flush contract; longer reads cancel before LSU tag reuse.
-  assign load_flush = DMEM_LATENCY > 1 && load_flush_i;
+  // Accepted loads retain their response ownership across CPU pipeline flushes.
   assign response_o.load_gnt = initialized_i && load_credit;
   assign response_o.store_gnt = initialized_i && store_credit;
   assign load_accepted = load_req_i && response_o.load_gnt;
@@ -246,8 +244,6 @@ module tc_sram_adapter #(
       if (!rst_ni) begin
         pending_q <= '0;
         foreach (metadata_q[stage]) metadata_q[stage] <= '0;
-      end else if (load_flush) begin
-        pending_q <= '0;
       end else begin
         pending_q[0] <= load_accepted;
         if (load_accepted) metadata_q[0] <= load_metadata;
@@ -294,7 +290,7 @@ module tc_sram_adapter #(
   ) u_load_buffer (
     .clk_i,
     .rst_ni,
-    .flush_i       (load_flush),
+    .flush_i       (1'b0),
     .allocate_i    (load_accepted),
     .credit_o      (load_credit),
     .result_valid_i(load_result_valid),

@@ -125,7 +125,7 @@ package len5_config_pkg;
   localparam bit FETCH_MEM_DRAIN_ON_FLUSH = 1'b1;
   // Retain accepted load tags across flush when the memory cannot cancel requests.
   // verilog_lint: waive parameter-name-style
-  localparam bit LOAD_BUFFER_DRAIN_ON_FLUSH = 1'b0;
+  localparam bit LOAD_BUFFER_DRAIN_ON_FLUSH = 1'b1;
   // NOTE: if the memory is 0-latency, at least one of the fetch unit registers
   // must be enabled (i.e., not skipped). Therefore, at least one of the
   // following switches must be commented in this case.

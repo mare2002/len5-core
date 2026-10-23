@@ -16,7 +16,7 @@ module tc_sram_adapter_tb;
   localparam logic [63:0] IBase = IMEM_BASE_ADDR;
   localparam logic [63:0] DBase = DMEM_BASE_ADDR;
   localparam logic [63:0] Serial = SERIAL_ADDR, Exit = EXIT_ADDR;
-  bit clk = 0, rst = 0, flush = 0, load_flush = 0;
+  bit clk = 0, rst = 0, flush = 0;
   bit [2:0] req = 0, ready = 0;
   bit store_we = 1;
   logic [2:0][63:0] addr, wdata;
@@ -71,7 +71,6 @@ module tc_sram_adapter_tb;
   ) dut (
     .clk_i        (clk),
     .rst_ni       (rst),
-    .load_flush_i (load_flush),
     .initialized_i(initialized),
     .instr_req_i  (instr_request),
     .instr_ready_i(instr_result_ready),
@@ -165,6 +164,9 @@ module tc_sram_adapter_tb;
   int max_out[3], max_occ[3], sum_out[3], sum_occ[3], latency_sum[3];
   int all_three = 0, collision = 0, flush_count = 0, mmio_count = 0;
   int max_fetch_reserved = 0, fetch_return_count = 0, stale_returns = 0;
+  int load_reset_canceled = 0, load_flush_pending = 0, load_flush_buffered = 0;
+  int load_flush_repeated = 0, load_flush_simultaneous = 0;
+  bit previous_flush = 0;
 
   function automatic int unsigned random32();
     rng ^= rng << 13;
@@ -238,6 +240,7 @@ module tc_sram_adapter_tb;
     accepted_now = req & grant;
     if (flush) foreach (fetch_returns[i]) fetch_returns[i].live = 0;
     if (!rst) begin
+      load_reset_canceled += loads.size();
       loads.delete();
       stores.delete();
       fetches.delete();
@@ -246,18 +249,25 @@ module tc_sram_adapter_tb;
       else $fatal(1, "Activity during reset");
       assert (outstanding == '0 && occupancy == '0)
       else $fatal(1, "Reset retained memory transaction state");
+      previous_flush = 0;
     end else begin
+      assert (int'(outstanding[1]) == loads.size())
+      else $fatal(1, "Load reservation mismatch cycle %0d: got %0d expected %0d", cycle_no,
+                  outstanding[1], loads.size());
       if (flush) begin
         fetches.delete();
         flush_count++;
         assert (!valid[0] && !grant[0])
         else $fatal(1, "Fetch activity during flush");
+        // Instruction flush cancels frontend work; accepted DMEM reads stay owned.
+        if (loads.size() != 0) begin
+          if (cycle_no < loads[loads.size()-1].due) load_flush_pending++;
+          if (previous_flush) load_flush_repeated++;
+        end
+        if (occupancy[1] != 0 && !ready[1]) load_flush_buffered++;
+        if (accepted_now[1] && valid[1] && ready[1]) load_flush_simultaneous++;
       end
-      if (DMEM_LATENCY > 1 && load_flush) begin
-        loads.delete();
-        assert (!valid[1] && !grant[1])
-        else $fatal(1, "Load activity during cancellation");
-      end
+      previous_flush = flush;
       if (!flush) begin
         assert (rsp.instr_gnt == initialized && occupancy[0] == 0)
         else $fatal(1, "IMEM added request throttling or response storage");
@@ -398,6 +408,9 @@ module tc_sram_adapter_tb;
       if (&dmem_req && dmem_addr[0] == dmem_addr[1]) collision++;
       if (fetches.size() > max_fetch_reserved) max_fetch_reserved = fetches.size();
     end
+    assert (accepted[1] == completed[1] + load_reset_canceled + loads.size())
+    else $fatal(1, "Load conservation failed: accepted=%0d completed=%0d reset=%0d pending=%0d",
+                accepted[1], completed[1], load_reset_canceled, loads.size());
     // Check native completion separately from frontend delivery: a FIFO must not
     // hide a late, reordered, or corrupt adapter response.
     if (fetch_returns.size() != 0) begin
@@ -419,10 +432,9 @@ module tc_sram_adapter_tb;
     cycle_no++;
   endtask
   task automatic drain;
-    req        = 0;
-    ready      = 7;
-    flush      = 0;
-    load_flush = 0;
+    req   = 0;
+    ready = 7;
+    flush = 0;
     repeat (IMEM_LATENCY + DMEM_LATENCY + Capacity + FetchDepth + 5) tick();
     assert (loads.size() == 0 && stores.size() == 0 && fetches.size() == 0 && fetch_returns.size() == 0)
     else $fatal(1, "Drain failed");
@@ -562,21 +574,66 @@ module tc_sram_adapter_tb;
       tick();
       drain();
     end
-    if (DMEM_LATENCY > 1) begin
-      req     = 2;
+    // Cross-channel flush independence: no adapter load-flush input or synthetic CPU is used.
+    begin
+      int start_load, start_completed;
+      start_load = accepted[1];
+      start_completed = completed[1];
+      req = 3;
+      ready = 0;
+      addr[0] = IBase;
       addr[1] = DBase;
-      tag[1]  = 0;
+      be[1] = 255;
+      tag[1] = 0;
       tick();
-      load_flush = 1;
+      req = 0;
+      flush = 1;
+      repeat (DMEM_LATENCY + 2) tick();
+      assert (loads.size() == 1 && completed[1] == start_completed && occupancy[1] == 1)
+      else $fatal(1, "Instruction flush lost the pending/backpressured load");
+      req = 2;
+      addr[1] = DBase + 64'(Size);
+      tag[1] = '1;
       tick();
-      load_flush = 0;
-      addr[1]    = DBase + 8;
+      req = 0;
+      repeat (DMEM_LATENCY + 2) tick();
+      assert (loads.size() == 2 && occupancy[1] == 2)
+      else $fatal(1, "Repeated instruction flush lost native/faulted load responses");
+      drain();
+      assert (accepted[1] - start_load == 2 && completed[1] - start_completed == 2)
+      else $fatal(1, "Loads did not complete exactly once across instruction flush");
+
+      // Continuous traffic guarantees a same-edge load request/response/flush at every latency.
+      req = 2;
+      ready = 7;
+      flush = 1;
+      for (int beat = 0; beat < DMEM_LATENCY + 4; beat++) begin
+        addr[1] = beat % 3 == 2 ? DBase + 64'(Size) : DBase + (64'(beat) % 64'd4) * 64'd8;
+        tag[1] = BUFF_IDX_LEN'(beat);
+        tick();
+      end
+      drain();
+
+      // Reset alone can cancel a held response and a newly accepted read.
+      req = 2;
+      ready[1] = 0;
+      addr[1] = DBase;
+      tick();
+      req = 0;
+      repeat (DMEM_LATENCY + 1) tick();
+      req = 2;
+      addr[1] = DBase + 64'(Size);
+      tick();
+      req = 0;
+      assert (loads.size() == 2) else $fatal(1, "Reset fixture lacks accepted load obligations");
+      rst = 0;
+      repeat (2) tick();
+      rst = 1;
       tick();
       drain();
     end
     for (int i = 0; i < cycles; i++) begin
       flush = random32() % 40 == 0;
-      if (DMEM_LATENCY > 1) load_flush = random32() % 53 == 0;
       for (int p = 0; p < 3; p++) begin
         req[p]   = random32() % 10 != 0;
         ready[p] = random32() % 4 != 0;
@@ -616,6 +673,12 @@ module tc_sram_adapter_tb;
     assert (max_fetch_reserved == FrontendCapacity && fetch_return_count > 0);
     if (IMEM_LATENCY > 0) assert (stale_returns > 0);
     $display("FETCH_DRAIN stale_returns=%0d", stale_returns);
+    assert (load_flush_buffered > 0 && load_flush_repeated > 0 && load_flush_simultaneous > 0 &&
+            load_reset_canceled >= 2 && accepted[1] == completed[1] + load_reset_canceled);
+    if (DMEM_LATENCY > 1) assert (load_flush_pending > 0);
+    $display("LOAD_DRAIN pending_flush=%0d buffered_flush=%0d repeated_flush=%0d simultaneous=%0d reset_canceled=%0d",
+             load_flush_pending, load_flush_buffered, load_flush_repeated,
+             load_flush_simultaneous, load_reset_canceled);
     for (int p = 0; p < 3; p++) begin
       assert (errors[p] > 0 &&
               max_out[p] == (p == 0 ? (int'(IMEM_LATENCY) < FetchDepth ? int'(IMEM_LATENCY) : FetchDepth) : Capacity) &&

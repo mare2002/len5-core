@@ -12,10 +12,9 @@ make -C build/axi-source verilator-build-debug
 ```
 
 The snapshot helper sets the testbench backend and two CPU protocol options:
-`FETCH_MEM_DRAIN_ON_FLUSH` is enabled for TC_SRAM and AXI_SIM, while
-`LOAD_BUFFER_DRAIN_ON_FLUSH` is enabled only for AXI_SIM. LEGACY retains its
-cancel-on-flush fetch contract; LEGACY and TC_SRAM retain their original Load
-Buffer behavior. `tb_bare` rejects inconsistent combinations at elaboration.
+`FETCH_MEM_DRAIN_ON_FLUSH` and `LOAD_BUFFER_DRAIN_ON_FLUSH` are enabled for
+TC_SRAM and AXI_SIM. LEGACY retains its cancel-on-flush fetch contract and
+original Load Buffer behavior. `tb_bare` rejects inconsistent combinations at elaboration.
 These CPU options describe response ownership without importing the testbench's
 backend selector into the CPU.
 
@@ -73,7 +72,7 @@ The testbench configuration is the single source for the memory map:
 | --- | --- | --- |
 | `IMEM_BASE_ADDR` | `0x10000` | Aligned to the IMEM word size |
 | `IMEM_SIZE_BYTES` | 256 KiB | Positive integral number of IMEM words |
-| `IMEM_LATENCY` | 4 | TC_SRAM read latency, including zero |
+| `IMEM_LATENCY` | 10 | TC_SRAM read latency, including zero |
 | `DMEM_BASE_ADDR` | `0x50000` | Eight-byte aligned |
 | `DMEM_SIZE_BYTES` | 768 KiB | Positive integral number of 64-bit words |
 | `DMEM_LATENCY` | 1 | TC_SRAM read latency, including zero |
@@ -175,9 +174,11 @@ Latency-zero loads can reserve and complete a slot on the same edge.
 DMEM retains upstream read-before-write behavior for simultaneous read/write
 collisions. At latency zero the adapter samples the pre-edge asynchronous read;
 any stalled result is captured before the write's nonblocking update.
-For DMEM latency greater than one, backend flush cancels load reservations and
-pending results before LSU tags can be reused. Latency zero/one retain the
-existing short-latency drain-on-flush contract. Stores are not canceled.
+Accepted loads retain their reservations, metadata pipeline and buffered responses
+across CPU pipeline flushes at every DMEM latency. The adapter has no load-flush
+input: only system reset cancels those transactions. The Load Buffer retains killed
+tags until their matching responses arrive, discards their values, and then permits
+tag reuse. Stores are not canceled by pipeline flushes.
 
 ## AXI_SIM organization
 
@@ -238,13 +239,13 @@ original contract in which the memory cancels requests itself (LEGACY).
 
 ### Loads, killed tags, and store ordering
 
-CPU acceptance owns a load tag even before its AR handshakes. Neither the AR nor
+For AXI_SIM, CPU acceptance owns a load tag even before its AR handshakes. Neither the AR nor
 the eventual load completion is canceled by an architectural flush. `RID` maps
 directly to the original load tag, allowing different IDs to complete out of
 order. One response register applies CPU backpressure to R; each ID remains busy
 until the CPU consumes its completion.
 
-With drain-on-flush enabled, the Load Buffer behaves as follows:
+Both native backends use the same drain-on-flush Load Buffer behavior:
 
 | Event for an entry | Result |
 | --- | --- |
@@ -325,9 +326,10 @@ boundaries, wrong-memory access, unsupported masks, MMIO, simultaneous traffic,
 flushes and CPU reset. Native loader checks cover HEX/TXT/BIN, sparse boundaries,
 invalid images and absence of untouched bytes.
 
-For the real-LSU killed-load test, copy `len5_config_pkg.sv`, enable
-`LOAD_BUFFER_DRAIN_ON_FLUSH`, and run `check-load-store.sh` with
-`LOAD_STORE_TOP=load_store_killed_tb` and `LOAD_STORE_CONFIG=/absolute/copy.sv`.
+For the real-LSU killed-load test, run `check-load-store.sh` with
+`LOAD_STORE_TOP=load_store_killed_tb`. It requires
+`LOAD_BUFFER_DRAIN_ON_FLUSH=1`, enabled in the default native-memory configuration.
+Use `LOAD_STORE_CONFIG=/absolute/copy.sv` for an alternate CPU configuration.
 The default command still runs the original LSU regression. The new test delays
 and reorders responses, checks no stale CDB publication, simultaneous
 flush/request/response cases, repeated flushes, all-tags-killed capacity and store
@@ -525,6 +527,86 @@ flush and fails that timing assertion with retained entries. Its temporary
 replacement and unapplied patch have been removed with the one-off verification
 benches; the maintained testbench has not been changed to fix that assumption.
 No formal equivalence, synthesis/PPA or complete four-state sign-off is claimed.
+
+## TC_SRAM load draining verification (2026-10-23)
+
+TC_SRAM now uses `LOAD_BUFFER_DRAIN_ON_FLUSH=1`, matching AXI_SIM. Previously,
+the adapter canceled pending and buffered loads on flush when `DMEM_LATENCY>1`,
+while the CPU immediately released their tags. That coupled cancellation policy
+has been removed. The invariants are:
+
+- Every accepted load produces exactly one tagged response, including local
+  faults, unless system reset cancels the transaction. Pipeline flush cannot
+  clear the metadata pipeline, response storage, or reservations.
+- The Load Buffer retains accepted, incomplete loads as KILLED across flush.
+  Their responses release the tags without publishing to the CDB. A response
+  accepted on the flush edge releases its tag immediately. Unaccepted loads can
+  be discarded, and later loads cannot reuse an owned tag.
+- Reset cancels CPU and memory transaction state together. Fetch draining and
+  store ordering retain their existing contracts.
+
+The adapter no longer has a load-flush input. `tb_bare`, the physical memory
+monitor, and the Spike checker retain accepted-load expectations across flush.
+Both native backend snapshots enable both drain parameters; LEGACY disables
+them. Elaboration rejects inconsistent settings. CPU configuration, adapter,
+callers, checker, and backend-selection helper must be updated or reverted
+together; there is no memory-image migration.
+
+Evidence is under `build/tc-sram-load-drain/`. The baseline is `a875632`:
+
+| Check | Executed scope and result |
+| --- | --- |
+| Before changes | Original adapter at DMEM latency 4: three seeds × 10,000 random cycles passed under its cancellation contract; original LSU ordering test passed with load draining disabled. |
+| Adapter after changes | DMEM latencies 0/1/4/8, each ten seeds × 10,000 random cycles: all pass, plus directed pending, backpressured, faulted, repeated-flush, simultaneous-request/response, and reset cases. IMEM latency 10, N=4, frontend depth 8. |
+| Negative calibration | The old canceling adapter compiles with its old load-flush port restored in a copied testbench and driven by test flush. At DMEM latency 4, seed 1, the new reservation check rejects its cancellation during directed traffic: cycle 1395, got 0 reservations, expected 1. Commands, input hashes and failure are in `negative/`. |
+| Real LSU | Ordering test passes with draining enabled. Killed-load test passes 100 seeds × 10,000 random cycles plus directed cases, including exhausted tags, stale-publication prevention, repeated flush, and simultaneous request/response/flush. |
+| Configuration | All 35 SRAM configuration/generator cases and nine actual backend-selection elaboration cases pass, including expected rejections. |
+| AXI compatibility | Variable-latency adapter smoke passes three seeds × 10,000 random cycles plus its directed cases. |
+| Whole system | Spike only: `hello_world` and `load_store` pass at default I/D=10/1 and isolated I/D=1/32. A directed load-drain firmware also passes at 1/32. All five runs exit with application status zero and no Spike discrepancies. |
+| Static checks | Modified Python scripts compile; `git diff --check` passes. Targeted Verible exits 1 with the same 40 parameter-naming findings as `a875632`, all in unchanged configuration declarations; no new diagnostics or waivers. Comparison and command are in `post/verible-comparison.json`. |
+
+The adapter scoreboard now asserts conservation on every tick:
+`accepted = completed + reset_canceled + pending`. Its flush stimulus exercises
+instruction flush independently of data traffic; the real LSU and Spike runs
+exercise architectural backend flush. Mandatory witnesses prevent the directed
+load cases from passing without the intended traffic.
+
+Spike architectural agreement alone does not prove that pending loads crossed
+flush. A separate audit of the directed run's original waveform observes 11
+accepted and 11 completed loads, eight responses after their backend flush, two
+subsequent reuses of killed tags after their responses, and zero pending loads
+at exit. It checks each response's tag, value, exception and ownership against
+the accepted requests and an independent initialized-data oracle. For example,
+tag 1 is accepted at FST tick 59, flushed at 113, returns value 11 at 123, and
+is reused at 139. The auditor's eight synthetic positive/negative self-checks
+also pass. These are protocol observations, not performance measurements.
+
+Executed commands and exact run arguments are recorded in
+`post/adapter-matrix.json` and `post/spike-runs.json`; representative commands,
+run from the repository root, are:
+
+```sh
+TC_SRAM_BUILD_DIR="$PWD/build/tc-sram-load-drain/post/dmem-4/adapter" TC_SRAM_TB_CONFIG="$PWD/build/tc-sram-load-drain/post/dmem-4/tb_config_pkg.sv" SEEDS=10 CYCLES=10000 JOBS=4 bash scripts/sim/check-tc-sram.sh
+BUILD_DIR="$PWD/build/tc-sram-load-drain/post/lsu-order" JOBS=4 bash scripts/sim/check-load-store.sh
+BUILD_DIR="$PWD/build/tc-sram-load-drain/post/lsu-killed" LOAD_STORE_TOP=load_store_killed_tb JOBS=4 bash scripts/sim/check-load-store.sh
+TC_SRAM_CONFIG_BUILD_DIR="$PWD/build/tc-sram-load-drain/post/configuration" python3 scripts/sim/check-tc-sram-config.py
+VERILATOR=/home/markospremic/Documents/epfl_len5/tool/verilator/5.040/bin/verilator python3 scripts/sim/check-memory-backend-selection.py build/normal/sim-verilator/polito_len5_len5_0.1.1.vc
+AXI_BUILD_DIR="$PWD/build/tc-sram-load-drain/post/axi-smoke" AXI_NATIVE=0 SEEDS=3 CYCLES=10000 JOBS=4 bash scripts/sim/check-axi-sim.sh
+python3 scripts/sim/prepare-memory-backend.py TC_SRAM build/tc-sram-load-drain/long-latency-source
+build/tc-sram-load-drain/spike-long/sim-diff-verilator/Vtb_bare --diff --max_cycles=1000000 --dump_waves=true --dump_trace=false --log_level=LOG_NONE --run_dir="$PWD/build/tc-sram-load-drain/post/spike-long-load-drain" +firmware="$PWD/build/tc-sram-load-drain/experiment/load_drain.hex"
+fst2vcd -f build/tc-sram-load-drain/post/spike-long-load-drain/logs/waves.fst -o build/tc-sram-load-drain/experiment/load_drain.vcd
+python3 build/tc-sram-load-drain/experiment/audit_load_drain.py build/tc-sram-load-drain/experiment/load_drain.vcd --output build/tc-sram-load-drain/experiment/wave-audit.json
+python3 -m py_compile scripts/sim/prepare-memory-backend.py scripts/sim/check-memory-backend-selection.py
+```
+
+Only the isolated long-latency snapshot changes IMEM/DMEM latency; repository
+defaults remain 10/1. The killed-load seed commands/results are in
+`post/lsu-killed-seeds/summary.json`. The one-off firmware, linker script, ELF,
+disassembly, waveform auditor and self-check results are in `experiment/`;
+the maintained adapter and LSU benches provide the permanent regression checks.
+This follow-up does not repeat all widths, all frontend suites, ISA/trap
+verification, four-state simulation or synthesis/PPA. No speedup is claimed;
+draining can temporarily exhaust load tags until old responses arrive.
 
 ## Firmware and linker integration
 

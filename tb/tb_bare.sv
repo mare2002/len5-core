@@ -126,10 +126,8 @@ module tb_bare #(
   localparam int unsigned MemoryCountWidth = MEMORY_BACKEND == MEM_BACKEND_AXI_SIM ?
       axi_memory_pkg::CountWidth : memory_backend_pkg::SRAM_COUNT_WIDTH;
   logic [2:0][MemoryCountWidth-1:0] memory_outstanding, memory_occupancy;
-  logic                                 memory_load_flush;
   memory_backend_pkg::memory_response_t memory_response  /* verilator split_var */;
   logic                                 monitor_store;
-  assign memory_load_flush = MEMORY_BACKEND == MEM_BACKEND_TC_SRAM && DMEM_LATENCY > 1 && dp2mem_load_flush;
   assign monitor_store = MEMORY_BACKEND == MEM_BACKEND_LEGACY ?
                          dp2mem_store_valid && mem2dp_store_ready : mmio_write;
 
@@ -137,10 +135,11 @@ module tb_bare #(
   // BODY
   // ----
 
-  if (LOAD_BUFFER_DRAIN_ON_FLUSH != (MEMORY_BACKEND == MEM_BACKEND_AXI_SIM)) begin : gen_load_protocol_error
+  if (LOAD_BUFFER_DRAIN_ON_FLUSH != (MEMORY_BACKEND == MEM_BACKEND_TC_SRAM ||
+                                    MEMORY_BACKEND == MEM_BACKEND_AXI_SIM)) begin : gen_load_protocol_error
     $fatal(
         1,
-        "LOAD_BUFFER_DRAIN_ON_FLUSH must be enabled only for AXI_SIM; use prepare-memory-backend.py"
+        "LOAD_BUFFER_DRAIN_ON_FLUSH must be enabled for native memories; use prepare-memory-backend.py"
     );
   end
   if (FETCH_MEM_DRAIN_ON_FLUSH != (MEMORY_BACKEND == MEM_BACKEND_TC_SRAM ||
@@ -348,7 +347,7 @@ module tb_bare #(
     .clk_i,
     .rst_ni,
     .flush_i(dp2mem_flush),
-    .load_flush_i(memory_load_flush),
+    .load_flush_i(1'b0),
     .stop_i(exit_code_recv),
     .retire_i(tb_len5_get_committing()),
     .req_i({dp2mem_store_valid, dp2mem_load_valid, dp2mem_instr_valid}),
@@ -465,7 +464,6 @@ module tb_bare #(
       ) u_adapter (
         .clk_i,
         .rst_ni,
-        .load_flush_i (dp2mem_load_flush),
         .initialized_i(sram_initialized),
         .instr_req_i  (dp2mem_instr_valid),
         .instr_ready_i(dp2mem_instr_ready),

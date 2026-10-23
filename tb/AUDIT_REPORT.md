@@ -2,6 +2,25 @@
 
 Date: 2026-10-22. Baseline: `ab26cb1` (clean tracked worktree at audit start).
 
+Protocol update (2026-10-23): TC_SRAM now enables load-buffer draining and preserves
+accepted data-load responses across pipeline flushes at every latency. The audit
+results below describe the earlier baseline. The follow-up against `a875632` is
+documented in [TC_SRAM load draining verification](memory/tc_sram/MEMORY_BACKEND_INTEGRATION.md#tc_sram-load-draining-verification-2026-10-23),
+including commands, configuration, evidence paths, and remaining scope.
+
+This is a verified protocol change requested after the audit, rather than an
+optimization: `rtl/packages/len5_config_pkg.sv:128` enables retained tags;
+`tb/memory/tc_sram/tc_sram_adapter.sv:238` and `:290` keep the load pipeline and
+response reservations until completion or reset. `tb/tb_bare.sv:138` rejects a
+mixed configuration, and `tb/verilator/diff/checker.cpp:665` retains squashed-load
+transactions. The independent conservation assertion at
+`tb/memory/tc_sram/tc_sram_adapter_tb.sv:411` checks accepted, completed, reset-canceled
+and pending loads on every tick. Adapter latency 0/1/4/8 regressions pass 400,000
+random cycles; real-LSU killed-load regressions pass one million. Five whole-system
+Spike runs pass, including a latency-32 waveform proving eight loads returned
+after flush and their tags remained owned until response. All 35 SRAM configuration
+and nine backend-selection cases pass. No performance improvement is claimed.
+
 ## Outcome and scope
 
 C++ cleanup, verification infrastructure repairs, focused coverage, and frontend regression execution are complete. **PC-generator, early-jump, and fetch-memory suites pass all seven groups. Fetch-stage executes all five groups without mismatches but remains verification-incomplete.** Its exit status 0 means success with warnings, not specification sign-off.

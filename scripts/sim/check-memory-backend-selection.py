@@ -26,12 +26,13 @@ build = root / "build/memory-backend-selection"
 results = []
 for name, setting, drain, fetch_drain, message in (
         ("legacy", "MEM_BACKEND_LEGACY", False, False, ""),
-        ("tc-sram", "MEM_BACKEND_TC_SRAM", False, True, ""),
+        ("tc-sram", "MEM_BACKEND_TC_SRAM", True, True, ""),
         ("axi", "MEM_BACKEND_AXI_SIM", True, True, ""),
         ("invalid", "memory_backend_t'(2'd3)", False, False, "Invalid MEMORY_BACKEND"),
         ("axi-without-retained-tags", "MEM_BACKEND_AXI_SIM", False, True, "LOAD_BUFFER_DRAIN_ON_FLUSH"),
-        ("sram-with-retained-tags", "MEM_BACKEND_TC_SRAM", True, True, "LOAD_BUFFER_DRAIN_ON_FLUSH"),
-        ("sram-without-fetch-drain", "MEM_BACKEND_TC_SRAM", False, False, "FETCH_MEM_DRAIN_ON_FLUSH"),
+        ("sram-without-retained-tags", "MEM_BACKEND_TC_SRAM", False, True, "LOAD_BUFFER_DRAIN_ON_FLUSH"),
+        ("legacy-with-retained-tags", "MEM_BACKEND_LEGACY", True, False, "LOAD_BUFFER_DRAIN_ON_FLUSH"),
+        ("sram-without-fetch-drain", "MEM_BACKEND_TC_SRAM", True, False, "FETCH_MEM_DRAIN_ON_FLUSH"),
         ("legacy-with-fetch-drain", "MEM_BACKEND_LEGACY", False, True, "FETCH_MEM_DRAIN_ON_FLUSH")):
 
     out = build / name

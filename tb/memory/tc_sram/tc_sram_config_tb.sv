@@ -24,7 +24,6 @@ module tc_sram_config_tb #(
   ) dut (
     .clk_i        (1'b0),
     .rst_ni       (1'b0),
-    .load_flush_i (1'b0),
     .initialized_i(1'b0),
     .instr_req_i  (1'b0),
     .instr_ready_i(1'b0),
