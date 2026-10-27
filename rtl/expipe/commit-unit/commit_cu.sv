@@ -93,7 +93,9 @@ module commit_cu (
     CLEAR_COMM_REG,      // clear the commit register
     ISSUE_RESUME,        // resume execution after stall
 
-    HALT  // dead-end state
+    HALT,  // dead-end state
+    // Append to preserve existing state encodings in diagnostic traces.
+    EXCEPT_SAVE_FETCH_PC  // save faulting instruction address to mtval
   } cu_state_t;
 
   // CU current and next states
@@ -227,15 +229,14 @@ module commit_cu (
       COMMIT_EXCEPT:      next_state = EXCEPT_WRITE_CODE;
       EXCEPT_WRITE_CODE: begin
         unique case (except_code_i)
+          E_I_ACCESS_FAULT, E_INSTR_PAGE_FAULT: next_state = EXCEPT_SAVE_FETCH_PC;
           // Access faults: save offending address
           E_I_ADDR_MISALIGNED,
-                    E_I_ACCESS_FAULT,
                     E_BREAKPOINT,
                     E_LD_ADDR_MISALIGNED,
                     E_LD_ACCESS_FAULT,
                     E_ST_ADDR_MISALIGNED,
                     E_ST_ACCESS_FAULT,
-                    E_INSTR_PAGE_FAULT,
                     E_LD_PAGE_FAULT,
                     E_ST_PAGE_FAULT:
           next_state = EXCEPT_SAVE_ADDR;
@@ -248,6 +249,7 @@ module commit_cu (
       // Save esception data to mtval and return load ESR PC
       EXCEPT_SAVE_ADDR:   next_state = EXCEPT_LOAD_PC;
       EXCEPT_SAVE_INSTR:  next_state = EXCEPT_LOAD_PC;
+      EXCEPT_SAVE_FETCH_PC: next_state = EXCEPT_LOAD_PC;
       EXCEPT_CLEAR_MTVAL: next_state = EXCEPT_LOAD_PC;
       // Load the exception handler PC
       EXCEPT_LOAD_PC: begin
@@ -444,7 +446,7 @@ module commit_cu (
         comm_reg_en_o  = 1'b1;
         csr_override_o = 1'b1;
         csr_addr_o     = CSR_MTVAL;
-        comm_csr_sel_o = COMM_CSR_SEL_RES;  // faulting address inside instruction result
+        comm_csr_sel_o = COMM_CSR_SEL_FAULT_ADDR;
         comm_rd_sel_o  = COMM_RD_SEL_CSR;
       end
       EXCEPT_SAVE_INSTR: begin
@@ -452,6 +454,12 @@ module commit_cu (
         csr_override_o = 1'b1;
         csr_addr_o     = CSR_MTVAL;
         comm_csr_sel_o = COMM_CSR_SEL_INSN;
+      end
+      EXCEPT_SAVE_FETCH_PC: begin
+        comm_reg_en_o  = 1'b1;
+        csr_override_o = 1'b1;
+        csr_addr_o     = CSR_MTVAL;
+        comm_csr_sel_o = COMM_CSR_SEL_PC;
       end
       EXCEPT_CLEAR_MTVAL: begin
         comm_reg_en_o  = 1'b1;

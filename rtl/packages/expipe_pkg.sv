@@ -404,7 +404,8 @@ MAX_EU_N
     COMM_CSR_SEL_EXCEPT,  // select exception data
     COMM_CSR_SEL_INT,     // select interrupt data
     COMM_CSR_SEL_FP,      // select floating-point flags data
-    COMM_CSR_SEL_ZERO     // 'h0
+    COMM_CSR_SEL_ZERO,    // 'h0
+    COMM_CSR_SEL_FAULT_ADDR  // fault address from instruction result
   } comm_csr_sel_t;
 
   // CSR committing instruction type (for performance counters)

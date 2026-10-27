@@ -18,7 +18,7 @@ package tb_config_pkg;
     MEM_BACKEND_AXI_SIM
   } memory_backend_t;
   // verilog_lint: waive parameter-name-style
-  localparam memory_backend_t MEMORY_BACKEND = MEM_BACKEND_TC_SRAM;
+  localparam memory_backend_t MEMORY_BACKEND = MEM_BACKEND_AXI_SIM;
   // AXI clock/model phases use picoseconds; other backends keep their clock.
   // verilog_lint: waive parameter-name-style
   localparam int unsigned AXI_CLOCK_HALF_PERIOD_PS = 1000;

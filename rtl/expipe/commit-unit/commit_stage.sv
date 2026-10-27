@@ -394,6 +394,10 @@ module commit_stage (
         csr_data = {{XLEN - FCSR_FFLAGS_LEN{1'b0}}, comm_reg_data.data.flags.fflags};
         csr_addr = cu_csr_addr;
       end
+      COMM_CSR_SEL_FAULT_ADDR: begin
+        csr_data = comm_reg_data.data.res_value;
+        csr_addr = cu_csr_addr;
+      end
       default: begin  // select zero
         csr_data = comm_reg_data.data.res_value;
         csr_addr = comm_reg_data.data.instruction.i.imm11;

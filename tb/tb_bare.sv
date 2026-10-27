@@ -89,7 +89,6 @@ module tb_bare #(
   except_code_t    [LEN5_MULTIPLE_ISSUES-1:0]           mem2dp_instr_except_code;
 
   logic                                                 dp2mem_load_valid;
-  logic                                                 dp2mem_load_flush;
   logic                                                 mem2dp_load_ready;
   logic                                                 mem2dp_load_valid;
   logic                                                 dp2mem_load_ready;
@@ -310,7 +309,7 @@ module tb_bare #(
     .instr_except_raised_i     (mem2dp_instr_except_raised),
     .instr_except_code_i       (mem2dp_instr_except_code),
     .data_load_req_o           (dp2mem_load_valid),
-    .data_load_flush_o         (dp2mem_load_flush),
+    .data_load_flush_o         (),
     .data_load_gnt_i           (mem2dp_load_ready),
     .data_load_rvalid_i        (mem2dp_load_valid),
     .data_load_rready_o        (dp2mem_load_ready),
@@ -554,7 +553,7 @@ module tb_bare #(
       ) u_adapter (
         .clk_i,
         .rst_ni,
-        .data_flush_i (dp2mem_load_flush),
+        .data_flush_i (u_datapath.data_load_flush_o),
         .initialized_i(sram_initialized),
         .instr_req_i  (dp2mem_instr_valid),
         .instr_ready_i(dp2mem_instr_ready),
