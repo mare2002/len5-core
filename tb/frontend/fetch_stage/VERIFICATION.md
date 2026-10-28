@@ -203,12 +203,13 @@ output bundles are retained in the selected frontend, excluding backend records.
 Do not report all six as metadata FIFO occupancy.
 
 Early correction can be offered while A is stalled. pc_gen accepts it independent
-of memory readiness, potentially repeatedly. EJU completion/memory flush occurs
-when A happens, not necessarily on D. Under coordinated memory cancellation,
-preserve the current A record and all older final-spill records, cancel younger
-memory work. Repeated requests to the same early target can therefore be legitimate
-physical requests before completion; they must not become duplicate dynamic
-dispatch of the same accepted correction. Track identities, not unique PCs.
+of memory readiness, potentially repeatedly, but suppresses new fetch offers for
+the duration of J (R10 policy approved 2026-10-28). Existing response delivery and
+draining remain active. EJU completion/memory flush occurs when A happens, not
+necessarily on D. Preserve the current A record and all older final-spill records;
+cancel or drain younger memory work according to the selected protocol. Ordinary
+fetching resumes from the corrected target after J clears. Track identities, not
+unique PCs: the accepted correction must still dispatch only once.
 
 ## 4. Independent BPU behavioral contract
 

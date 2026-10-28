@@ -115,7 +115,9 @@ int main() {
         i.rst_n=true; i.commit=true; require(m.outputs(i).branch_ready.known,"sole active producer retains established acknowledgment assumption");
         i.branch_valid=i.mispredict=true; require(!m.outputs(i).branch_ready.known,"shared losing acknowledgment not invented");
         i=Inputs{}; i.early=i.ready=true;
-        require(m.plan(i).ordinary_acceptance && !strict.plan(i).acceptance_known,"qualified ordinary offer during correction remains a separate Q5 policy");
+        require(m.plan(i).acceptance_known && !m.plan(i).ordinary_acceptance &&
+                strict.plan(i).acceptance_known && !strict.plan(i).ordinary_acceptance,
+                "R10 early correction suppresses ordinary acceptance in both profiles");
         ReferenceModel uninitialized(cfg,contract); i=Inputs{};
         edge(uninitialized,i); require(!uninitialized.cursor().known,"hold cannot repair uninitialized expected state");
         i.ready=true; edge(uninitialized,i); require(!uninitialized.cursor().known,"sequential cannot repair unknown expected state");

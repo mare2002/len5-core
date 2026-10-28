@@ -42,7 +42,7 @@ Contract Contract::strict() {
 }
 std::vector<std::string> Contract::assumptions() const {
     std::vector<std::string> r;
-    if (valid_on_recovery) r.push_back("Q5:fetch-valid-cancellation-and-early-offer-policy (I)");
+    if (valid_on_recovery) r.push_back("Q5:fetch-valid-cancellation-on-commit-or-branch-recovery (I)");
     if (always_ready) r.push_back("Q5:sole-active-control-ready (I)");
     r.push_back("Q3/Q9:abstract-held-source-lifecycle-and-younger-cancellation (I)");
     r.push_back("Q4:overridden-metadata-consumer-flush (integration only)");
@@ -77,9 +77,10 @@ Expected ReferenceModel::outputs(const Inputs& i, bool /*malformed*/) const {
     Expected e;
     e.pc = cursor_;
     if (!i.rst_n) e.valid = known(0, "C1", "D");
+    else if (i.early) e.valid = known(0, "C6", "D");
     else if (!i.commit && !i.recovery() && !i.early) e.valid = known(1, "C7", "D");
     else if (contract_.valid_on_recovery)
-        e.valid = known(!i.commit && !i.recovery(), "C4", "I", "Q5:fetch-valid-cancellation-and-early-offer-policy");
+        e.valid = known(!i.commit && !i.recovery(), "C4", "I", "Q5:fetch-valid-cancellation-on-commit-or-branch-recovery");
     else if (i.commit || i.recovery() || i.early) e.valid = unknown("Q5:fetch-valid-during-control-event");
     else e.valid = known(1, "C7", "D");
     // Ready is a producer acknowledgment, not memory readiness. Reset, idle
@@ -178,7 +179,7 @@ std::string expected_json(const Expected& e) {
 }
 std::string specification_status_json() {
     return R"SPEC({
-  "contract_revision": "approved-2026-10-14",
+  "contract_revision": "approved-2026-10-14+r10-fetch-suppression",
   "Q1": {
     "status": "partial",
     "resolved": "asynchronous active-low BOOT_PC reset, dominance, release, no ordinary fetch during reset",
@@ -191,7 +192,7 @@ std::string specification_status_json() {
   },
   "Q3": {
     "status": "partial",
-    "resolved": "early base plus signed offset, independent of memory readiness",
+    "resolved": "early base plus signed offset independent of memory readiness; suppress new fetch offers while early correction is active",
     "remaining": "producer holds, release and duplicate-offer lifecycle"
   },
   "Q4": {
@@ -201,8 +202,8 @@ std::string specification_status_json() {
   },
   "Q5": {
     "status": "partial",
-    "resolved": "ordinary valid-and-ready acceptance; memory-independent commit/branch redirect",
-    "remaining": "fetch-valid control qualification, ready idle/reset and shared losing acknowledgment"
+    "resolved": "ordinary valid-and-ready acceptance; early correction suppresses fetch offers; memory-independent commit/branch redirect",
+    "remaining": "commit/branch fetch-valid qualification, ready idle/reset and shared losing acknowledgment"
   },
   "Q6": {
     "status": "resolved",

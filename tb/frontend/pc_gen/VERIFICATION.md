@@ -164,15 +164,15 @@ as pc_gen behavior.
 | C3 | At an accepted ordinary rising edge, qualified prediction loads its exact target; otherwise use the bundle successor above. | D/Q6/Q7/Q8. |
 | C4 | Commit exception loads its supplied target regardless of memory readiness and overrides R/J/P. | D/Q2/Q5/Q7; valid cancellation on control cycles remains a named I/Q5 policy. |
 | C5 | Effective branch recovery is valid && mispredict; taken loads supplied target, not-taken loads the resolved instruction PC+4. R overrides J/P independent of readiness. | A/D/Q2/Q5/Q7; source acknowledgment separate. |
-| C6 | Selected early correction loads supplied older base+signed displacement, independent of readiness; meaningful early-target metadata equals that sum. | D/Q3/Q4/Q7; held producer lifecycle not fully settled. |
+| C6 | Selected early correction loads supplied older base+signed displacement, independent of readiness; meaningful early-target metadata equals that sum. Active early correction suppresses ordinary fetch valid. | D/Q3/Q4/Q7; R10 request suppression approved 2026-10-28; held producer lifecycle not fully settled. |
 | C7 | Inactive qualifiers make their payload irrelevant to qualified PC behavior. | D interface qualification; noncanonical branch encodings separately exercised. |
 | C8 | Synchronous PC transitions occur only at consuming rising edges; falling/stopped-clock samples hold, except async reset. | D/Q1/Q8. Sideband/valid combinational checks retain their own evidence. |
 | C9 | Older applicable early correction overrides the speculative current taken prediction. | D; direct JAL arithmetic is architectural context, RAS target remains a prediction corrigible by later R. |
 
 Ordinary acceptance requires `valid_o && mem_ready_i`; the model computes its
-expected acceptance from independently specified valid qualification. A current
-ordinary offer can be accepted and then abstractly squashed during J when the
-proposed valid policy allows it. Selected redirect acceptance denotes the PC
+expected acceptance from independently specified valid qualification. No new
+ordinary request is accepted while J is active; previously accepted requests
+retain their cancellation/drain obligations. Selected redirect acceptance denotes the PC
 correction, not acknowledgment/cancellation of every offered source. Reset
 suppresses ordinary acceptance. Input values are stable around consuming edges;
 Verilator cannot prove physical setup/hold.
@@ -252,9 +252,12 @@ pin-level check does not invent a producer acknowledgment or duplicate-execution
 ### Output qualification and profiles
 
 Both `proposed` and `strict` enforce all approved PC rules, selected early metadata,
-ordinary valid, async reset and timing. Proposed retains existing I/Q5 integration
-hypotheses: suppress ordinary valid on E/R and keep it high on J; sole active E or
-R sees ready=1. Strict leaves control-cycle valid and control-ready unknown. Neither
+ordinary valid, async reset and timing. Both profiles suppress ordinary fetch
+valid while J is active, as approved for R10. PC correction and target metadata
+remain live; response draining and downstream acceptance are unaffected.
+Proposed retains existing I/Q5 integration hypotheses: suppress ordinary valid
+on E/R; sole active E or R sees ready=1. Strict leaves E/R-only control-cycle valid
+and control-ready unknown. Neither
 asserts idle/reset ready or acknowledgment of simultaneous losing requests. This
 narrows the old always-high ready observation to its producer interface meaning;
 constant RTL ready is not an independent idle/reset requirement. No profile may
@@ -386,7 +389,7 @@ verification, sideband consumer proof or full contract sign-off.
 | Q2 | Reset>E>R>J>P>sequential is D. | Losing source ack Q5; integrated reachability Q9. | T12/T13/T14/T20: no redirect discrepancy. |
 | Q3 | Applicable J redirects despite M=0; older base+signed displacement, higher E/R overrides. | Producer WAIT_ISSUE holds until issue/flush; no J ack exists; exact duplicate/lifetime/cancellation contract still I. Memory flushing outside scope. | T09/T10/T11/T12: no discrepancy. Historical ready-gated hypothesis rejected for current checking. |
 | Q4 | Selected J metadata exact; commit-overridden, reset and idle unused values are don't-care. | R+J consumer flush window remains Q; actual flush correctness outside scope. | T09/T21 plus per-field characterization: no required metadata discrepancy. Historical always-arithmetic hypothesis superseded. |
-| Q5 | Ordinary valid&&M acceptance, E/R independent of M, E outranks R. | Control-cycle valid qualification and sole-active ready retain established I policy; idle/reset/shared losing acknowledgments not defined. | T03/T05/T08/T12: PC checks pass; residual checks explicit per profile. |
+| Q5 | Ordinary valid&&M acceptance, E/R independent of M, E outranks R; J suppresses new fetch valid (R10). | E/R-only valid qualification and sole-active ready retain established I policy; idle/reset/shared losing acknowledgments not defined. | T03/T05/T08/T12: PC checks pass; residual checks explicit per profile. |
 | Q6 | B=4N, bundle-interval successor and supported 1/2/4/8 are D; source is sole selector. | Whole-core width support/scheduling is outside scope; only selected N elaborated. | T02/T04/T06 and BOOT variants; T19 checks normal alignment after raw target; historical pre-fix mismatch. |
 | Q7 | Targets exact, modular arithmetic, no extra alignment/fault validation; only normal successor aligns. | Executability/fault/JALR target validation belongs producers. | T15/T17/T19: pass-through passes; pre-fix successor retained low bits; current selected DUT passes after the user's RTL correction. |
 | Q8 | Stable consuming inputs, stalled P may change, final accepted P controls successor. | Physical setup/hold outside Verilator. | Strengthened T04, V18/random stalls: no discrepancy. |

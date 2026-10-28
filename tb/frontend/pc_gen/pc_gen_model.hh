@@ -22,7 +22,7 @@ struct Config {
 // Approved PC rules are invariant across profiles. Only residual output
 // qualification/acknowledgment assumptions are configurable.
 struct Contract {
-    bool valid_on_recovery = true; // I/Q5: suppress ordinary offers on E/R, keep J valid
+    bool valid_on_recovery = true; // I/Q5: suppress offers on E/R; J suppression is approved D
     bool always_ready = true;      // I/Q5: sole active E/R producer sees ready
     static Contract strict();
     std::vector<std::string> assumptions() const;

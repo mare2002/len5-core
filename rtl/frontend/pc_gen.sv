@@ -105,7 +105,8 @@ module pc_gen #(
   end : pc_reg
 
   // Output valid and ready
-  assign valid_o = rst_ni & !(bu_res_valid_i & bu_res_i.mispredict) & !comm_except_raised_i;
+  // A held early correction must not issue fetches that its completion will flush.
+  assign valid_o = rst_ni & !(bu_res_valid_i & bu_res_i.mispredict) & !comm_except_raised_i & !early_jump_valid_i;
   assign bu_ready_o = 1'b1;
   assign early_jump_target_o = next_pc;
 endmodule
