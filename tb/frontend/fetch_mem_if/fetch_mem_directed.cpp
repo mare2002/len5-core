@@ -17,7 +17,7 @@ static const char* titles[]={
     "flush with offered memory fault","flush with buffered held fault","request offer on flush and repeated cancellation",
     "reset with live and faulting transactions","same address distinct recovery epochs","long distinct clean and fault bursts",
     "encoded and raw instruction payload families","address and bundle boundaries","clock-stopped combinational and async probes",
-    "FQ03 zero-latency alternative characterization","FQ04 late canceled response characterization","FQ02 grant-on-flush characterization",
+    "accepted zero-latency request/response association","FQ04 late canceled response characterization","FQ02 grant-on-flush characterization",
     "malformed response and capacity characterization","raw masks and unused metadata","known state restored by coordinated reset",
     "temporal conservation and consecutive recovery",
     "all completion slots filled and full-credit recovery",
@@ -90,7 +90,19 @@ static void scenario(Simulator& s,unsigned n){const auto c=s.config();
     case 31:{std::mt19937_64 rng(17);for(unsigned family=0;family<16;++family){auto a=s.offer(0x400);live(a,c);for(unsigned k=0;k<c.lanes;++k)a.memory_data.words[k]=family<11?early::ordinary(rng,family):family==11?early::jal(k%2?1:5,-16):family==12?early::jalr(0,1,0):family==13?early::branch(0,1,2,16):family==14?uint32_t(rng()):early::near_miss(rng);single(s,a);}break;}
     case 32:{const uint64_t addresses[]={0,4,0xfffffffc,0x100000000,0x7ffffffffffffffc,0x8000000000000000,UINT64_MAX-3};for(auto pc:addresses)single(s,s.offer(pc));break;}
     case 33:{auto a=s.offer(0x100);s.tick(&a,false,false);s.tick(nullptr,true,false);Stimulus p=s.environment().compose(nullptr,s.cycles(),false,false);s.probe(p);p.inputs.predictions[0].target=UINT64_MAX;s.probe(p);p.inputs.flush=true;p.reason="branch";s.probe(p);p.inputs.flush=false;s.probe(p);s.drain();break;}
-    case 34:{auto a=s.offer(0x100,0,c.mask(),0);Stimulus x;x.malformed=true;x.question="FQ03";x.request_id=a.id;x.start=a.start;x.inputs.fetch_valid=x.inputs.grant=x.inputs.response_valid=true;x.inputs.consumer_ready=false;x.inputs.predictions=a.predictions;x.inputs.mask=a.mask;x.inputs.response=a.memory_data;x.memory_data=a.memory_data;s.step(x);x.inputs.fetch_valid=x.inputs.grant=x.inputs.response_valid=false;s.step(x);s.reset();single(s,s.offer(0x800));break;}
+    case 34:{
+        for(unsigned faults:{0u,c.mask()}) {
+            auto a=s.offer(0x100,0,faults,0);live(a,c);
+            Stimulus x;x.campaign=Campaign::Architectural;x.latency=0;
+            x.request_id=x.response_id=a.id;x.start=a.start;
+            x.inputs.fetch_valid=x.inputs.grant=x.inputs.response_valid=true;x.inputs.consumer_ready=false;
+            x.inputs.predictions=a.predictions;x.inputs.mask=a.mask;x.inputs.response=x.memory_data=a.memory_data;
+            s.step(x);
+            x.inputs.fetch_valid=x.inputs.grant=x.inputs.response_valid=false;
+            s.step(x);s.step(x);s.drain();
+        }
+        single(s,s.offer(0x800));break;
+    }
     case 35:late(s);single(s,s.offer(0x800));break;
     case 36:{auto a=s.offer(0x100);Stimulus x;x.malformed=true;x.question="FQ02";x.reason="raw-flush";x.request_id=a.id;x.start=a.start;x.inputs.flush=x.inputs.fetch_valid=x.inputs.grant=true;x.inputs.predictions=a.predictions;x.inputs.mask=a.mask;x.inputs.consumer_ready=false;s.step(x);s.reset();single(s,s.offer(0x800));break;}
     case 37:{Stimulus x;x.malformed=true;x.question="FM18:unsolicited";x.inputs.response_valid=true;x.inputs.response.errors=c.mask();s.step(x);s.reset();auto a=s.offer(0x100),b=s.offer(0x200);s.tick(&a,false,false);s.tick(&b,false,false);auto d=s.offer(0x300);x=Stimulus{};x.malformed=true;x.question="FM18:overcapacity";x.inputs.fetch_valid=x.inputs.grant=true;x.request_id=d.id;x.start=d.start;x.inputs.predictions=d.predictions;x.inputs.mask=d.mask;x.inputs.consumer_ready=false;s.step(x);s.reset();single(s,s.offer(0x800));break;}

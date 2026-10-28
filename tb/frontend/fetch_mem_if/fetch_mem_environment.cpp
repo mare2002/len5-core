@@ -63,11 +63,16 @@ void Environment::validate(const Stimulus& s,const Transition& t,uint64_t cycle)
     }
     if(t.k && pending_.size()>=cfg_.depth && !(s.turnover && t.r))throw EnvironmentError("FM18: memory overcapacity grant");
     if(i.response_valid) {
-        if(pending_.empty())throw EnvironmentError("FM18: response without prior request");
-        const auto& q=pending_.front();
-        if(q.offer.id!=s.response_id)throw EnvironmentError("FM18: out-of-order/duplicate response identity");
-        if(cycle<q.accepted+q.offer.latency || cycle<=q.accepted)throw EnvironmentError("FM18: response violates positive latency");
-        if(!(i.response==q.offer.memory_data))throw EnvironmentError("FM18: response data/error assigned to wrong request");
+        if(pending_.empty()) {
+            if(!t.k || s.latency!=0 || s.response_id!=s.request_id)
+                throw EnvironmentError("FM18: response without an accepted request");
+            if(!(i.response==s.memory_data))throw EnvironmentError("FM18: same-edge response assigned to wrong request");
+        } else {
+            const auto& q=pending_.front();
+            if(q.offer.id!=s.response_id)throw EnvironmentError("FM18: out-of-order/duplicate response identity");
+            if(cycle<q.accepted+q.offer.latency || cycle<=q.accepted)throw EnvironmentError("FM18: response violates declared latency");
+            if(!(i.response==q.offer.memory_data))throw EnvironmentError("FM18: response data/error assigned to wrong request");
+        }
     }
 }
 void Environment::consume(const Stimulus& s,const Transition& t,uint64_t cycle) {
@@ -83,11 +88,11 @@ void Environment::consume(const Stimulus& s,const Transition& t,uint64_t cycle) 
         answered_.pop_front();
     }
     if(i.flush){pending_.clear();answered_.clear();held_response_.reset();held_address_.reset();branch_context_=exception_context_=false;++epoch_;return;}
-    if(t.r){if(pending_.empty())throw std::logic_error("model/environment response identity disagreement");answered_.push_back(pending_.front());pending_.pop_front();held_response_.reset();}
-    else if(i.response_valid)held_response_=std::make_pair(s.response_id,i.response);
     if(t.k) {
         Offer o;o.id=s.request_id;o.start=s.start;o.latency=s.latency;o.predictions=i.predictions;o.mask=i.mask;o.memory_data=s.memory_data;
         accepted_ids_.insert(o.id);pending_.push_back({o,cycle,epoch_});held_address_.reset();
     } else if(i.fetch_valid)held_address_=i.predictions[0].pc;
+    if(t.r){if(pending_.empty())throw std::logic_error("model/environment response identity disagreement");answered_.push_back(pending_.front());pending_.pop_front();held_response_.reset();}
+    else if(i.response_valid)held_response_=std::make_pair(s.response_id,i.response);
 }
 } // namespace len5::fetchmem

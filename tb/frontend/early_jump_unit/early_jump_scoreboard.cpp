@@ -326,7 +326,7 @@ int Scoreboard::finish(const std::string& reason,bool complete_directed,const st
         <<",\"environment_errors\":"<<environment_errors_<<",\"framework_errors\":"<<framework_errors_
         <<",\"stimulus_digest\":"<<json_quote(hex64(digest_))<<",\"random_configuration\":"<<metadata_<<",\"replay_command\":"<<json_quote(replay_)
         <<",\"timestamp_unit\":\"VerilatedContext tick\",\"cycle_definition\":\"zero-based consuming edge including reset\""
-        <<",\"unresolved_questions\":[\"EQ01\",\"EQ02\",\"EQ03-lane-cutoff\",\"EQ04\",\"EQ05\",\"EQ06\",\"EQ07\",\"EQ08\",\"EQ09\",\"EQ10\",\"EQ11\",\"EQ12\"]"
+        <<",\"unresolved_questions\":[\"EQ01\",\"EQ02\",\"EQ03-lane-cutoff\",\"EQ04\",\"EQ05\",\"EQ06\",\"EQ08\",\"EQ09\",\"EQ10\",\"EQ11\",\"EQ12\"]"
         <<",\"specification_status\":"<<specification_json()<<",\"requirement_checks\":"; map_json(f,requirements_);
     f<<",\"campaign_requirement_checks\":"; map_json(f,campaign_requirements_);
     f<<",\"assumption_checks\":"; map_json(f,assumptions_); f<<",\"unknown_output_samples\":"; map_json(f,unknowns_);

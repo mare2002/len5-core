@@ -11,6 +11,28 @@ static void reset(ReferenceModel& m){Stimulus s;s.inputs.rst_n=false;edge(m,s,0)
 int main(){try{
     for(unsigned n:{1u,2u,4u,8u}){
         Config c;c.lanes=n;ReferenceModel m(c);reset(m);check(m.outputs(Stimulus{}).response_ready.value==0,"no response without an allocated request");
+        {
+            ReferenceModel immediate(c);reset(immediate);Environment causal(c);
+            const auto offer=make_offer(c,99,0x400,0,c.mask(),0);
+            Stimulus same;same.campaign=Campaign::Architectural;same.latency=0;
+            same.request_id=same.response_id=offer.id;same.start=offer.start;
+            same.inputs.fetch_valid=same.inputs.grant=same.inputs.response_valid=true;
+            same.inputs.predictions=offer.predictions;same.inputs.mask=offer.mask;
+            same.inputs.response=same.memory_data=offer.memory_data;
+            const auto t=immediate.plan(same,2);causal.validate(same,t,2);
+            check(t.k && t.r,"same-edge completion requires accepted allocation");
+            auto wrong=same;wrong.response_id++;
+            bool rejected=false;try{causal.validate(wrong,t,2);}catch(const EnvironmentError&){rejected=true;}
+            check(rejected,"same-edge response cannot change request identity");
+            wrong=same;wrong.latency=1;rejected=false;
+            try{causal.validate(wrong,t,2);}catch(const EnvironmentError&){rejected=true;}
+            check(rejected,"declared positive latency still forbids same-edge completion");
+            causal.consume(same,t,2);immediate.rising_edge(t);
+            const auto e=immediate.outputs(Stimulus{});
+            check(e.valid.value && e.lanes[0].pc.value==0x400 && e.lanes[0].error.value
+                  && e.lanes[0].cause.known && e.lanes[0].cause.value==0,
+                  "same-edge fault keeps independent request metadata and cause-zero flag");
+        }
         std::array<Prediction,8> pred{};for(unsigned k=0;k<n;++k)pred[k].pc=0x100+4*k;
         for(unsigned start=0;start<n;++start)for(unsigned taken=0;taken<n;++taken){auto p=pred;p[taken].hit=p[taken].taken=true;unsigned mask=request_mask(0x100+start*4,p,c);unsigned expected=0;for(unsigned lane=start;lane<n;++lane){expected|=1u<<lane;if(lane==taken)break;}check(mask==expected,"mathematical start/first-taken mask");p[taken].hit=false;check(request_mask(0x100+start*4,p,c)==(c.mask()&~((1u<<start)-1)),"miss-taken does not cut mask");}
         Stimulus s;s.request_id=11;s.start=0x100;s.inputs.fetch_valid=s.inputs.grant=true;s.inputs.predictions=pred;s.inputs.mask=c.mask();edge(m,s,2);

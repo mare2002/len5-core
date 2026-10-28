@@ -14,10 +14,11 @@ void Config::validate() const {
         throw std::invalid_argument("EJ01/EQ09: require N=1,2,4,8; depth=4; XLEN=ALEN=64; ILEN=32");
 }
 Contract Contract::established() {
-    Contract c; c.profile="established"; c.order="unknown"; c.exception="unknown"; c.boundaries="unknown"; c.lifecycle="unknown"; return c;
+    Contract c; c.profile="established"; c.exception="unknown"; c.boundaries="unknown"; c.lifecycle="unknown"; return c;
 }
 void Contract::validate() const {
-    if((profile!="len5_minimal" && profile!="established") || (order!="updated" && order!="previous" && order!="unknown")
+    if(order!="updated") throw std::invalid_argument("EQ07 is approved: qualified confirmation precedes restoration; require order=updated");
+    if((profile!="len5_minimal" && profile!="established")
         || (exception!="restore" && exception!="unknown") || (boundaries!="recent" && boundaries!="unknown")
         || (lifecycle!="held" && lifecycle!="unknown")) throw std::invalid_argument("invalid named EJU contract policy");
 }
@@ -25,7 +26,9 @@ std::string Contract::json() const {
     return "{\"profile\":"+json_quote(profile)+",\"EQ05_lifecycle\":"+json_quote(lifecycle)
         +",\"EQ07_order\":"+json_quote(order)+",\"EQ08_exception\":"+json_quote(exception)
         +",\"EQ09_boundaries\":"+json_quote(boundaries)+",\"recognition\":\"approved-x1-only-D\""
-        +",\"taken_JAL\":\"approved-target-independent-suppression-D\"}";
+        +",\"taken_JAL\":\"approved-target-independent-suppression-D\""
+        +",\"taken_RET\":\"approved-matching-RAS-suppression-D\""
+        +",\"confirmation_restore\":\"approved-confirm-then-restore-D\"}";
 }
 bool Inputs::same_bundle(const Inputs& b) const { return words==b.words && predictions==b.predictions && mask==b.mask; }
 bool Inputs::operator==(const Inputs& b) const {
@@ -88,7 +91,8 @@ Selection ReferenceModel::select(const Inputs& i) const {
         if(!state_.predictive.entries.empty()) {
             s.target=state_.predictive.top(); s.offset=s.target;
             s.base=known(0,"EJ04","I","EQ03:canonical-return-operand-decomposition (I)");
-            s.correction=known(1,"EJ05","I","EQ04:RAS-return-correction (I)");
+            s.correction=known(!(pred.hit && pred.taken && pred.target==s.target.value),"EJ05","D",
+                               s.target.assumptions);
         } else if(!state_.predictive.known) {
             s.correction=unknown(state_.predictive.uncertainty.c_str());
             s.target=s.base=s.offset=unknown("RA03:unknown-predictive-history");
@@ -157,11 +161,9 @@ Transition ReferenceModel::plan(const Stimulus& s,uint64_t cycle) const {
         if(s.reason=="exception" && contract_.exception=="unknown") {
             t.next.predictive.entries.clear(); t.next.predictive.known=false; t.next.predictive.uncertainty="EQ08:exception-RAS-survival";
             t.next.confirmed.entries.clear(); t.next.confirmed.known=false; t.next.confirmed.uncertainty="EQ08:exception-RAS-survival";
-        } else if(t.confirmation!=Operation::None && contract_.order=="unknown") {
-            t.next.predictive.entries.clear(); t.next.predictive.known=false; t.next.predictive.uncertainty="EQ07:same-edge-order";
         } else {
-            t.next.predictive=t.confirmation!=Operation::None && contract_.order=="previous"?state_.confirmed:t.next.confirmed;
-            if(t.confirmation!=Operation::None) t.next.predictive.dependency+=";EQ07:"+contract_.order+" (I)";
+            // A qualified confirmation survives this recovery, so restore its resulting history.
+            t.next.predictive=t.next.confirmed;
             if(s.reason=="exception") t.next.predictive.dependency+=";EQ08:exception-restoration (I)";
         }
         t.next.pending=false; t.next.pending_known=true; t.next.startup=false; return t;
@@ -224,6 +226,6 @@ std::string expected_json(const Expected& e,unsigned lanes) {
     s<<"]}"; return s.str();
 }
 std::string specification_json() {
-    return R"SPEC({"recognition":"approved-x1-only-D","EQ01":{"status":"unresolved","detail":"oldest valid jump and mask contract"},"EQ02":{"status":"unresolved","detail":"reset release, initial contents and qualification"},"EQ03":{"status":"partial","resolved":"JAL x1 push; other JAL no push; exact 0x00008067 pop; other JALR no RAS action","remaining":"generic JALR lane cutoff"},"EQ04":{"status":"partial","resolved":"D: hit-and-taken JAL suppression is permitted independently of target equality","remaining":"redundant return correction"},"EQ05":{"status":"unresolved","detail":"held-correction acceptance and completion"},"EQ06":{"status":"unresolved","detail":"flush qualification window"},"EQ07":{"status":"unresolved","detail":"confirmation versus same-edge restoration"},"EQ08":{"status":"unresolved","detail":"exception survival of execution-confirmed history"},"EQ09":{"status":"unresolved","detail":"stack boundaries and other depths"},"EQ10":{"status":"unresolved","detail":"sideband feedback consumption"},"EQ11":{"status":"unresolved","detail":"faulting speculative instruction treatment"},"EQ12":{"status":"unresolved","detail":"producer lifecycle and cancellation"}})SPEC";
+    return R"SPEC({"recognition":"approved-x1-only-D","EQ01":{"status":"unresolved","detail":"oldest valid jump and mask contract"},"EQ02":{"status":"unresolved","detail":"reset release, initial contents and qualification"},"EQ03":{"status":"partial","resolved":"JAL x1 push; other JAL no push; exact 0x00008067 pop; other JALR no RAS action","remaining":"generic JALR lane cutoff"},"EQ04":{"status":"partial","resolved":"D: hit-and-taken JAL suppression is permitted independently of target equality","resolved_RET":"D: suppress only hit-and-taken BTB target equal to known RAS top; accepted RET still pops","remaining":"stale RAS overriding correct BTB"},"EQ05":{"status":"unresolved","detail":"held-correction acceptance and completion"},"EQ06":{"status":"unresolved","detail":"flush qualification window"},"EQ07":{"status":"approved","detail":"D: apply qualified surviving confirmation before restoring predictive history"},"EQ08":{"status":"unresolved","detail":"exception survival of execution-confirmed history"},"EQ09":{"status":"unresolved","detail":"stack boundaries and other depths"},"EQ10":{"status":"unresolved","detail":"sideband feedback consumption"},"EQ11":{"status":"unresolved","detail":"faulting speculative instruction treatment"},"EQ12":{"status":"unresolved","detail":"producer lifecycle and cancellation"}})SPEC";
 }
 } // namespace len5::early

@@ -272,8 +272,24 @@ module fetch_mem_drain_tb;
     respond(700);
     await_delivery(3);
     cycles(3);
-    assert (expected_ids.size() == 0 && delivered == 3 && early_consumed == 1 &&
-            accepted_requests == 3 * Depth + 5 && accepted_responses == 2 * Depth + 6)
+    // A response may accompany allocation of its own reservation on an empty interface.
+    set_request(800);
+    set_response(800);
+    expected_ids.push_back(800);
+    fetch_valid = 1;
+    response_valid = 1;
+    @(posedge clk);
+    assert (request_valid && memory_ready && fetch_ready && response_ready)
+    else $fatal(1, "Zero-latency allocation/response was not accepted together");
+    assert (request_address === (64'h10000 + 64'(800 * N * 4)))
+    else $fatal(1, "Zero-latency request address mismatch");
+    @(negedge clk);
+    fetch_valid = 0;
+    response_valid = 0;
+    await_delivery(4);
+    cycles(3);
+    assert (expected_ids.size() == 0 && delivered == 4 && early_consumed == 1 &&
+            accepted_requests == 3 * Depth + 6 && accepted_responses == 2 * Depth + 7)
     else $fatal(1, "Incomplete drain test: requests=%0d responses=%0d delivered=%0d early=%0d",
                 accepted_requests, accepted_responses, delivered, early_consumed);
     $display("PASS FETCH_MEM_DRAIN lanes=%0d depth=%0d requests=%0d responses=%0d delivered=%0d early=%0d",

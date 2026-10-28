@@ -208,8 +208,8 @@ def main():
         runs.append(native(binary,root,'injected-'+fault,[*flags,'--inject_failure='+fault],1))
     if not a.random:runs.append(native(binary,root,'injected-cause',['--scenario=FE-T07','--journal=full','--inject_failure=cause'],1))
     if not a.random:
-        runs.append(native(binary,root,'EQ07-previous',['--scenario=FE-T41','--ras_order=previous'],1))
-        runs.append(native(binary,root,'EQ07-unknown',['--scenario=FE-T41','--ras_order=unknown'],3))
+        runs.append(native(binary,root,'EQ07-rejected-previous',['--scenario=FE-T41','--ras_order=previous'],2))
+        runs.append(native(binary,root,'EQ07-rejected-unknown',['--scenario=FE-T41','--ras_order=unknown'],2))
     runs.append(native(binary,root,'invalid-environment',['--inject_failure=environment'],2))
     runs.append(native(binary,root,'framework-failure',['--inject_failure=framework'],2))
     runs.append(native(binary,root,'incomplete',['--random','--cycles=1'],3))

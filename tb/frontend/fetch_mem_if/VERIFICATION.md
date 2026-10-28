@@ -1,5 +1,30 @@
 # fetch_mem_if black-box verification specification
 
+## Current model contract — 2026-10-28
+
+The C++ suite explicitly selects ordered cancel-on-flush, completion depth two.
+The separate native SV target selects the source N and native completion depth
+(currently 8 and 8), retaining canceled reservations until ordered stale responses
+drain. The completion model reserves capacity through buffered completion and
+uses independent transaction records; answer-spill storage is accounted separately.
+
+FM-T34 now checks clean and faulting allocation/response on the same edge with
+exact independently saved metadata; its association is no longer marked unknown.
+The environment requires an accepted allocation, declared latency zero, matching
+transaction identity and payload. Unsolicited/out-of-order/duplicate responses and
+violations of a declared positive latency remain errors. Random memory traffic
+continues using positive latency. Native drain checks also include zero latency.
+These directed checks do not establish randomized native drain-mode coverage.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Architecture review: 2026-10-15, branch `feat-verification`, source revision
 `5fb6815`. Sections 1–22 preserve the architecture-phase specification and plans.
 Section 23 records the subsequent native implementation and execution evidence;
@@ -1226,7 +1251,7 @@ provenance explicitly.
 | --- | --- | --- |
 | FQ01 | Exact unaccepted memory-request stability/cancellation contract, especially pc_gen early redirect during memory stall. S10 can update PC independently of ready; bypass S05 does not hold address. Current BPU can legitimately refresh stalled request metadata. | Ordinary address holds; accepting-edge metadata snapshot is required. Redirect-driven held-address change/withdrawal needs producer protocol review; FM-T04/T13/T14 and future integration timing. Do not require saved-response metadata to track these changes. |
 | FQ02 | Does a request granted on a flush edge belong to old/canceled or new/live work? Bypass allows it; current memory withdraws grant. | Exclude K on X in exact integrated profile; characterize raw overlap FM-T36. New-epoch grant would lose metadata in observed RTL, a conditional risk rather than an approved protocol. |
-| FQ03 | Is empty-queue zero-latency response supported with nonzero metadata depth? Package note mentions fetch registers; FIFO has no fall-through. | Positive-latency default; FM-T34 separately. Do not silently assume new request can supply old empty head. No build/run reproduction claimed here. |
+| FQ03 | Accepted request allocation and its ordered response may coincide; exact association is supported. FM-T34 tests clean/faulting returns; native drain directed test also covers it. Random memory remains positive latency. | Supported under the declared identity/capacity contract; no unknown-association waiver. |
 | FQ04 | Can a future physical memory return responses after cancellation, and what mechanism prevents stale clean/fault responses from entering a new epoch? Current emulator flushes all pending work; DUT has no IDs/tombstones/drain control. | Atomic-cancel contract I for architectural tests; explicit late-response characterization FM-T35, including A canceled then B accepted. If noncancelable memory is intended, an additional adapter/protocol design is needed; don't invent a filter in the model. |
 | FQ05 | Required reset-release readiness/latency and raw bypass qualifiers during reset. Cells have an observed RESET release interval; integration initially holds fetch-valid0. | Empty registered histories and no old transaction reuse; exact one-edge ready-low behavior named I only. FM-T01/T28/T33; distinguish realistic startup from raw simultaneous release inputs. |
 | FQ06 | Which old answer is permitted consumed on a flush edge, and how are canceled outputs qualified? Early flush deliberately allows current-head transfer; branch/exception lowers output-spill ready. | Generated consumer-window policy I; FM-T23/T25/T26/T36. Do not demand combinational issue_valid0 on every X or discard a genuinely consumed early-correction instruction. |

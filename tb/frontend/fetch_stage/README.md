@@ -1,5 +1,31 @@
 # Closed-loop production frontend verification
 
+## Current model contract — 2026-10-28
+
+The composition imports the corrected independent EJU/RAS rules: matching
+taken BTB/RAS returns suppress correction while retaining the accepted pop;
+qualified confirmation precedes restoration. FE-T25's obsolete RET-flush
+expectation is removed at the shared model, rather than waived in the scoreboard.
+FE-T29 requires preserved matching-return prediction metadata. FE-T47 now counts
+reserved completion capacity, including returned results, before its populated
+reset; its other reset prerequisites remain required. FE-T36 retains the
+stale-RAS/backend-recovery case. FE-T41 remains explicit interface stress and now
+joins the supported core gate. Previous/unknown ordering options are rejected,
+including the FE-T54 negative configuration validators.
+
+This C++ harness explicitly selects cancel mode, depth two. It does not prove
+native drain-mode integration, MEPC/MTVAL writes, or real processor retirement.
+R01/EQ08, R02/FE-T49 and unfinished interrupts remain separate open concerns.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Native C++17/Verilator verification of the real `fetch_stage` and all its real
 submodules. The golden executable compiles the existing `pc_gen_model.cpp`,
 `early_jump_model.cpp`, `fetch_mem_model.cpp` and EJU instruction helpers directly.
@@ -79,7 +105,7 @@ N1/2/4/8 builds and simulations all pass,3182 cycles/165797 comparisons in total
 Focused GH01, BP01–08 and the required sensitive FE cases also pass. These groups
 overlap and are not additive unique coverage.
 
-Default core completion does not close deferred FE-T43/48/49/50/51, EQ07/EQ08,
+Default core completion does not close deferred FE-T43/48/49/50/51, EQ08,
 the exception window, full retirement/CSR/mtval or all FEV crosses. Warnings and
 strict-completion semantics remain in force. No million-cycle regression or RTL
 mutation campaign was rerun. Final execution totals and hashes are in the latest
@@ -263,7 +289,7 @@ Do not use repository-wide `make check` for this task: it formats production RTL
 Configuration options follow the existing frameworks: SEED/SEEDS/CYCLES/JOBS/
 TEST_JOBS/SCENARIO/LOG_LEVEL/DUMP_WAVES/JOURNAL/GUIDED/WEIGHTS/BUILD_DIR. Additional
 options are `PROGRAM`, `REPETITIONS`, `CAMPAIGN=all|architectural|stress|characterization`,
-`FETCH_STAGE_PROFILE=exact-I|predictor-agnostic` and `RAS_ORDER=updated|previous|unknown`.
+`FETCH_STAGE_PROFILE=exact-I|predictor-agnostic` and `RAS_ORDER=updated`.
 Current event weights are `grant=80,ready=75,response=90`, expressed as percentages.
 Unknown names and invalid values fail. Example:
 
@@ -416,7 +442,7 @@ obligation files distinguish public witness, inferred EJU witness, predictor-flu
 cancellation and unwitnessed controlled-stop cancellation. Canceling a required
 scenario witness cannot satisfy that scenario.
 
-EQ07 ordering remains provisional. FE-T41 tests a deliberately simultaneous
+EQ07 ordering is now approved D. FE-T41 tests a deliberately simultaneous
 confirmation/restore at public pins; normal architectural scheduling separates
 them. EQ08 remains a demonstrated prior full-core defect. Exception uncertainty
 invalidates both P and C in the oracle; no clear-both RTL fix is implemented.

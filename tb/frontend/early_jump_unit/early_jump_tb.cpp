@@ -63,7 +63,7 @@ static RunOptions options(int argc,char** argv) {
         case 'h':
             std::printf("early_jump: --scenario all|EJ-T01..EJ-T34 --seed N --max_cycles N\n"
                 " --random --cycles N --campaign all|architectural|stress|characterization --weights name=integer,... --guided true|false\n"
-                " --contract len5_minimal|established --order updated|previous|unknown --exception restore|unknown\n"
+                " --contract len5_minimal|established --order updated (approved EQ07; previous/unknown rejected) --exception restore|unknown\n"
                 " --boundaries recent|unknown --lifecycle held|unknown --journal auto|full|failures\n"
                 " --log_level LOG_NONE|LOG_LOW|LOG_MEDIUM|LOG_HIGH|LOG_FULL|LOG_DEBUG --dump_waves true|false --run_dir NEW_DIRECTORY\n"
                 " --expect_issues N --expect_ras_depth 4 (replay guards; configuration comes only from source)\n"); std::exit(0);

@@ -15,7 +15,7 @@ VALIDATORS = {'baseline','replay','waves','inject-request','inject-valid','injec
               'inject-word','inject-pc','inject-target','inject-taken','inject-error','inject-mask',
               'cause-zero','inject-request-replay','backend-real-rejections','invalid-feedback',
               'wrong-width','replay-fingerprint','invalid-latency','empty','timeout',
-              'missing-training-witness','stale-rejected','unknown-dependent'}
+              'missing-training-witness','stale-rejected','rejected-unknown-order'}
 
 def validate_receipt(root,binary,config=None):
     """A matching receipt is evidence of executed validators, not a PASS switch."""
@@ -33,7 +33,7 @@ def validate_receipt(root,binary,config=None):
         d=Path(r['artifacts']).resolve();assert d==root/r['label'], 'unrelated validator artifacts'
         actual=json.loads((d/'logs/report.json').read_text())
         assert actual==r['report'] and r['validator_status']=='PASS', 'invalid confidence receipt/report'
-        expected=0 if r['label'] in ('baseline','replay','waves','backend-real-rejections') else 1 if r['label'].startswith('inject-') or r['label']=='cause-zero' else 3 if r['label'] in ('timeout','missing-training-witness','unknown-dependent') else 2
+        expected=0 if r['label'] in ('baseline','replay','waves','backend-real-rejections') else 1 if r['label'].startswith('inject-') or r['label']=='cause-zero' else 3 if r['label'] in ('timeout','missing-training-witness') else 2
         assert r['exit']==r['expected_exit']==actual['exit_status']==expected, 'negative validator did not detect expected outcome'
         expected_class={0:results.PASS,1:results.MISMATCH,2:results.FRAMEWORK if r['label']=='empty' else results.ENVIRONMENT,3:results.INCOMPLETE}[expected]
         assert actual['verification_status']==r['expected_verification_status']==expected_class, 'wrong negative failure classification'
@@ -86,7 +86,7 @@ def execute(binary,root,with_units=True):
     for p in binary.parent.glob('fetch_stage_*.snapshot'):shutil.copy2(p,stale/p.name)
     one=next(stale.glob('fetch_stage_*.snapshot'));one.write_bytes(one.read_bytes()+b'changed')
     result=validate.native(stale/binary.name,root,'stale-rejected',expected=2);runs.append(result)
-    run('unknown-dependent',['--scenario=FE-T41','--ras_order=unknown'],3)
+    run('rejected-unknown-order',['--scenario=FE-T41','--ras_order=unknown'],2)
     summary={'scenario':'FE-T54','status':'passed','evidence':'executed independent units plus expected-negative native processes',
              'binary':str(binary.resolve()),'config':base['report']['config'],
              'manifest_sha256':hashlib.sha256((binary.parent/'fetch_stage_build.cfg').read_bytes()).hexdigest(),

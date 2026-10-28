@@ -1,5 +1,10 @@
 # Final frontend architecture audit
 
+Historical audit: current R03/R05/R06/R07/R09/R10/R11 dispositions and model
+contracts are updated in the [2026-10-28 verification report](../MODEL_UPDATE_2026-10-28.md).
+Keep the dated observations below as historical evidence; they are not a new
+validation of the current sources. R01/R02 and remaining proof limits persist.
+
 2026-10-16. This review distinguishes verification of the approved implementation
 from evaluation of a different predictor architecture. Production RTL and source
 configuration remain unchanged. Source-selected **N=4**, HLEN=4, BTB_BITS=4,

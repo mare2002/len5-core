@@ -36,7 +36,7 @@ std::vector<Scenario> scenarios(const Config &c) {
                             "concurrent training and correction",
                             "empty RAS return",
                             "repeated call and return",
-                            "redundant return correction",
+                            "matching RET correction suppression",
                             "two-caller stale BTB return",
                             "three callers",
                             "nested call unwind",
@@ -48,7 +48,7 @@ std::vector<Scenario> scenarios(const Config &c) {
                             "all latency distributions",
                             "confirmation during frontend stall",
                             "split recovery feedback",
-                            "EQ07 alternatives",
+                            "approved confirmation before restoration",
                             "normal recovery retains predictor",
                             "exception predictor reset",
                             "commit versus branch priority",
@@ -102,8 +102,10 @@ std::vector<Scenario> scenarios(const Config &c) {
             s.witnesses.insert(s.witnesses.end(), {"return-empty", "recovery"});
         if (k >= 27 && k <= 31)
             s.witnesses.insert(s.witnesses.end(), {"return-witness", "confirmation", "update"});
-        if (k == 28)
+        if (k == 28) {
             s.witnesses.push_back("return-bpu-correct");
+            s.witnesses.push_back("matching-return-preserves-prediction");
+        }
         if (k == 29 || k == 30)
             s.witnesses.insert(s.witnesses.end(), {"return-bpu-stale", "multiple-return-targets"});
         if (k == 30)
@@ -174,7 +176,6 @@ std::vector<Scenario> scenarios(const Config &c) {
         }
         if (k == 40) {
             s.classification = "interface_stress";
-            s.provisional_contract = "EQ07: same-edge confirmation/restoration ordering remains unapproved";
             s.witnesses.push_back("simultaneous-confirm-restore");
             s.witnesses.push_back("return-witness");
         }
@@ -343,6 +344,9 @@ int main(int argc, char **argv) {
             throw std::invalid_argument("journal must be auto, full, or failures");
         if (o.profile != "exact-I" && o.profile != "predictor-agnostic")
             throw std::invalid_argument("profile must be exact-I or predictor-agnostic");
+        len5::early::Contract ras_contract;
+        ras_contract.order = o.ras_order;
+        ras_contract.validate();
         Simulator sim(o, argc, argv);
         started = true;
         auto all = scenarios(sim.config());

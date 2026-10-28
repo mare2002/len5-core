@@ -1,5 +1,22 @@
 # Standalone pc_gen verification
 
+## Current model contract — 2026-10-28
+
+The approved R10 rule remains active in both model profiles: while early
+correction is asserted, offer no new fetch request, but keep its target/metadata
+live and preserve higher-priority redirects. Existing responses and downstream
+acceptance retain their obligations. The current PC model already implements
+this rule; this update audits it rather than adding a second PC oracle.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Native C++/Verilator verification of the public pc_gen interface. The independent
 [VERIFICATION.md](VERIFICATION.md) contract now incorporates the approved Q1–Q10
 decisions. Both profiles enforce async reset, full redirect priority, early jumps

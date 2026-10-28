@@ -10,7 +10,7 @@ void Config::validate() const {
 }
 void Contract::validate() const { if(profile!="integrated" && profile!="established") throw std::invalid_argument("unknown fetch memory contract"); }
 std::string Contract::json() const {
-    return "{\"profile\":"+json_quote(profile)+",\"memory\":\"ordered-positive-latency-capacity-2\",\"cancellation\":\"atomic-coordinated\",\"timing\":\"I:registered-answer-no-lookahead;release-one-empty-edge\",\"raw_record\":"+(raw_transport?"true":"false")+"}";
+    return "{\"profile\":"+json_quote(profile)+",\"memory\":\"ordered-nonnegative-latency-capacity-2\",\"cancellation\":\"atomic-coordinated\",\"timing\":\"I:registered-answer-no-lookahead;release-one-empty-edge\",\"raw_record\":"+(raw_transport?"true":"false")+"}";
 }
 Field known(uint64_t v,const char* r,const char* e,std::string a) { return {v,true,r,e,a,{}}; }
 Field unknown(const std::string& q) { return {0,false,{},"Q",{},q}; }
@@ -152,6 +152,16 @@ std::string state_json(const State& s) {
     o<<"],\"obligations\":"<<counters_json(s.totals,s.outstanding.size()+s.completed.size()+s.answers.size())<<'}';return o.str();
 }
 std::string specification_json() {
-    std::ostringstream o;o<<'{'; for(unsigned k=1;k<=13;++k) {if(k>1)o<<',';o<<json_quote(std::string("FQ")+(k<10?"0":"")+std::to_string(k))<<":{\"status\":\"unresolved\"}";}o<<'}';return o.str();
+    std::ostringstream o;o<<'{';
+    for(unsigned k=1;k<=13;++k) {
+        if(k>1)o<<',';
+        o<<json_quote(std::string("FQ")+(k<10?"0":"")+std::to_string(k))<<':';
+        if(k==3)
+            o<<R"({"status":"supported","detail":"accepted allocation and its ordered response may coincide; FM-T34 checks exact association"})";
+        else if(k==2 || k==4 || k==8)
+            o<<R"({"status":"partial","detail":"reserved completion credit and separate cancel/drain contracts; broader integration remains scoped"})";
+        else o<<R"({"status":"unresolved"})";
+    }
+    o<<'}';return o.str();
 }
 } // namespace len5::fetchmem

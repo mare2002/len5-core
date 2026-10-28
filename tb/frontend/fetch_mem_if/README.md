@@ -1,8 +1,33 @@
 # Standalone fetch_mem_if verification
 
+## Current model contract — 2026-10-28
+
+The C++ suite explicitly selects ordered cancel-on-flush, completion depth two.
+The separate native SV target selects the source N and native completion depth
+(currently 8 and 8), retaining canceled reservations until ordered stale responses
+drain. The completion model reserves capacity through buffered completion and
+uses independent transaction records; answer-spill storage is accounted separately.
+
+FM-T34 now checks clean and faulting allocation/response on the same edge with
+exact independently saved metadata; its association is no longer marked unknown.
+The environment requires an accepted allocation, declared latency zero, matching
+transaction identity and payload. Unsolicited/out-of-order/duplicate responses and
+violations of a declared positive latency remain errors. Random memory traffic
+continues using positive latency. Native drain checks also include zero latency.
+These directed checks do not establish randomized native drain-mode coverage.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Native C++17/Verilator black-box verification of the real `fetch_mem_if`, including
-its actual `fifo_nohs`, `modn_counter`, `spill_cell_flush` and control dependencies.
-The [specification](VERIFICATION.md) contains FM01–FM20, FM-T01–FM-T40,
+its actual `completion_fifo`, `spill_cell_flush` and control dependencies.
+The [specification](VERIFICATION.md) contains FM01–FM20, FM-T01–FM-T44,
 FV01–FV22 and FQ01–FQ13. The model never reads internal DUT state or uses observed
 outputs to initialize, synchronize or repair expected queues.
 
@@ -36,7 +61,7 @@ worker, so choose JOBS according to available memory/CPUs.
 | `fetch-mem-if-build` | Compile only the source-selected DUT and native harness. |
 | `check-fetch-mem-if` | Aggregate cancel-on-flush C++ suite and native drain-on-flush SV checks. |
 | `check-fetch-mem-if-cancel` | Complete parallel C++ verification suite; default regression 100×10000, required matrix enabled. |
-| `check-fetch-mem-if-run` | All forty directed scenarios, or `SCENARIO=FM-Txx`. |
+| `check-fetch-mem-if-run` | All forty-four directed scenarios, or `SCENARIO=FM-Txx`. |
 | `check-fetch-mem-if-framework` | Pure units, both profiles, native failure paths, log/replay/FST/configuration guards. |
 | `check-fetch-mem-if-random` | One seeded weighted/guided random run. |
 | `check-fetch-mem-if-random-framework` | Synthetic confidence, mathematical width coverage fixtures, public-journal reconstruction, random replay/failures/coverage-incomplete detection. |
@@ -179,7 +204,7 @@ The following remain explicit characterization, never default definitive failure
 | Question | Implemented observation policy |
 | --- | --- |
 | FQ02 grant-on-flush | Raw overlap recorded; no invented retained request identity. Reset before normal traffic resumes. |
-| FQ03 zero-latency completion | New response has unknown metadata association; known raw data/control checks remain. |
+| FQ03 zero-latency completion | FM-T34 now checks accepted allocation plus its own response with exact association; native drain directed test also checks it. |
 | FQ04 late noncancelable response | Old physical data/fault can be offered after cancellation; observation records any downstream valid/error. No fictitious stale-response filter is assumed. |
 
 Both profiles preserve all FQ01–FQ13 in reports. `integrated` checks raw-record
@@ -196,7 +221,7 @@ window. No full-core test is instantiated here.
 
 ## Scenarios, randomization and coverage
 
-All FM-T01–FM-T40 are implemented in `fetch_mem_directed.cpp`, following the
+All FM-T01–FM-T44 are implemented in `fetch_mem_directed.cpp`, following the
 specification's catalog: reset/idle, grant stalls, every start lane and prediction
 pair, multiple outstanding snapshots, same-edge K/R/D, FIFO wrap, full answer
 stall/release, delayed metadata, lane faults/cause0, fault/clean transitions,
@@ -334,7 +359,7 @@ is `build/fetch-mem-if/final-validation.log`.
 
 | Validation | Result |
 | --- | --- |
-| FM-T01–FM-T40, integrated | 40 scenarios, 1180 cycles, 76,519 field comparisons; zero mismatches, zero pending obligations. |
+| FM-T01–FM-T44, integrated | 40 scenarios, 1180 cycles, 76,519 field comparisons; zero mismatches, zero pending obligations. |
 | Established profile directed run | 66,059 comparisons; zero mismatches; relevant cause-zero and metadata checks retained. |
 | Independent model/environment units | 8310 checks passed, including all four mathematical widths. |
 | Native framework | 19 cases and four build/replay guards passed, including nine injected field failures, invalid environment, framework failure, empty/incomplete/timeout and quiet logging. |

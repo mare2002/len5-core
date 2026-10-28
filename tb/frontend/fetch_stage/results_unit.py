@@ -94,7 +94,7 @@ class Receipts(unittest.TestCase):
         self.config={'LEN5_MULTIPLE_ISSUES':2,'fingerprint':'synthetic-only'}
         self.runs=[]
         for label in sorted(confidence.VALIDATORS):
-            e=0 if label in ('baseline','replay','waves','backend-real-rejections') else 1 if label.startswith('inject-') or label=='cause-zero' else 3 if label in ('timeout','missing-training-witness','unknown-dependent') else 2
+            e=0 if label in ('baseline','replay','waves','backend-real-rejections') else 1 if label.startswith('inject-') or label=='cause-zero' else 3 if label in ('timeout','missing-training-witness') else 2
             c=[r.PASS,r.MISMATCH,r.FRAMEWORK if label=='empty' else r.ENVIRONMENT,r.INCOMPLETE][e]
             p=self.receipt/label/'logs';p.mkdir(parents=True)
             report={'exit_status':e,'verification_status':c,'field_checks':20,'updates':1,'injected_failures':int(e==1),

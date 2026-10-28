@@ -1,5 +1,10 @@
 # Early-jump/RAS independent verification and recovery audit
 
+Historical audit: current R03/R05/R06/R07/R09/R10/R11 dispositions and model
+contracts are updated in the [2026-10-28 verification report](../MODEL_UPDATE_2026-10-28.md).
+Keep the dated observations below as historical evidence; they are not a new
+validation of the current sources. R01/R02 and remaining proof limits persist.
+
 Review: 2026-10-14, branch `feat-verification`. Scope: the active EJU/RAS and its
 standalone verification, with read-only inspection of surrounding recovery logic.
 Sections A–D record the initial source/standalone audit. Section E records the

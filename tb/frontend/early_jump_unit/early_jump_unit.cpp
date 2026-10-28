@@ -75,7 +75,26 @@ int main() {
             auto f=Stimulus{}; f.inputs.flush=true; f.reason="misprediction"; edge(m,f,6);
             require(m.state().predictive.top().value==0xabc,"D restore from independently known C");
             f.inputs.call_confirm=true; f.inputs.link=0xdef; edge(m,f,7);
-            require(m.state().predictive.top().value==0xdef,"named provisional confirm-then-restore hypothesis");
+            require(m.state().predictive.top().value==0xdef,"D surviving confirmation precedes restoration");
+            f.inputs.call_confirm=false; f.inputs.ret_confirm=true; edge(m,f,8);
+            require(m.state().predictive.top().value==0xabc && m.state().confirmed.top().value==0xabc,
+                    "D same-edge confirmed pop restores the resulting history");
+            for(bool hit:{false,true}) for(bool taken:{false,true}) for(bool matches:{false,true}) {
+                auto ret=bundle(cfg,0x300); ret.inputs.words[0]=jalr(0,1,0);
+                ret.inputs.predictions[0]={0x300,matches?UINT64_C(0xabc):UINT64_C(0x900),hit,taken};
+                const auto selection=m.select(ret.inputs);
+                require(selection.correction.known && selection.correction.evidence=="D"
+                    && bool(selection.correction.value)==!(hit && taken && matches),
+                    "D RET suppresses only a taken BTB hit matching the independently known RAS top");
+                require(selection.offered==Operation::Pop,"RET pop is independent of correction suppression");
+            }
+            auto matching=bundle(cfg,0x300); matching.inputs.words[0]=jalr(0,1,0);
+            matching.inputs.predictions[0]={0x300,0xabc,true,true}; matching.inputs.ready=false;
+            edge(m,matching,9);
+            require(m.state().predictive.top().value==0xabc && !m.state().pending,
+                    "suppressed stalled RET neither pops nor starts a correction");
+            matching.inputs.ready=true; edge(m,matching,10);
+            require(m.state().predictive.entries.empty(),"accepted suppressed RET still pops once");
             for(unsigned lane=0;lane<width;++lane) {
                 auto b=bundle(cfg,0x400+4*lane);
                 for(auto& p:b.inputs.predictions) p.hit=p.taken=true;
@@ -97,8 +116,12 @@ int main() {
         env.consume(confirm,m.plan(confirm,4),4); rejects([&]{env.validate(confirm,5);});
         Contract c=Contract::established(); ReferenceModel unknown_model(cfg,c); edge(unknown_model,reset); edge(unknown_model,Stimulus{});
         Stimulus f; f.inputs.flush=f.inputs.call_confirm=true; f.inputs.link=0x800; f.reason="misprediction"; edge(unknown_model,f);
-        require(!unknown_model.state().predictive.known,"EQ07 unknown state is not promoted to golden");
-        auto nop=bundle(cfg,0x100); edge(unknown_model,nop); require(!unknown_model.state().predictive.known,"ordinary word cannot repair unknown history");
+        require(unknown_model.state().predictive.top().value==0x800,"established profile retains approved EQ07 ordering");
+        auto nop=bundle(cfg,0x100); edge(unknown_model,nop);
+        require(unknown_model.state().predictive.top().value==0x800,"ordinary word preserves restored history");
+        for(const char* order:{"previous","unknown"}) {
+            Contract rejected; rejected.order=order; rejects([&]{rejected.validate();});
+        }
         edge(unknown_model,reset); require(unknown_model.state().predictive.known,"independent reset restores knowledge");
         // EQ08 has not decided whether exception recovery preserves or clears C.
         // A subsequent ordinary restoration cannot manufacture knowledge of C.

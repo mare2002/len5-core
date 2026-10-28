@@ -1,5 +1,10 @@
 # Frontend execution/completion policy audit — 2026-10-16
 
+Historical audit: current R03/R05/R06/R07/R09/R10/R11 dispositions and model
+contracts are updated in the [2026-10-28 verification report](../MODEL_UPDATE_2026-10-28.md).
+Keep the dated observations below as historical evidence; they are not a new
+validation of the current sources. R01/R02 and remaining proof limits persist.
+
 This entry supersedes the earlier exit-policy conclusions below; it does not
 supersede the original architectural findings or claim completed coverage.
 Production sources on entry select **N=4**, SHA256

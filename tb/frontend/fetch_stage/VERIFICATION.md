@@ -1,5 +1,31 @@
 # Complete frontend: closed-loop verification specification
 
+## Current model contract — 2026-10-28
+
+The composition imports the corrected independent EJU/RAS rules: matching
+taken BTB/RAS returns suppress correction while retaining the accepted pop;
+qualified confirmation precedes restoration. FE-T25's obsolete RET-flush
+expectation is removed at the shared model, rather than waived in the scoreboard.
+FE-T29 requires preserved matching-return prediction metadata. FE-T47 now counts
+reserved completion capacity, including returned results, before its populated
+reset; its other reset prerequisites remain required. FE-T36 retains the
+stale-RAS/backend-recovery case. FE-T41 remains explicit interface stress and now
+joins the supported core gate. Previous/unknown ordering options are rejected,
+including the FE-T54 negative configuration validators.
+
+This C++ harness explicitly selects cancel mode, depth two. It does not prove
+native drain-mode integration, MEPC/MTVAL writes, or real processor retirement.
+R01/EQ08, R02/FE-T49 and unfinished interrupts remain separate open concerns.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Architecture findings established 2026-10-15 on `feat-verification`.
 **Implementation and executed evidence are recorded in §21–23, [README.md](README.md)
 and [COMPLETION_AUDIT.md](COMPLETION_AUDIT.md).
@@ -462,9 +488,9 @@ be independently probed through a new port.
 | EJ-K | BPU update concurrent with answer containing JAL | EJU uses saved predictions; current BPU update changes only future snapshots | Feedback attached to that JAL stays its own | Architectural older branch resolves while younger response reaches EJU. |
 | EJ-L | Early correction followed by later BU execution | Backend checks effective attached prediction, not pre-rewrite BPU fields | Direct JAL normally correct after repair; a wrong RAS RET can still mispredict, or artificial overwritten feedback can disagree | Architectural witness via return cases below; do not demand a second JAL misprediction merely because cold BPU missed. |
 
-The final correct path property is exact independently of whether a correction
-was needed for performance. A selected return may cause a redundant X even when
-BTB already predicted correctly; do not label redundancy an architectural bug.
+The final correct path property is exact. A RET whose taken BTB hit matches
+the known RAS top needs no correction or early memory flush (D, R09). Its
+accepted pop remains required. A stale RAS may still override a correct BTB.
 Commit/branch redirects win over J by the approved PC order. Canceled metadata
 on a frontend flush has no consumer significance, but surviving older spill
 records still require exact comparisons.
@@ -482,7 +508,7 @@ Check old P top for the current return, then apply its pop at the consuming edge
 | RAS-A | Initialize x1 to a mapped destination, canonical RET with no prior recognized call | Empty P causes no invented RAS target; cold BPU miss leads to actual BU target/recovery. Link operand remains independent of P. |
 | RAS-B | P-F one caller then F returns | P receives caller+4; return uses that link, C push/pop follows execution; each pulse once. |
 | RAS-C | Repeat caller/F with bounded outer loop | Compare cold JAL/RET and trained BTB visits; record actual target/direction per execution. |
-| RAS-D | Same caller repeats, BTB and P top both correct | Current I RET policy still offers correction/X; exact path and no duplicated operation. Optimization remains EQ04 residual. |
+| RAS-D | Same caller repeats, BTB and P top both correct | Approved D matching-RET suppression: no correction/X/rewrite; accepted pop remains once. |
 | RAS-E/F | P-F: F's RET trained returning to A, then called from B | Same static RET, stale BTB target Aret, P top Bret; EJU repairs to Bret before BU; effective attached prediction can be correct despite wrong raw BTB target. |
 | RAS-G | Indirect `jalr x1,...` call into F (no predictive push) with stale BTB RET target; or coherent history loss after overflow | Empty/wrong RAS cannot be assumed correct; BU operands determine real return and recover. Never seed P from a desired address. |
 | RAS-H | P-N with explicit save/restore registers | Nested links unwind in order; PC+4 is caller-specific; C and P can differ while confirmations lag. |
@@ -505,10 +531,10 @@ a later distinguishing return sequence, or an explicit cancellation/unknown
 disposition. Distinct link values and sufficient pops expose lower entries and
 ordering. No peeking at RAS storage, and no repair from observed return targets.
 
-EQ07 same-edge confirmation/restoration stays I/Q. The normal producer confirms
-one edge **before** misprediction frontend flush (§8), avoiding the ambiguity.
-Stress runs retain `updated`, `previous` and `unknown` hypotheses; the historical
-102 provisional differences do not approve either hypothesis as D.
+EQ07 same-edge confirmation/restoration is approved D: apply a qualified
+surviving confirmation before restoration. Normal producer events remain on
+separate edges; FE-T41 checks simultaneous interface stress and is in the
+supported core gate. The previous/unknown ordering settings are rejected.
 
 ## 8. Behavioral backend, semantic state and recovery scheduling
 
@@ -856,7 +882,7 @@ fault response and stalls without treating fault as an extra transaction.
 | X + K offer | Grant0 under coordinated cancellation; no K | Architectural; grant1 overlap FQ02 characterization. |
 | F + X offer | F prevents A; memory cancellation once, no speculative P action | Architectural independent older recovery; canceled output fields don't-care. |
 | F + D electrical | IQ flush discards transfer, no dynamic execution; final spill clears | Architectural actual ready may remain1; don't count as normal dispatch. |
-| F + C | Proposed updated-C then restore; surviving identity must be established | Same-edge normal-BU row excluded by default schedule; interface stress EQ07; exception coincident C requires cancellation analysis EQ08/EQ12. |
+| F + C | Apply qualified surviving confirmation then restore | Approved D ordering; interface stress schedule. Exception survival/qualification remain EQ08/EQ12. |
 | B + T + F | One registered mispredicted result, trained and redirected at recovery edge | Architectural e+2, not independent branch IDs. |
 | C at e+1 then F at e+2 | C already includes surviving mispredicted call/return | Architectural default; no EQ07 same-edge ambiguity. |
 | FB + T | Flush wins BPU, no surviving update credit | Exception boundary when justified, otherwise pin-level stress. |
@@ -958,13 +984,13 @@ reset program variants. Do not count generator-only setup as a completed test.
 | FE-T38 | Each latency distribution on fixed P-A/P-F image, fixed seed replay; histogram/range units plus requested-versus-actual traces (FE18/24). |
 | FE-T39 | Correct call/return confirmation during frontend output/memory stalls; C updates independent of P acceptance (FE11/17). |
 | FE-T40 | Mispredicted call/RET: confirm e+1, F/T/B e+2, hold redirect in synthetic acknowledgment negative fixture; update exactly once (FE11/17). Real always-ready DUT cannot be forced unready. |
-| FE-T41 | Public same-edge C+F alternate hypotheses after distinguishable C/P histories; later return witness, provisional EQ07 classifications (FE11/21). |
+| FE-T41 | Approved same-edge C+F restoration with distinguishable histories and later RET witness; included in supported core scope (FE11/21). |
 | FE-T42 | Trained P-A then normal branch F without FB; learned predictor persists while wrong-path memory/RAS restores (FE04/05/11/14). |
 | FE-T43 | Train, then controlled F+FB exception episode and delayed E; predictor cold witness, exact fault transport, EQ08/window separately classified (FE05/15/22). |
 | FE-T44 | Supplied E simultaneous with B and independently pending early correction; distinct targets prove approved PC priority; canceled feedback don't-care (FE02/10/21). |
 | FE-T45 | Flush with held fault/clean responses, same address refetched; no stale metadata/fault across atomic epochs (FE13–15/20). |
 | FE-T46 | Early X with older final-spill D, current A and younger physical work; old/current survive once, younger canceled (FE12/14/20). |
-| FE-T47 | Reset during trained predictor, populated P/C, full queues and scheduled feedback; restart cold, no canceled update resurrects (FE02/05/11/20). |
+| FE-T47 | Reset with nonempty P/C, trained predictor, full reserved completion capacity (outstanding plus completed), full answer/output buffers and pending backend control work; then require the new program termination witness. |
 | FE-T48 | EQ08-shaped older delayed data fault + younger branch-confirmed call/return using an explicitly tagged backend-context characterization episode; observe later RET, distinguish inherited full-core evidence from this behavioral experiment. Do not substitute a known fetch fault (FE22). |
 | FE-T49 | Exception F then several-cycle delayed E with mapped distinguishable intervening PCs; record any public wrong-stream deliveries, no hidden grant suppression (FE19/22, FQ12). |
 | FE-T50 | Faulting raw JAL/RET response with retained fault flag; transport exact, speculative effects and confirmation suppression characterized (FE13/15/22, EQ11). |
@@ -1194,8 +1220,8 @@ selection even while exception RAS semantics are unknown.
 | --- | --- | --- |
 | FEQ01 | Current direct-mapped BTB and resolution-indexed gshare algorithm, initialization, replacement/deletion and update/flush priorities are approved implementation targets D by the completion-audit instruction; they are not ISA-wide requirements | Algorithm approval closes this part. Keep exact-I profile naming and I dependencies for sampling, integrated timing and observability; predictor-agnostic path checking remains incomplete. |
 | FEQ02 | Same-edge predictor read/update, deletion without tag check, target low-bit truncation, predictor-only flush | Pre-edge snapshots and reset-dominates-update I; raw malformed-target stress. Do not extend approved pc_gen pass-through onto BTB storage. |
-| FEQ03 | EJU lifecycle, redundant RET correction, reset-release and canceled feedback windows (EQ01/02/04 residual/05/06/10) | Reuse named existing policies and unknown tracking. No new release bubbles or acknowledgment. Explicit architectural decisions needed for sign-off. |
-| FEQ04 | Same-edge confirmation/restoration EQ07 | Default producer separates edges; stress retains updated/previous/unknown profiles. Historical provisional differences are not confirmed defects. |
+| FEQ03 | RET redundancy and held-correction fetch offers fixed; EJU lifecycle/reset/feedback and stale-RAS preference retain separate scope. | Preserve approved rules and explicit remaining unknowns. |
+| FEQ04 | Same-edge confirmation/restoration EQ07 approved D. | Qualified confirmation before restoration; normal producer separates edges; rejected previous/unknown options cannot weaken checks. |
 | FEQ05 | Exception-contaminated confirmed RAS EQ08, exception/MRET recovery reason not distinguished at RAS | Preserve known-defect episodes and unknown intended recovery; require approved architecture before selecting clear-both/retirement/checkpoint rule. |
 | FEQ06 | Faulting raw jumps and suppressed confirmation EQ11; fetch-fault mtval FQ10 | Exact public error/PC transport; prediction-side effects characterized, no invented EJU fault detector or CSR checker. Known fetch faults block younger scalar issue; delayed data-fault EQ08 histories require separate backend context. |
 | FEQ07 | Delayed exception redirect window FQ12; correct acceptance/execution of intervening new fetches | Record physical delivery and independent surviving semantic trace; no full-core sign-off. Fix requires separate architecture decision. |

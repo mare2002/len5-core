@@ -155,7 +155,18 @@ public:
             for(unsigned k=0;k<cfg.lanes;++k) { s.inputs.predictions[k].hit=true; s.inputs.predictions[k].taken=false; s.inputs.predictions[k].target=0x800+k*4; }
             s.inputs.feedback=0x1234567887654320; s.feedback_explicit=true; send(s);
         });
-        test(14,"predicted call still pushes without early correction",[&]{ call(0x104,true); ret(); });
+        test(14,"predicted calls and matching RETs suppress correction but retain RAS operations",[&]{
+            for(unsigned lane=0;lane<cfg.lanes;++lane)
+                for(bool hit:{false,true}) for(bool taken:{false,true}) for(bool matches:{false,true}) {
+                    reset(); call(0x104,true); call(0x208,true);
+                    auto s=word(0x600+4*lane,jalr(0,1,0));
+                    s.inputs.predictions[lane]={0x600+4*lane,matches?UINT64_C(0x20c):UINT64_C(0x900),hit,taken};
+                    s.inputs.mask=request_mask(s.request_pc,s.inputs.predictions,cfg);
+                    s.inputs.ready=false; send(s); send(s);
+                    s.inputs.ready=true; send(s);
+                    ret(); ret();
+                }
+        });
         test(15,"nested speculative links expose newest-first history",[&]{
             for(unsigned k=0;k<cfg.depth;++k) call(0x104+k*0x100);
             for(unsigned k=0;k<=cfg.depth;++k) ret();

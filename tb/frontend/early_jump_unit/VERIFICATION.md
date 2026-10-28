@@ -1,5 +1,28 @@
 # Early-jump unit and instantiated RAS: black-box verification specification
 
+## Current model contract — 2026-10-28
+
+R09: a nonempty RAS corrects RET only when the saved prediction is not a
+taken BTB hit matching the independently known RAS top. Suppression preserves
+metadata and does not suppress the accepted RET pop. EJ-T14 checks every active
+lane and hit/taken/equality combination, stalls, and subsequent stack witnesses.
+
+R11/EQ07 is approved D: qualified surviving confirmation updates abstract C before
+restoring P; offered speculative work on that flush edge is canceled. Both model
+profiles retain this rule. `RAS_ORDER=updated` is the sole supported ordering;
+`previous` and `unknown` now fail configuration validation (exit 2). EJ-T20 and
+the old-state-restoration mutation retain independent recovery checks. Exception
+history survival EQ08 remains unresolved.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Architecture revision: `architecture-analysis-2026-10-14`; implementation revision:
 `early-jump-v1-2026-10-14`. Sections 1–24 retain the architecture investigation and
 its evidence classifications. Section 25 records the subsequently implemented
@@ -513,13 +536,13 @@ Current frontend routing delays it relative to branch discovery (see §10).
 The current RAS uses the same copy behavior for every `flush_i`, including exception
 flush (O/I); this exception policy needs EQ08 approval.
 
-At a flush edge, current RAS ignores new speculative operations and copies the
-confirmed history **including an operation confirmed on that same edge**
-(S02:66–69,88–115, explicit recovery-cycle comment). This provides strong evidence
-for proposed `confirm_then_restore` (I). User D restoration alone does not
-independently decide old-C versus updated-C ordering; EQ07 preserves that distinction.
-Real mispredicted call/return scheduling normally confirms before the flush, so
-that path can be checked without depending on a same-edge ordering assumption.
+At a flush edge, the approved contract ignores new speculative operations,
+applies any qualified surviving confirmation to C, then restores P from the
+resulting history (D, EQ07 approved 2026-10-28). This rule is implemented using
+abstract history events in the model. Both model profiles preserve it. The normal
+producer confirms one interval before recovery; EJ-T20 separately checks the
+same-edge interface contract. Qualification and exception survival retain their
+separate ENV02/EQ08 dependencies.
 
 ### Boundaries and otherwise unspecified cases
 
@@ -635,7 +658,7 @@ carried into later state-dependent checks, rather than erased after a good sampl
 | RA07 | Empty pop leaves history empty; unused top value is don't-care. | I empty policy; EQ09. |
 | RA08 | On misprediction recovery command, restore P from C, overriding new speculative update. | D restoration; I boundary mapping/precedence. |
 | RA09 | Confirmation and speculative update operate independently in the absence of recovery. | I/S02; EQ07. |
-| RA10 | Same-edge confirmation precedes restoration, P receives updated C. | I proposed `confirm_then_restore`; EQ07. |
+| RA10 | Same-edge qualified surviving confirmation precedes restoration; P receives resulting C. | D, EQ07 approved 2026-10-28; confirmation qualification and history provenance remain explicit. |
 | RA11 | Reset establishes empty P and C; inactive storage values are irrelevant. | I async reset/empty startup; EQ02. |
 | RA12 | Exception recovery restores P from C and preserves C under the same input. | I current interface-compatible proposal; EQ08. |
 | ENV01 | Saved response PCs, instructions, masks/predictions are coherent and stable; no duplicate/canceled confirmation identities. | I causal environment constraints S03/S05/S10; tested as environment errors, not RTL errors. |
@@ -742,7 +765,7 @@ boundary policy. Q values remain unknown if the policy is not enabled.
 | No | 0 | call/return | none | C'=step(C,c), P'=P. | D confirmation history; I operation policy; architectural including stalls. |
 | No | 0 | call/return | push/pop | C'=step(C,c), P'=step(P,s), independently. | I/RA09; architectural with older live confirmer. |
 | No | 1 | none | none or offered speculative op | P'=C, C'=C; speculative operation canceled. | D restoration, I F precedence; architectural normal recovery. |
-| No | 1 | call/return | any | Proposed C'=step(C,c), P'=C'. Alternative P'=old C retained. | I/RA10, EQ07; causal overlap conditional, primarily standalone stress. |
+| No | 1 | call/return | any | C'=step(C,c), P'=C'; speculative operation canceled. | D/RA10, EQ07; qualified surviving identity required. |
 | No | Any | both call and return | Any | No producer-approved C operation; C becomes unknown in established checking. | Characterization; current XOR-hold is O. |
 
 This covers all meaningful combinations of the state-changing qualifiers after
@@ -758,7 +781,7 @@ records both. No enum row implies simultaneous EJU-generated P push and pop.
 | Speculative pop + C+ / C- | Output uses old P top; edge pops P while older operation updates C. | Architectural, pre/post observations separate. |
 | Confirmation + frontend idle/stall | C updates regardless of V/R; P holds without acceptance. | Architectural; essential hidden-state test followed by F/RET. |
 | Mispredicted call/RET confirmation, then F | Confirm operation first in real producer sequence; restore that updated C. | Architectural, source-timing evidence S10/S13; RA08 definitive restoration relative to independently known C. |
-| F + confirmation same edge | Proposed updated-C restoration; compare alternative ordering separately. | Conditional producer schedule; interface stress by default, EQ07. |
+| F + confirmation same edge | Apply qualified confirmation before restoration. | D ordering; interface stress producer schedule; exception survival remains EQ08. |
 | F + offered call/RET with R=0 | Cancel pending bundle at recovery edge; P restored. | Architectural because output spill withdraws ready on flush. Pre-edge correction may remain asserted. |
 | F + V&&R and selected call/RET | Restoration versus speculative acceptance must be explicit; current RAS chooses restoration. | Standalone stress; contradictory to normal spill ready on flush, EQ06. |
 | Early memory flush + accepted call/RET | Correction completion can push/pop P; C unaffected; do not apply F restoration. | Architectural; JA is output, F is distinct input. |
@@ -950,7 +973,7 @@ Do not remove or modify pc_gen's existing scenarios.
 | EJ-T11 | Predicted JAL then unpredicted JAL; unpredicted JAL then predicted branch; multiple recognized jumps. | EJ02/EJ05/RA02. |
 | EJ-T12 | RET after PN/PT branch; CALL+RET and RET+CALL bundle order, including empty P. | EJ02/RA02/RA03/RA07. |
 | EJ-T13 | Corrected lane metadata plus all retained older lanes; supplied feedback distinct from arithmetic in stress. | EJ03/EJ04/EJ07, EQ10. |
-| EJ-T14 | Call with no early correction still pushes; later RET observes link. | RA02/EJ05. |
+| EJ-T14 | Predicted calls still push; matching taken BTB/RAS RETs suppress correction but accepted RETs still pop. All hit/taken/equality combinations, active lanes, stalls and later return witnesses. | EJ05/RA02/RA03/RA04. |
 | EJ-T15 | Nested unconfirmed calls then returns expose newest-to-oldest P; no automatic C updates. | RA01–03. |
 | EJ-T16 | Confirmed calls/returns with V=0 and during R=0; observe through F and future returns. | RA04/RA05/RA08. |
 | EJ-T17 | Correctly predicted call/RET confirmation versus mispredicted confirmation; noncall branch never confirms. | ENV02/RA05/RA08. |
@@ -1122,7 +1145,7 @@ Future controlled mutations use disposable RTL copies only:
 | Pop before returning the selected old top; reverse stack order | EJ-T15/T22/T25, RA03 temporal witness. |
 | Confirm wrong operation/link, gate confirmation on frontend ready, or mutate P on C+ | EJ-T16/T18/T19, RA01/RA04/RA05/RA09. |
 | Restore from P instead of C; omit restore; apply speculative op after F | EJ-T19/T20/T23, RA08. |
-| Lose same-edge confirmed operation | EJ-T20, RA10, **provisional until EQ07 approval**. |
+| Lose same-edge confirmed operation | EJ-T20, RA10, approved D ordering; retain explicit history/qualification dependencies. |
 | Incorrect overflow/empty/reset policy | EJ-T01/T25/T26, RA06/RA07/RA11 with provenance. |
 | Wrong corrected lane metadata or flush/held-correction lifetime | EJ-T13/T21/T23/T24, EJ06/EJ07/EJ10. |
 
@@ -1286,10 +1309,10 @@ field checks without waiting for every question to be resolved.
 | EQ01 | Is oldest recognized jump cutoff the definitive lane contract for every valid mask? What does a zero/holey/contradictory mask mean? | S03 gives contiguous input intervals; S01 selects oldest input-valid recognized jump and masks later lanes. Proposed same for coherent live responses. | EJ-T05/T09–T12/T32; malformed masks separate, no fabricated architectural reachability. |
 | EQ02 | Precise EJU reset output/release latency, immediate-release bundle acceptance, and reset/confirmation qualification? | S01 has one released-edge control suppression; RAS controls are not gated by that control state, while normal spills initially prevent acceptance. S02 clears validity only. | EJ-T01/T02/T30; do not invent an approved bubble or zero address contents. |
 | EQ03 | Recognition resolved (D): only JAL rd=x1 is CALL/push; other JAL including x5 is a direct jump without push; only `0x00008067` is RET/pop; other JALR has no early RAS operation. Separate generic-JALR lane-cutoff behavior remains Q. | Explicit user approval is independent D evidence. S01/S09 support current restricted implementation; the broader ISA hint table is context only. No full x1/x5 hint or coroutine semantics are authorized. | EJ-T03/T06/T31 and EV03 check positive/negative recognition definitively. Valid excluded encodings are architectural when causally valid, otherwise stress; no-RAS-effect is D in either campaign. Acceptance/top/boundary/cutoff evidence remains as before. |
-| EQ04 | Resolved D: hit-and-taken JAL may suppress early correction for correct or wrong targets; no target equality check required. Residual Q: should matching BPU/RAS RET suppress redundant correction? | Explicit user approval supplies D for JAL; S01:149–151 supports the observation. A matching BTB source tag does not prove target correctness. | EJ-T08 covers miss/taken raw bit, hit/NT, hit/T correct and wrong target at every lane; T14 checks call push despite suppression. New pure fixed policy checks verify D provenance. RET policy stays I/Q. |
+| EQ04 | D: JAL hit-and-taken suppresses independently of target equality; RET suppresses only a hit-and-taken target equal to known RAS top. Accepted call/RET operations remain independent. | Approved policy; stale RAS can still override a correct BTB. | EJ-T08 JAL policy; EJ-T14 all RET combinations/stalls/later pop witnesses. |
 | EQ05 | Correction-offer/completion lifecycle: must valid hold independent of V after pending offer, when exactly memory flush, and can the same held request be consumed twice? | S01 remembers stalled correction but relies on upstream held fields; no explicit early ack; S05/S07 provide normal stable ready/valid response. | Proposed live-offer-until-accept/cancel I; EJ-T21/T22/T27; malformed withdrawal separate. |
 | EQ06 | Must flush suppress correction combinationally, or only cancel at edge? Meaning of artificial F+V+R, stale operands and pending-offer output on flush edge? | S01 outputs do not gate F combinationally; output spill normally lowers R on F; RAS restoration wins speculative op. | EJ-T20/T23/T29; consumed/ignored/unresolved windows separated. |
-| EQ07 | Same-edge confirmation versus restoration: old C or updated C? Can this overlap occur in the current producer schedule? | S02 explicitly includes same-edge confirmation; real mispredicted call confirms one interval before frontend F (S10/S13). | Proposed confirm_then_restore I; EJ-T18–T20. Simultaneous port stress not silently architectural. |
+| EQ07 | D: confirmation-before-restoration. Apply only qualified surviving confirmations; cancel offered speculative operations on flush. | Normal producer separates edges; same-edge interface rule is still defined. | EJ-T20; old-state mutation must fail; previous/unknown CLI settings rejected. |
 | EQ08 | Exception recovery survival of branch-confirmed but unretired calls/returns: is C always safe, should it clear/checkpoint, and which confirmations are canceled? | Single F carries misprediction/exception; current RAS preserves C and restores P for both. C is execution-confirmed, not ROB-retired; an older exception can invalidate newer resolved history. | Source-supported reachable exception contamination; see ARCHITECTURE_AUDIT.md §B. RA12 remains provisional; T28 characterizes the current boundary and conservative unknown tracking, not precise retirement recovery. Proposed clear-both policy awaits approval/RTL work. |
 | EQ09 | Definitive overflow/underflow policy and supported RAS_DEPTH values, especially depth1/non-power-of-two? | S02 keeps recent DEPTH on overflow, empty pop no visible valid entry, both-confirm XOR hold; `$clog2` vectors have depth-specific limits. | Initial depth4 only, RA06/RA07 I; EJ-T25/T26. No silent depth/config sweep. |
 | EQ10 | Is overridden feedback consumed during recovery? Exact meaningful prediction sideband window and output relevance on inactive/canceled lanes? | pc_gen returns winning next target; commit-overridden metadata approved unused, branch window residual Q4. EJU has no redirect reason input. | EJ-T13/T29; exact relevant fields checked, canceled don't-care versus unresolved distinguished. |
@@ -1309,7 +1332,7 @@ field checks without waiting for every question to be resolved.
 4. Incorrect response mask construction would make multiple-prediction tests
    unrealistic, especially NT-hit versus taken-hit and skipped starting lanes.
 5. Wrong-target taken JAL suppression is now an approved D policy (EQ04), not
-   a defect. RET redundant-correction behavior remains unresolved. Restricted RAS recognition is
+   a defect. Matching RET suppression is now approved; stale-RAS preference remains. Restricted RAS recognition is
    now approved D, so valid excluded hint encodings are definitive no-RAS-effect
    cases rather than an unresolved extension policy.
 
@@ -1400,7 +1423,7 @@ It maintains semantic pending-correction and known/unknown history state. The
 `len5_minimal` profile names held-offer, updated-C restoration, exception restore
 and recent-entry overflow assumptions. The `established` profile leaves those
 unresolved transitions unknown while keeping applicable established checks.
-Neither profile approves EQ05/EQ07/EQ08. Exact comparisons remain active whenever
+Both profiles preserve approved EQ07; EQ05/EQ08 remain unresolved. Exact comparisons remain active whenever
 an independent field expectation is known. Unknown outputs and don't-care outputs
 have separate counters/observations.
 
@@ -1505,7 +1528,7 @@ made only to private copies under the mutation artifact root.
 | Push during stall | T21 | Return/hold history discrepancy. |
 | Wrong confirmed link | T16 | Restore then return discrepancy. |
 | Omit predictive restoration | T19 | Divergent P/C then return discrepancy. |
-| Restore old C on simultaneous confirmation | T20 | **Provisional EQ07** discrepancy, not approved ordering. |
+| Restore old C on simultaneous confirmation | T20 | Violates approved EQ07 ordering; later returns expose the lost operation. |
 | Wrong return target | T15 | Temporal return discrepancy. |
 | Wrong corrected metadata target | T13 | Retained lane metadata mismatch. |
 | Silent RAS push from ordinary rd=x1 without early-output change | T07 | **EJ08/D definitive temporal no-effect violation** (1 confirmed comparison). |

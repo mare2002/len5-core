@@ -22,7 +22,8 @@ def case(binary, root, label, flags=(), status=0):
     assert result.returncode==report['exit_status']==status,(label,result.returncode,report)
     assert report['sampled_records']>=report['transactions']
     assert report['pre_edge_records']>=report['cycles_executed']
-    assert report['full_contract_signoff'] is False and len(report['unresolved_questions'])==13
+    assert report['full_contract_signoff'] is False and len(report['unresolved_questions'])==12
+    assert 'FQ03' not in report['unresolved_questions'] and report['specification_status']['FQ03']['status']=='supported'
     text=(d/'console.log').read_text()
     assert '\x1b[1m[CONFIG]' in text
     if status:
@@ -65,7 +66,10 @@ def main():
         assert coverage.get('architectural/FV23/'+event,0)>0, event
     assert baseline['requirement_checks']['FM05/D']>0 and baseline['requirement_checks']['FM11/D']>0
     assert baseline['obligations']['fault_deliveries']>0 and baseline['obligations']['fault_cancellations']>0
-    assert baseline['unknown_output_samples'] and baseline['dont_care_output_samples']
+    assert baseline['dont_care_output_samples']
+    zero,_=run('zero-latency',['--scenario=FM-T34'])
+    assert zero['obligations']['delivered']==3 and zero['requirement_checks']['FM05/D']>0
+    assert not any('FQ03' in q for q in zero['unknown_output_samples'])
     established,_=run('established',['--contract=established'])
     assert established['field_checks']<baseline['field_checks'] and established['requirement_checks']['FM11/D']>0
     _,rd=run('replay-fst',['--dump_waves=true'])

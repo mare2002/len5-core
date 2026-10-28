@@ -55,7 +55,7 @@ Simulator::Simulator(const RunOptions& options,int argc,char** argv):options_(op
     TB_CONFIG("Configuration source=%s fingerprint=%s",config_.source.c_str(),config_.fingerprint.c_str());
     TB_CONFIG("PRG seed: %" PRIu64 "; contract=%s; log level=%u",options.seed,options.contract.json().c_str(),logger.getLogLvl());
     TB_CONFIG("Approved D: x1 JAL push; exact 0x00008067 pop; other JAL/JALR RAS no-op; independent confirmed/predictive histories");
-    TB_CONFIG("EQ05 lifecycle, EQ07 same-edge ordering, EQ08 exception survival and remaining EQ questions retain I/Q provenance");
+    TB_CONFIG("EQ04 RET suppression and EQ07 confirm-before-restore are approved D; EQ05 lifecycle, EQ08 exception survival and remaining EQ questions retain I/Q provenance");
     TB_CONFIG("Cycle: zero-based consuming rising edge including reset; logger timestamp: context tick");
     TB_CONFIG("Reports=%s/report.json coverage.json samples.jsonl; waves=%s",directory.c_str(),options.waves?"ENABLED":"DISABLED");
 }

@@ -89,9 +89,12 @@ def main():
     assert r['field_checks'] == 0
     run('timeout', ['--max_cycles=1'], 3)
     run('quiet', ['--scenario=EJ-T01','--log_level=LOG_NONE'])
-    alternative, _ = run('previous-confirmation-hypothesis', ['--scenario=EJ-T20','--order=previous'], 1)
-    assert alternative['provisional_mismatches'] > 0 and alternative['confirmed_mismatches'] == 0
-    run('unknown-restoration', ['--scenario=EJ-T20','--order=unknown'])
+    for order in ('previous','unknown'):
+        command=[str(binary),'--order='+order]
+        rejected=subprocess.run(command,capture_output=True,text=True)
+        (root/('rejected-order-'+order+'.log')).write_text(rejected.stdout+rejected.stderr)
+        assert rejected.returncode==2 and 'EQ07 is approved' in rejected.stdout+rejected.stderr
+        results.append(dict(case='rejected-order-'+order,command=command,expected_exit=2,checks=0,errors=0))
     # Stale build/replay negative cases: disposable copies, never source edits.
     selected = baseline['config']['bundle_instructions']
     wrong = 1 if selected != 1 else 2

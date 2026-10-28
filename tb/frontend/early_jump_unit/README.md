@@ -1,5 +1,28 @@
 # Standalone early_jump_unit and RAS verification
 
+## Current model contract — 2026-10-28
+
+R09: a nonempty RAS corrects RET only when the saved prediction is not a
+taken BTB hit matching the independently known RAS top. Suppression preserves
+metadata and does not suppress the accepted RET pop. EJ-T14 checks every active
+lane and hit/taken/equality combination, stalls, and subsequent stack witnesses.
+
+R11/EQ07 is approved D: qualified surviving confirmation updates abstract C before
+restoring P; offered speculative work on that flush edge is canceled. Both model
+profiles retain this rule. `RAS_ORDER=updated` is the sole supported ordering;
+`previous` and `unknown` now fail configuration validation (exit 2). EJ-T20 and
+the old-state-restoration mutation retain independent recovery checks. Exception
+history survival EQ08 remains unresolved.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Native C++17/Verilator verification of `early_jump_unit` **with its actual instantiated
 `ras`**. The independent [specification](VERIFICATION.md) defines the boundary and
 requirement provenance. Production sources, configuration and pc_gen verification
@@ -62,13 +85,11 @@ make check-early-jump-random SEED=17 CYCLES=4096 \
   WEIGHTS=ordinary=50,call=20,jump=10,return=20,branch=15,confirm=40,restore=12,stall=35,reset=2
 ```
 
-Named assumption overrides are `RAS_ORDER=updated|previous|unknown`,
-`RAS_EXCEPTION=restore|unknown`, `RAS_BOUNDARIES=recent|unknown`,
-`EARLY_LIFECYCLE=held|unknown`. They are explicit hypothesis selections, not
-configuration or recognition-policy overrides. `previous` can produce expected
-**provisional mismatches** at EJ-T20; normal DUT runs still fail rather than
-silently treating those differences as success. The validator alone explicitly
-expects that nonzero result while checking its provisional classification.
+Named assumption overrides remain `RAS_EXCEPTION=restore|unknown`,
+`RAS_BOUNDARIES=recent|unknown`, and `EARLY_LIFECYCLE=held|unknown`.
+`RAS_ORDER=updated` names the approved EQ07 rule; previous/unknown order settings
+are rejected. They cannot disable an approved comparison. These options do not
+change configuration or the approved recognition/RET suppression policies.
 
 ## Configuration and build integrity
 
@@ -265,7 +286,7 @@ and 52,286,987 comparisons with zero baseline mismatches. All declared campaign
 coverage goals are exercised. Fourteen distinct disposable mutations were detected
 (twelve in the aggregate audit plus two focused policy mutations), with no survivors.
 The aggregate target passed 7/7 groups; subsequent focused unit/mutation checks
-also passed. The alternative EQ07 `previous` hypothesis retains provisional failures.
+also passed. Historical alternative EQ07 `previous` runs recorded provisional failures.
 
 The implementation validation record is appended to [VERIFICATION.md §25](VERIFICATION.md#25-implementation-and-validation-record).
 Only the current source-selected width is compiled/tested. Pure mathematical
@@ -274,7 +295,7 @@ and detected mutations are useful evidence, not exhaustive verification or appro
 of unresolved contracts.
 
 EQ01–EQ12 remain recorded; EQ03 recognition and EQ04 taken-JAL suppression are
-D-approved. Generic JALR cutoff and redundant RET correction remain unresolved. In particular EQ05, EQ07 and EQ08 are not closed by passing runs.
+D-approved. Generic JALR cutoff and stale-RAS preference retain their separate limits. Matching RET suppression is now approved. In particular EQ05, EQ07 and EQ08 are not closed by passing runs.
 Exception-safe retirement checkpoints, producer cancellation, physical memory flush,
 ROB/commit/BPU correctness and general x1/x5 RAS hints are outside this standalone
 DUT. RAS_DEPTH other than 4, full ISA execution and mutation equivalence analysis

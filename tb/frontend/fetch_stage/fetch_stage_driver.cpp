@@ -483,8 +483,11 @@ void Simulator::step(Inputs i, bool schedule_backend) {
                             counter("return");
                             if (l.ras_nonempty) {
                                 counter("return-witness");
-                                if (l.raw.hit && l.raw.taken && l.raw.target == l.ras_top)
+                                if (l.raw.hit && l.raw.taken && l.raw.target == l.ras_top) {
                                     counter("return-bpu-equals-ras");
+                                    if (!l.rewritten)
+                                        counter("matching-return-preserves-prediction");
+                                }
                                 if (l.raw.hit && l.raw.taken && l.raw.target != l.ras_top)
                                     counter("return-bpu-differs-ras");
                             } else
@@ -1075,7 +1078,8 @@ void Simulator::run(const Scenario &s, uint64_t limit) {
                 const auto state_probe = model_->plan(Inputs{}, cycle_);
                 reset_ready = !model_->ras().confirmed.entries.empty() &&
                               !model_->ras().predictive.entries.empty() && !site_updates_.empty() &&
-                              state_probe.q == 2 && state_probe.answers == 2 && state_probe.output == 2 &&
+                              state_probe.q + model_->memory_state().completed.size() == cfg_.depth &&
+                              state_probe.answers == 2 && state_probe.output == 2 &&
                               pending_control;
             }
             if (reset_ready) {
@@ -1576,12 +1580,17 @@ int Simulator::finish() {
         report << json_quote(r.first) << ':' << r.second;
     }
     report << "},\"unresolved_questions\":[";
+    first = true;
     for (unsigned k = 1; k <= 13; ++k) {
-        if (k > 1)
+        if (k == 4)
+            continue;
+        if (!first)
             report << ',';
+        first = false;
         report << json_quote(std::string("FEQ") + (k < 10 ? "0" : "") + std::to_string(k));
     }
-    report << "],\"known_defects\":[\"EQ08 exception-contaminated confirmed "
+    report << "],\"approved_contracts\":{\"FEQ04\":\"qualified confirmation before restoration\"},"
+              "\"known_defects\":[\"EQ08 exception-contaminated confirmed "
               "RAS\",\"FQ12 delayed exception "
               "recovery window\"]}\n";
     report.close();

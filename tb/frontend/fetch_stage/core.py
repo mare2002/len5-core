@@ -13,10 +13,10 @@ from confidence import execute
 import results as policy
 from confidence import validate_receipt
 
-# Declared before evaluating results. EQ07 same-edge and deferred exception or
+# Declared before evaluating results. Deferred exception or
 # alternative-memory protocols are outside this scope. FE-T54 is executed as a
 # composite validator, not by accepting the native catalog's placeholder.
-EXCLUDED={'FE-T41':'unapproved same-edge EQ07 alternatives','FE-T43':'exception recovery policy',
+EXCLUDED={'FE-T43':'exception recovery policy',
           'FE-T48':'delayed data-fault/retirement context','FE-T49':'exception redirect window',
           'FE-T50':'faulting jump policy','FE-T51':'alternative memory protocols'}
 SCENARIOS=['FE-T%02d'%i for i in range(1,55) if 'FE-T%02d'%i not in EXCLUDED and i!=54]

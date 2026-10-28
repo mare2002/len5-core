@@ -1,5 +1,22 @@
 # pc_gen black-box verification specification
 
+## Current model contract — 2026-10-28
+
+The approved R10 rule remains active in both model profiles: while early
+correction is asserted, offer no new fetch request, but keep its target/metadata
+live and preserve higher-priority redirects. Existing responses and downstream
+acceptance retain their obligations. The current PC model already implements
+this rule; this update audits it rather than adding a second PC oracle.
+
+See the [cross-module change and scenario report](../MODEL_UPDATE_2026-10-28.md)
+for validation receipts and problem dispositions. Production RTL is unchanged;
+R12 is excluded. Current source selects N=8. Older audit-era configurations,
+counts and alternative-policy results below are historical and are superseded
+by this dated contract where they conflict. Build launchers exclude repository
+`build/` from FuseSoC discovery even with a custom BUILD_DIR, preventing archived
+core copies from overriding the live verification sources.
+
+
 Current contract revision: `approved-2026-10-14`. The user's Q1–Q10 design decisions
 are independent specification evidence, classified D below. Scope is solely the
 public ports of `rtl/frontend/pc_gen.sv`, on `feat-verification`. Production RTL and

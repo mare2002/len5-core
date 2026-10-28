@@ -1,18 +1,15 @@
 # Frontend RTL verification findings
 
-Consolidated review: 2026-10-16. This document collects the problems, risks and
-remaining questions recorded by the `pc_gen`, `early_jump_unit`, `fetch_mem_if`
-and complete `fetch_stage` verification efforts. It distinguishes current RTL
-defects from historical defects, proposed architectural improvements, unsupported
-protocols, simulator problems and incomplete verification.
+Current status updated **2026-10-28** from the active RTL, approved contracts
+and the frontend verification model update. The original 2026-10-16 review and
+its detailed traces remain historical evidence. Current selected configuration
+is **N=8, HLEN=4, BTB_BITS=4**, native memory drain mode, completion depth eight.
+The C++ memory/full-frontend harnesses explicitly use cancel mode and depth two.
 
-This was a documentation review with read-only checks of the relevant active RTL.
-No new simulation was run and no RTL, configuration or existing verification
-implementation was changed. The source currently selects **N=4, HLEN=4 and
-BTB_BITS=4**. The pre-existing local modification of
-`rtl/packages/len5_config_pkg.sv` was preserved. Results below belong to the
-specific historical builds identified in their source documents; they are not
-new validation of every current working-tree setting.
+See [model and scenario changes](MODEL_UPDATE_2026-10-28.md) for the exact approved
+rules, scenario changes, validation receipts and remaining limits. This update
+changes verification and documentation only; production RTL is preserved. R12
+is excluded from this update and its historical section is retained.
 
 ## 1. Findings at a glance
 
@@ -20,15 +17,15 @@ new validation of every current working-tree setting.
 |---|---|---|---|
 | **R01: Confirmed RAS retains operations squashed by an older exception** | **Demonstrated current predictor-recovery defect**; full-core push and pop witnesses at N=2 and N=4 | RAS, EJU and exception recovery | EQ08 / FEQ05. No fix implemented; exception-specific clear-both is a proposal. |
 | **R02: Instructions from an unexpected stream reach commit around exception recovery** | **Demonstrated recovery-window observation; functional severity and full cause unresolved** | Commit/issue/frontend recovery coordination | FQ12 / FEQ07. Requires a dedicated surviving-instruction/retirement investigation. |
-| **R03: MRET is classified as an exception before reaching normal MRET commit decoding** | Source-level producer-path concern; no dynamic MRET proof | Issue decoder, commit decoder and trap return | Investigate before claiming working MRET. Separate from RAS recovery. |
+| **R03: MRET issue/commit and return status** | **Previously fixed RTL; focused and full-core evidence recorded** | Issue, commit, CSR and redirect | Serialized issue, MEPC redirect and Moore return sequence. Frontend tests cover supplied redirect only. |
 | **R04: External interrupt path remains unfinished** | Source-observed implementation limitation | Datapath interrupt routing, WFI/issue control | No verified interrupt-entry or nested-trap contract. |
-| **R05: Correct fetch-fault `mtval` generation is not established** | Integration question, not a demonstrated wrong CSR value | Issue result construction and commit/CSR path | FQ10 / FEQ06. Exact frontend fault transport does not settle it. |
-| **R06: Late responses cannot be distinguished after cancellation** | Demonstrated conditional hazard under an unsupported noncancelable-memory protocol | Fetch memory interface | FQ04 / FEQ08. Active memory contract cancels pending responses atomically. |
-| **R07: Grant-on-flush, zero-latency response and excess-outstanding behavior** | Unsupported/undecided protocol combinations with association risks | Fetch memory metadata FIFO | FQ02/03/08. Not active-contract RTL failures. |
+| **R05: MTVAL value and CSR-address selection** | **Previously fixed RTL; focused CU/CSR evidence recorded** | Commit CU, commit stage and CSR path | Fetch faults save instruction PC; data faults retain MTVAL address selection; held cause survives flush. |
+| **R06: Late responses after cancellation** | **Native drain mode implemented and directed checks available** | Fetch completion reservations and memory adapters | Preserve canceled physical obligations until ordered return; C++ cancel mode is a separate contract. |
+| **R07: Request credit and completion association** | **Completion queue implemented; capacity and association checked** | Fetch-memory interface | Reserved credit gates admission; completion buffering and same-edge allocation/response. Out-of-order responses remain unsupported. |
 | **R08: Gshare may train a different counter from the one used for prediction** | Demonstrated property of the approved implementation; architecture/accuracy tradeoff | BPU/gshare | Policy A retained; saved-index Policy B needs a separate design decision. |
-| **R09: RET correction can be redundant or override a correct BTB with stale RAS** | Demonstrated recoverable prediction-quality behavior; optimization/policy question | EJU/RAS/BPU | EQ04 residual / FEQ03 / RAS-O. Backend recovery remains necessary. |
-| **R10: Held early corrections may cause repeated target fetch offers** | Source-supported integration/lifecycle concern; no demonstrated duplicate accepted RAS operation | EJU, PC generation, memory cancellation | EQ05 / Q3. Current cancellation contract and focused tests cover supported operation. |
-| **R11: Same-edge RAS confirmation/recovery ordering remains provisional** | Alternative-model disagreement, not a demonstrated integrated defect | RAS/branch producer | EQ07. Normal confirmation-before-flush schedule is supported. |
+| **R09: Redundant RET correction / stale RAS** | **Redundancy fixed in RTL and model; stale-RAS case remains** | EJU/RAS/BPU | Matching taken BTB/RAS target suppresses correction; accepted RET still pops. FE-T36 retains backend recovery. |
+| **R10: Fetch offers during held early correction** | **Fixed in RTL and PC model** | EJU, PC generation and memory | Suppress new offers while early correction is live; keep target and response-drain obligations. |
+| **R11: Same-edge confirmation/restoration** | **Approved behavior; obsolete model alternatives retired** | RAS and verification oracle | Qualified surviving confirmation updates abstract C before P restoration. Previous/unknown options now rejected. |
 | **R12: Some parameter combinations are not supported** | Source-level parameterization restrictions; selected four widths passed focused RTL tests | Gshare, RAS depth, FIFO/spill configuration | Do not generalize N=1/2/4/8 success to arbitrary HLEN/depth settings. |
 | **H01: Raw target low bits persisted during ordinary PC progression** | Historical confirmed RTL defect, **documented as fixed** | PC generator | Old T19 failures must not be counted as current failures. |
 | **T01: Verilator DFG produces wrong corrected JAL metadata** | Reproduced simulator optimization discrepancy with a supported code-generation explanation | Simulation of EJU-to-mixer path | Keep `-fno-dfg`; not established as a hardware defect. |
@@ -164,47 +161,54 @@ Evidence: [EJU audit §E5](early_jump_unit/ARCHITECTURE_AUDIT.md#e5-separate-rec
 [fetch-memory specification §10.3](fetch_mem_if/VERIFICATION.md#103-recovery-window-identified-by-the-eju-audit),
 and FEQ07 / FE-T49 in the [frontend specification](fetch_stage/VERIFICATION.md).
 
-## 4. R03–R05 — Trap/exception producer concerns outside standalone frontend proof
+## 4. R03–R05 — Trap/exception changes and frontend proof boundaries
 
-| Concern | Actual evidence | What remains unproven / next check |
-|---|---|---|
-| **MRET decode path** | [issue_decoder.sv](../../rtl/expipe/issue-unit/issue_decoder.sv), lines 744–752, labels MRET `ISSUE_TYPE_EXCEPT`, sets `opcode_except=1` and `E_ENV_CALL_MMODE`. [issue_stage.sv](../../rtl/expipe/issue-unit/issue_stage.sv), lines 327–328, propagates that exception classification. [commit_decoder.sv](../../rtl/expipe/commit-unit/commit_decoder.sv), lines 45–48, prioritizes an exception over the MRET case at line 161. | Source-level reason not to assume the named `COMMIT_MRET` states prove working MRET. Run an actual MRET/CSR-target integration test; no such dynamic result is claimed here. |
-| **Interrupt implementation** | [datapath.sv](../../rtl/datapath.sv), lines 53–56, marks interrupt ports TODO; the EJU audit found no internal IRQ routing. Issue WFI handling also has an interrupt TODO. | No functioning interrupt-entry, acknowledgment or nested-trap behavior was established. This is unfinished production capability, not an EJU prediction mismatch. |
-| **Fetch-fault `mtval`** | Fetch_mem_if transports saved lane PC plus flag/cause, but no fault-address result. [commit_cu.sv](../../rtl/expipe/commit-unit/commit_cu.sv), lines 443–448, uses instruction result data for fault-address saving; issue result construction is at [issue_stage.sv](../../rtl/expipe/issue-unit/issue_stage.sv), lines 548–558. | Correct frontend PC/error association does not prove that the eventual result/CSR path supplies the faulting fetch address. FQ10 calls for issue/commit verification; no incorrect `mtval` value was dynamically demonstrated. |
+R03 was fixed before this verification update. MRET now enters the serialized
+issue path and reaches normal MRET commit decoding. The CU waits in COMMIT_MRET
+for frontend readiness, then enters MRET_LOAD_PC for one Moore redirect/flush
+cycle and proceeds to CLEAR_COMM_REG. The redirect uses a dedicated MEPC value;
+it does not accidentally write MEPC through a CSR operation. Trap/MRET events
+update MIE/MPIE/MPP with defined priority while preserving unrelated status bits.
+Focused CU/CSR checks and real full-core MRET programs were reported during
+the earlier implementation work; they are historical evidence and were not
+rerun by this frontend-only update. They do not close R02's generic exception-entry
+window. The frontend models continue checking the supplied PC and cancellation,
+without pretending to execute MRET or model CSRs.
 
-PC Q10 tests only supplied trap/MRET/interrupt-shaped addresses. They do not
-execute those producer paths. The EJU full-core handler uses **RET, not MRET**.
-See [EJU audit §B4](early_jump_unit/ARCHITECTURE_AUDIT.md#b4-scenarios-cd--traps-and-coincident-recovery)
-and [fetch-memory specification §9.3](fetch_mem_if/VERIFICATION.md#93-path-to-architectural-exception-outside-the-dut).
+R05's two MTVAL issues were fixed before this update. Instruction access/page
+faults enter EXCEPT_SAVE_FETCH_PC and save the faulting instruction PC. Address
+faults use COMM_CSR_SEL_FAULT_ADDR so the result value is paired with the CU's
+MTVAL CSR address, rather than an instruction immediate. Exception classification
+uses the held commit record after flushing. Existing focused checks cover these
+paths; exact frontend fault transport alone remains insufficient CSR evidence.
 
-## 5. R06–R07 — Memory protocol limitations and conditional hazards
+R04 remains open: interrupt routing/WFI support is unfinished. Status-bit changes
+and externally supplied interrupt-shaped redirects do not establish interrupt
+entry, acknowledgment or nesting.
 
-The verified architectural profile requires **ordered responses, positive response
-latency, at most two outstanding requests and coordinated physical cancellation
-on flush**. Metadata is saved at request acceptance and associated with responses
-by FIFO order. There are no transaction IDs, stale-response tags, tombstones or
-drain/cancel acknowledgment ports.
+## 5. R06–R07 — Completion reservations and memory contracts
 
-| Case | Why it is a problem outside that contract | Correct classification |
-|---|---|---|
-| **Late clean/fault response after flush** | FIFO metadata was discarded. An old physical response may be offered as valid with missing or new-request metadata; a canceled fault can be attached to a live transaction. Existing FQ04 characterization observes stale-fault validity. | Demonstrated unsupported-protocol hazard. Not a failure of a contract that cancels the physical response. Noncancelable memory needs an explicit adapter/epoch/drain architecture. |
-| **Request grant on flush edge** | Request bypass can permit the electrical overlap while the metadata FIFO is being cleared. If that grant denotes new live work, its metadata would be lost. Current memory withdraws grant. | FQ02 unresolved ownership; characterization, not a proven architectural failing sequence. |
-| **Empty-queue zero-latency request/response** | The metadata FIFO has no fall-through from the newly accepted record to its old empty head. Response association is not established. | FQ03 alternative protocol; positive latency remains the default. |
-| **More outstanding requests than metadata slots** | Fetch_mem_if does not gate acceptance using FIFO full/empty. `fifo_nohs` can overwrite on overflow; its full assertion is disabled under Verilator. | Violates the documented producer capacity guarantee. No claim that arbitrary memory backpressure/capacity is internally enforced. |
-| **Out-of-order responses** | No response identity/address is available to reorder the saved records. | Unsupported; FIFO association explicitly requires ordered memory. |
-| **Redirect changes an unaccepted request address** | Request bypass and memory-independent PC correction can replace an unaccepted offer. | FQ01 integration contract, not generic irrevocable ready/valid semantics. A stricter memory protocol needs adaptation. |
+The active native memory contract is ordered, noncancelable responses with
+**drain-on-flush**. Every accepted physical request reserves completion capacity.
+A flush invalidates its logical publication but retains its physical obligation;
+late clean and fault responses drain in order without acquiring new-request
+metadata. Request acceptance is gated by reserved credit, including completed
+results waiting behind a stalled consumer. This replaces the old unguarded
+metadata FIFO assumptions described in the historical module documents.
 
-Source: [fetch_mem_if.sv](../../rtl/frontend/fetch_mem_if.sv), lines 79–144;
-[fifo_nohs.sv](../../rtl/common/fifo_nohs.sv), lines 51–146;
-[fetch-memory specification §§6, 9.4 and 21](fetch_mem_if/VERIFICATION.md).
-Early-jump memory flush may consume the current answer before canceling younger
-work; branch/exception recovery withdraws downstream readiness. Treating these
-as identical cancellation events would be a model error, not evidence of RTL loss.
+The C++ standalone and composed frontend suites explicitly test ordered
+**cancel-on-flush**, depth two. Cancellation there clears both memory and oracle
+obligations atomically. The separate native SV target checks drain mode at the
+selected N/depth, stale returns and full credits, early-flush consumption, reset,
+and allocation plus its own response on the same edge. These are separate
+contracts; success of cancel mode is not randomized drain-mode sign-off.
 
-No active-contract data/metadata/error association defect is reported by the
-[fetch-memory validation record](fetch_mem_if/README.md#validation-record).
-Its recorded million-cycle run has zero confirmed/provisional mismatches. This
-does not establish safety for the alternative protocols above.
+A full completion queue does not borrow a slot freed later on the same edge.
+Requests are suppressed on flush. Ordered responses are mandatory because the
+frontend response port has no identity/address with which to reorder them.
+Unsolicited, duplicate and out-of-order responses remain invalid. External AXI
+protocol stability belongs to the adapter, not the cancelable PC offer contract.
+See the [current verification update](MODEL_UPDATE_2026-10-28.md#r06r07-distinguish-logical-cancellation-from-physical-completion).
 
 ## 6. R08 — Gshare prediction/update counter attribution
 
@@ -257,51 +261,47 @@ Source: [gshare.sv](../../rtl/frontend/gshare.sv), lines 43–114;
 Evidence/proposal: [final frontend audit §A](fetch_stage/FINAL_FRONTEND_ARCHITECTURE_AUDIT.md#a-gshare-architecture-and-source-evidence).
 Existing focused command: `make check-fetch-stage-run SCENARIO=GH01`.
 
-## 7. R09–R11 — EJU/RAS policy and timing questions
+## 7. R09–R11 — Approved RET and recovery behavior
 
-### Return correction is not always an improvement
+### R09: matching prediction suppresses correction; stale history remains
 
-With nonempty P, canonical RET requests EJU correction even when BTB already
-predicts the same target. This can cause a redundant memory flush. The source
-contains a commented alternative comparison; removing redundant correction would
-be a policy/optimization change, not a demonstrated required fix.
+A nonempty RAS no longer causes unconditional RET correction. If saved BTB
+metadata is hit, taken and equal to the independently known RAS top, no EJU
+correction/rewrite/early memory flush is expected. An accepted canonical RET
+still pops exactly once. A stall must preserve the stack; a miss, not-taken
+prediction or different target still needs correction. JAL's separately approved
+target-independent suppression remains unchanged.
 
-Conversely, a coherent FE-T36/RAS-O program demonstrates a **correct BTB target
-overridden by stale RAS**: actual x1 is `0x100`, P predicts `0x110`, execution at
-216 detects the error, confirmation is at 217, training/redirect/flush at 218,
-and the recovery request for `0x100` is accepted at 219. This is recoverable
-prediction-quality loss under the current policy. RAS contents are predictions,
-not guaranteed copies of architectural x1 or the software call stack.
+The obsolete unconditional-RET oracle caused FE-T25's six comparison errors at
+cycle 174: three signals sampled at two phases. EJ-T14 now tests every
+hit/taken/equality combination and exposes subsequent stack contents. FE-T29
+requires matching-return metadata preservation. FE-T36 still checks a correct
+BTB overridden by stale RAS history, including backend recovery. That remaining
+prediction-quality behavior is not closed by removing redundancy.
 
-Source: [early_jump_unit.sv](../../rtl/frontend/early_jump_unit.sv), lines 142–151;
-[frontend README return witnesses](fetch_stage/README.md#learning-and-recovery-trace-excerpts),
-FE-T36; [EJU audit §A](early_jump_unit/ARCHITECTURE_AUDIT.md#a-eq01eq12-decisions-and-evidence).
+### R10: held correction suppresses new fetch offers
 
-### Held correction and repeated fetch offers
+The previously implemented PC fix suppresses new request validity while an early
+correction is asserted. The target/base/offset remain available, existing
+responses can drain, and EJU acceptance still completes the correction and the
+single speculative RAS operation. Higher-priority commit/branch redirects retain
+their approved precedence. PC C6 and the composed frontend use this rule.
 
-EJU can offer correction while the final output spill is stalled. `pc_gen` can
-load that same target at several edges, permitting repeated target requests if
-memory accepts them. The selected predictive push/pop still happens only on
-bundle acceptance. Completion flush must cancel younger memory work; there is
-no separate EJU correction acknowledgment. No current supported-history duplicate
-accepted push/pop or dispatch defect was demonstrated. EQ05/Q3 lifecycle and
-alternative memory cancellation remain explicit integration assumptions.
+### R11: qualified confirmation precedes restoration
 
-### EQ07's 102 provisional differences
+The approved contract is C'=step(C, confirmation), then P'=C' on recovery.
+For C=[0x808] and a surviving call link0x908, both histories become
+[0x808,0x908]. A confirmed pop is similarly included. Offered speculative work
+on the flush edge is canceled. This event-history rule does not depend on RTL
+array or next-state implementation.
 
-The `previous` alternative restores P from old C on a coincident confirmation and
-flush. RTL includes the same-edge confirmed operation before restoration. At the
-first differing sample, cycle 72, the alternative expects `0x808` while RTL returns
-`0x908`. The 102 differences include propagated valid/target/flush/metadata checks;
-they are **not 102 RTL defects**.
-
-The full-core witnesses instead have confirmation **one edge before** frontend
-branch recovery; exception flush suppresses confirmation. Both restoration
-hypotheses agree in that supported schedule. Keep truly coincident alternatives
-provisional until their surviving-instruction contract is approved.
-
-Evidence: [EJU audit §A3](early_jump_unit/ARCHITECTURE_AUDIT.md#a3-stall-release-and-feedback-timing)
-and [§E6](early_jump_unit/ARCHITECTURE_AUDIT.md#e6-eq07-meaning-of-the-102-discrepancies).
+The previous/unknown order settings are rejected with exit 2 in both harnesses.
+The conservative established profile also retains this approved rule. EJ-T20
+checks the full semantic matrix; FE-T41 retains the explicit simultaneous
+interface-stress case and joins the supported core gate. The historical 102
+alternative-model field differences remain historical evidence of an obsolete
+oracle, not 102 RTL bugs. Normal backend confirmation/recovery occur on separate
+edges. R11 does not resolve R01 or make execution confirmation retirement.
 
 ## 8. R12 — Configuration restrictions, not a demonstrated failure of N=1/2/4/8
 
@@ -390,7 +390,7 @@ bug. Shared issues appear once in the detailed findings above.
 |---|---|
 | Q1 | Reset/BOOT/release contract approved; readiness during reset remains Q. |
 | Q2 | Redirect priority approved; losing acknowledgment and reachability are separate residuals. |
-| Q3 | Memory-independent early redirect approved; held correction lifetime/cancellation remains I/Q (R10). |
+| Q3 | Memory-independent early redirect and R10 suppression of new fetch offers approved; remaining held lifecycle/cancellation proof retains its stated scope. |
 | Q4 | Consumed selected early metadata exact; branch-overridden consumer window remains Q. Unused commit/reset/idle metadata is don't-care. |
 | Q5 | Control-cycle valid qualification, idle/shared/reset ready and losing redirect acknowledgments remain I/Q; no confirmed PC-selection failure. |
 | Q6/Q7 | Bundle successor and exact supplied-target pass-through approved. Historical alignment defect fixed (H01); executability/fault checks belong to producers. |
@@ -409,10 +409,10 @@ are still undecided.
 | EQ01 | Coherent-mask oldest recognized jump selection is supported I. Arbitrary holey masks/generic-JALR cutoff remain unapproved. |
 | EQ02 | RAS asynchronous reset and pending-correction cancellation observed; immediate live standalone reset-release behavior remains Q. Normal empty spills constrain integrated startup. |
 | EQ03 | Restricted x1-call/canonical-RET recognition approved D; no x5/coroutine defect. |
-| EQ04 | Taken-hit JAL suppression approved D even for wrong target. RET redundancy remains I/Q (R09). |
-| EQ05 | Held corrections/repeated offers and cancellation lifecycle I/Q (R10). |
+| EQ04 | JAL target-independent taken-hit suppression and matching BTB/RAS RET suppression approved D; stale RAS preference remains (R09). |
+| EQ05 | R10 new-offer suppression fixed; held correction acceptance/cancellation and interface provenance retain their separate limits. |
 | EQ06 | Recovery overrides predictive updates; meaningful consuming-edge qualification matters. Raw flush/valid/ready combinations are not automatically integrated transactions. |
-| EQ07 | Same-edge old/new-C alternatives provisional; normal producer separates confirmation and restoration (R11). |
+| EQ07 | Confirmation-before-restoration approved D; previous/unknown options rejected. Normal producer still separates edges (R11). |
 | EQ08 | Confirmed predictor-history contamination reproduced (R01); exception recovery redesign not approved/implemented. |
 | EQ09 | Depth-4 newest-entry overflow and empty-pop behavior are named I policies; other depths not validated (R12). |
 | EQ10 | Exact consumed feedback checked; canceled-lane values are not architectural results; delayed exception window remains unresolved (R02). |
@@ -427,15 +427,15 @@ and its later §E full-core results.
 | ID | Current disposition |
 |---|---|
 | FQ01 | Unaccepted request stability/replacement on redirect requires the connected protocol (R07). |
-| FQ02 | Grant-on-flush old/new ownership unresolved (R07). |
-| FQ03 | Zero-latency empty-FIFO response association unsupported/unresolved (R07). |
-| FQ04 | Noncancelable stale-response filtering absent; conditional stale-fault hazard demonstrated (R06). |
+| FQ02 | Completion credit suppresses request acceptance on flush; cancel and drain physical obligations remain distinct contracts (R07). |
+| FQ03 | Same-edge accepted allocation/response now checked exactly by FM-T34 and native drain test; randomized traffic still uses positive latency (R07). |
+| FQ04 | Native drain mode retains canceled reservations and discards stale responses; cancel-mode tests require atomic physical cancellation (R06). |
 | FQ05 | Exact reset-release readiness/latency is I, not an independently approved universal timing rule. |
 | FQ06 | Consumed-head early flush versus canceled branch/exception head must be distinguished; supported profile checked. |
 | FQ07 | Unused fields, invalid lanes and unraised causes need explicit raw-preservation/don't-care qualification; no live stale-error failure observed. |
-| FQ08 | Other metadata depths/spill settings/capacity guarantees unvalidated (R07/R12). |
+| FQ08 | Reserved completion credit checked; other parameter profiles retain their existing restrictions and are not reassessed here (R07/R12). |
 | FQ09 | Raw misaligned target detection belongs to memory/producers; N>1 emulator reconstructs aligned lanes. Exact supplied error transport does not verify fault detection. |
-| FQ10 | Correct architectural fetch-fault `mtval` unresolved (R05). |
+| FQ10 | Prior MTVAL RTL fixes described in R05; frontend-only transport tests do not prove CSR integration. |
 | FQ11 | No established general bus timeout/retry/page-fault producer. Enum code availability is not implemented translation/error detection. |
 | FQ12 | Separate full-core recovery-window observation (R02). |
 | FQ13 | External fairness/timeout/cancellation guarantees beyond the emulator unestablished; permanent stall is not demonstrated DUT response loss. |
@@ -448,8 +448,8 @@ Source: [fetch-memory specification question table](fetch_mem_if/VERIFICATION.md
 |---|---|
 | FEQ01 | Current BTB/gshare algorithm approved D as implementation target; exact-I sampling dependencies and predictor-agnostic checking limits remain (R08). |
 | FEQ02 | Same-edge predictor timing, row deletion without a tag recheck, target-low-bit truncation and predictor-only flush need their stated scope. Current algorithm is not replaced with a generic textbook rule. |
-| FEQ03 | Inherited EJU lifetime/reset/feedback and redundant RET questions (R09/R10). |
-| FEQ04 | EQ07 alternatives provisional (R11). |
+| FEQ03 | RET redundancy and held-correction fetch suppression fixed; lifecycle/reset/feedback limits and stale-RAS preference remain (R09/R10). |
+| FEQ04 | EQ07 approved: qualified confirmation before restoration; obsolete alternatives rejected (R11). |
 | FEQ05 | EQ08 and reason-specific exception/MRET history policy (R01). |
 | FEQ06 | Faulting raw jumps, confirmation qualification and `mtval` scope (R05). |
 | FEQ07 | Delayed exception recovery window (R02). |
@@ -500,7 +500,7 @@ strength of the evidence, but they do not add production RTL defects:
 | PC framework | Configuration selection, comparison-confidence and coverage/replay accounting were strengthened. Old ready-gated/always-arithmetic model assumptions were superseded by approved decisions. Historical evidence must be read with its contract revision. |
 | EJU unknown-state tracking | Conservative exception handling previously kept C known and could restore false knowledge into P; unknown-overflow handling could invent a known top. Both corrected. A dead `mispredict`/`misprediction` random-validator assertion was also fixed. |
 | EJU standalone audit limits | Per-operation witness completeness, independent recovery-order validation and some aggregate reset/assumption fields were incomplete. The later integrated frontend added a causal RAS-operation ledger and stronger public drains; that does not retroactively establish exhaustive standalone coverage. |
-| EJU mutation isolation | Relative dependency paths once risked compiling the wrong source configuration. Disposable export/source guards were corrected; stale/wrong-width builds are not RTL functional failures. |
+| EJU mutation isolation | Historical dependency/export guards remain. This update also excludes repository build/ from discovery with custom BUILD_DIR, preventing archived cores from overriding current models. Compiled source paths are audited separately from fingerprints. |
 | Fetch-memory framework | Inactive-array-slot randomization, canceled-ID reuse, secondary mismatch confidence, orchestration CLI adaptation and acceptance coverage credited before an edge were found and fixed. No golden transport result was changed to hide RTL failure. |
 | Memory emulator | `ReadW` returns its last byte-read status, so partially initialized words may have surprising error status. This is an emulator limitation/source observation, not production fetch_mem_if fault detection. The independent environment supplies its own explicit fault map. |
 | Frontend backend abstraction | Earlier code reserved ROB for unissued IQ work, lacked a distinct publication stage, released branch capacity at computation and allowed unlimited ordinary completions. Latest audit enforces IQ16/ROB32/ALU-RS8/BU-RS4, scalar issue, one shared publication per edge and proper retention until publication/retirement. |
@@ -522,11 +522,13 @@ I dependencies; they are not 12 confirmed architectural bugs.
 
 ## 14. Remaining verification limits and priorities
 
-The latest ordinary frontend audit records **48 passed IDs / 69 cases**, zero
+The historical ordinary frontend audit recorded **48 passed IDs / 69 cases**, zero
 ordinary mismatches and no missing selected ordinary witnesses. FE-T15 strict
 completion now passes; FE-T19's coherent JAL hit/not-taken history and FE-T54's
 24 composite validators are also established. Older sections calling these cases
-incomplete are historical and superseded.
+incomplete are historical and superseded. Current supported core passes **49 IDs / 82 cases** at N=8, including FE-T41
+and the corrected FE-T47 reset scenario. Gate counts and receipts are in the
+[2026-10-28 update](MODEL_UPDATE_2026-10-28.md).
 
 Full specification completion still excludes:
 
@@ -536,15 +538,14 @@ Full specification completion still excludes:
 | FE-T48 | Delayed older data-fault context needed for integrated EQ08 modeling; cannot substitute a known fetch fault. Existing full-core EQ08 reproduction remains valid separately. |
 | FE-T49 | Complete delayed-redirect/intervening-dispatch surviving-stream proof (R02). |
 | FE-T50 | Full faulting JAL/RET characterization and cleanup policy. Exact retained fault transport is still checked. |
-| FE-T51 | FQ02/03/04 alternative memory protocols without an approved architectural contract. |
-| FE-T41 alternatives | Genuinely simultaneous confirmation/restoration remains provisional, separate from normal producer timing. |
+| FE-T51 | Alternative full-frontend memory protocols remain outside the C++ cancel-mode composition; standalone native drain and zero-latency checks are separate evidence. |
 
 Predictor-agnostic checking, all FEV crosses, complete real backend execution,
 CSR/`mtval`, interrupt/MRET and precise retirement correctness are not closed.
 A successful default process can therefore mean **PASS WITH WARNINGS**, not full
 specification sign-off. Strict completion remains available for selected required
-obligations. No new full regression or mutation campaign was needed to compile
-this report.
+obligations. The 2026-10-28 update reruns module regressions, confidence validators
+and disposable mutations; exact results and scope are recorded in its report.
 
 Recommended follow-up order:
 
@@ -553,8 +554,8 @@ Recommended follow-up order:
    distinguishing non-NOP fixture; establish functional impact before claiming it.
 3. Verify real issue/commit exception producers, MRET, fetch-fault `mtval` and
    interrupt capability before treating trap-shaped frontend inputs as system proof.
-4. Retain the active memory cancellation/capacity contract; design an explicit
-   adapter before attaching noncancelable or zero-latency memory.
+4. Keep native drain and C++ cancel contracts distinct; extend native integration
+   coverage before claiming randomized drain-mode frontend sign-off.
 5. Retain current gshare Policy A for baseline verification; measure a closed-loop
    saved-index alternative before approving predictor/interface changes.
 6. Keep the simulator workaround and its reproducer until independently resolved.

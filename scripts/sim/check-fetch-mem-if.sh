@@ -9,6 +9,8 @@ model_dir=$(python3 tb/frontend/fetch_mem_if/configuration.py --model-dir --buil
 fingerprint=${model_dir##*-}
 metadata_depth=$(python3 tb/frontend/fetch_mem_if/configuration.py --depth)
 mkdir -p "$model_dir"
+mkdir -p "$repo_root/build"
+touch "$repo_root/build/FUSESOC_IGNORE"
 touch "${BUILD_DIR:-$repo_root/build}/FUSESOC_IGNORE"
 exec 9>"$model_dir/build.lock"
 flock 9
