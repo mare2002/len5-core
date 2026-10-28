@@ -287,8 +287,8 @@ check-alu: | .check-fusesoc
 # Standalone frontend verification; no Spike, firmware or RTL formatting.
 # Build once, then run independent native groups without concurrent FuseSoC setup.
 .PHONY: check-frontend
-# Serialize suites even with make -j; each suite retains its own JOBS/TEST_JOBS.
-.NOTPARALLEL: check-frontend check-fetch-mem-if
+# Serialize output print even with make -j; each suite retains its own JOBS/TEST_JOBS.
+check-frontend check-fetch-mem-if: MAKEFLAGS += --output-sync=target
 check-frontend: check-pc-gen check-early-jump check-fetch-mem-if check-fetch-stage
 
 .PHONY: check-pc-gen check-pc-gen-run pc-gen-build check-pc-gen-framework
