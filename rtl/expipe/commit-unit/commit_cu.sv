@@ -42,12 +42,15 @@ module commit_cu (
   // CU <--> CSRs
   output logic csr_valid_o,
   output logic csr_override_o,  // TODO: probably redundant with decoder
+  output logic csr_trap_enter_o,
+  output logic csr_mret_commit_o,
   output expipe_pkg::comm_csr_instr_t csr_comm_insn_o,  // committing instruction type
   output logic [csr_pkg::CSR_ADDR_LEN-1:0] csr_addr_o,
 
   // CU <--> others
   input  logic fe_ready_i,
   output logic fe_except_raised_o,
+  output logic fe_pc_sel_mepc_o,
   output logic ex_mis_flush_o,      // flush execution pipeline after misprediction
   output logic except_flush_o,      // flush everything after exception
   output logic issue_resume_o       // resume after stall
@@ -82,7 +85,7 @@ module commit_cu (
     COMMIT_EBREAK,       // commit EBREAK instructions
     INT_WRITE_CODE,      // write the interrupt exception code to mcause
     COMMIT_MRET,         // commit MRET instructions
-    MRET_LOAD_PC,        // load the PC in mepc
+    MRET_LOAD_PC,        // redirect to the PC saved in mepc
     COMMIT_WFI,          // wait for interrupt
     COMMIT_EXCEPT,       // handle the generated exception
     EXCEPT_LOAD_PC,      // load exception handling program counter
@@ -219,11 +222,11 @@ module commit_cu (
       COMMIT_ECALL:       next_state = INT_WRITE_CODE;
       INT_WRITE_CODE:     next_state = EXCEPT_LOAD_PC;
       COMMIT_EBREAK:      next_state = IDLE;
-      COMMIT_MRET:        next_state = MRET_LOAD_PC;
-      MRET_LOAD_PC: begin
-        if (fe_ready_i) next_state = IDLE;
-        else next_state = MRET_LOAD_PC;
+      COMMIT_MRET: begin
+        if (fe_ready_i) next_state = MRET_LOAD_PC;
+        else next_state = COMMIT_MRET;
       end
+      MRET_LOAD_PC:       next_state = CLEAR_COMM_REG;
       COMMIT_WFI:         next_state = IDLE;
       // Flush the in-flight instructions
       COMMIT_EXCEPT:      next_state = EXCEPT_WRITE_CODE;
@@ -274,6 +277,8 @@ module commit_cu (
     comm_rd_sel_o      = COMM_RD_SEL_RES;
     comm_csr_sel_o     = COMM_CSR_SEL_RES;
     csr_override_o     = 1'b0;
+    csr_trap_enter_o   = 1'b0;
+    csr_mret_commit_o  = 1'b0;
     csr_addr_o         = CSR_MEPC;
     int_rs_valid_o     = 1'b0;
     int_rf_valid_o     = 1'b0;
@@ -282,6 +287,7 @@ module commit_cu (
     csr_valid_o        = 1'b0;
     csr_comm_insn_o    = COMM_CSR_INSTR_TYPE_NONE;
     fe_except_raised_o = 1'b0;
+    fe_pc_sel_mepc_o   = 1'b0;
     ex_mis_flush_o     = 1'b0;
     except_flush_o     = 1'b0;
     issue_resume_o     = 1'b0;
@@ -390,11 +396,12 @@ module commit_cu (
         csr_comm_insn_o = COMM_CSR_INSTR_TYPE_OTHER;
       end
       COMMIT_ECALL: begin
-        csr_valid_o     = 1'b1;  // save PC to mepc
-        csr_override_o  = 1'b1;
-        csr_addr_o      = CSR_MEPC;
-        comm_csr_sel_o  = COMM_CSR_SEL_PC;
-        csr_comm_insn_o = COMM_CSR_INSTR_TYPE_OTHER;
+        csr_valid_o      = 1'b1;  // save PC to mepc
+        csr_trap_enter_o = 1'b1;
+        csr_override_o   = 1'b1;
+        csr_addr_o       = CSR_MEPC;
+        comm_csr_sel_o   = COMM_CSR_SEL_PC;
+        csr_comm_insn_o  = COMM_CSR_INSTR_TYPE_OTHER;
       end
       INT_WRITE_CODE: begin
         csr_valid_o    = 1'b1;  // save exception code to mcause
@@ -408,33 +415,29 @@ module commit_cu (
         ex_mis_flush_o  = 1'b1;
         csr_comm_insn_o = COMM_CSR_INSTR_TYPE_OTHER;
       end
-      COMMIT_MRET: begin  // read mepc
-        csr_override_o  = 1'b1;
-        csr_addr_o      = CSR_MEPC;
-        comm_csr_sel_o  = COMM_CSR_SEL_ZERO;
-        comm_reg_en_o   = 1'b1;
-        ex_mis_flush_o  = 1'b1;
-        except_flush_o  = 1'b1;  // also flush relevant data
-        csr_comm_insn_o = COMM_CSR_INSTR_TYPE_OTHER;
-      end
+      COMMIT_MRET: ;  // hold the committing instruction while waiting for the frontend
       MRET_LOAD_PC: begin
-        csr_override_o     = 1'b1;
-        csr_addr_o         = CSR_MEPC;
-        comm_csr_sel_o     = COMM_CSR_SEL_ZERO;
+        // The PC generator always accepts commit redirects.
         fe_except_raised_o = 1'b1;
+        fe_pc_sel_mepc_o   = 1'b1;
+        ex_mis_flush_o     = 1'b1;
+        except_flush_o     = 1'b1;
+        csr_mret_commit_o  = 1'b1;
         issue_resume_o     = 1'b1;
+        csr_comm_insn_o    = COMM_CSR_INSTR_TYPE_OTHER;
       end
       COMMIT_WFI: begin
         comm_reg_en_o   = 1'b1;
         csr_comm_insn_o = COMM_CSR_INSTR_TYPE_OTHER;
       end
       COMMIT_EXCEPT: begin
-        csr_valid_o    = 1'b1;
-        csr_override_o = 1'b1;
-        csr_addr_o     = CSR_MEPC;
-        comm_csr_sel_o = COMM_CSR_SEL_PC;
-        ex_mis_flush_o = 1'b1;
-        except_flush_o = 1'b1;
+        csr_valid_o      = 1'b1;
+        csr_trap_enter_o = 1'b1;
+        csr_override_o   = 1'b1;
+        csr_addr_o       = CSR_MEPC;
+        comm_csr_sel_o   = COMM_CSR_SEL_PC;
+        ex_mis_flush_o   = 1'b1;
+        except_flush_o   = 1'b1;
       end
       EXCEPT_WRITE_CODE: begin
         csr_valid_o    = 1'b1;  // save exception code to mcause

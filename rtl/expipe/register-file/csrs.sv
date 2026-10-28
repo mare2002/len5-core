@@ -19,6 +19,8 @@ module csrs (
 
   // Handshaking with commit logic
   input logic valid_i,
+  input logic trap_enter_i,  // one-cycle trap-entry event from commit
+  input logic mret_commit_i, // one-cycle accepted return event from commit
 
   // Control from commit logic
   input expipe_pkg::comm_csr_instr_t comm_insn_i,  // committing instruction type
@@ -31,6 +33,7 @@ module csrs (
   input logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_i,  // destination register
   output csr_pkg::csr_t data_o,
   output csr_pkg::csr_mtvec_t mtvec_o,  // exception base address and mode
+  output csr_pkg::csr_mepc_t mepc_o,  // return address, independent of CSR accesses
   output logic csr_exc_o,  // exception raised
 
   // Data to the FPU
@@ -324,6 +327,27 @@ module csrs (
   // TODO: only M-mode is currently supported. Add the other modes.
   assign priv_mode = PRIV_MODE_M;
 
+  // Trap-stack updates coexist with the MEPC write on exception entry.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : mstatus_trap_reg
+    if (!rst_ni) begin
+      mstatus_mpp  <= PRIV_MODE_M;
+      mstatus_mpie <= 1'b0;
+      mstatus_mie  <= 1'b0;
+    end else if (trap_enter_i) begin
+      mstatus_mpp  <= priv_mode;
+      mstatus_mpie <= mstatus_mie;
+      mstatus_mie  <= 1'b0;
+    end else if (mret_commit_i) begin
+      mstatus_mpp  <= PRIV_MODE_M;  // least privileged supported mode
+      mstatus_mpie <= 1'b1;
+      mstatus_mie  <= mstatus_mpie;
+    end else if (csr_wr_en && addr_i == CSR_MSTATUS && priv_mode >= PRIV_MODE_M) begin
+      mstatus_mpp  <= csr_wr_val[12:11];
+      mstatus_mpie <= csr_wr_val[7];
+      mstatus_mie  <= csr_wr_val[3];
+    end
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin : fcsr_reg
     if (!rst_ni) begin
       // CSR DEFAULT VALUES
@@ -331,9 +355,6 @@ module csrs (
       // fcsr
       fcsr         <= '0;
       // mstatus
-      mstatus_mpp  <= PRIV_MODE_M;  // change to U-mode when supported
-      mstatus_mpie <= 1'b0;
-      mstatus_mie  <= 1'b0;
       mstatus_fs_dirty <= 1'b0;
       // mtvec
       mtvec.base   <= CSR_MTVEC_BASE;
@@ -356,9 +377,6 @@ module csrs (
         // mstatus
         CSR_MSTATUS: begin
           if (priv_mode >= PRIV_MODE_M) begin
-            mstatus_mpp  <= csr_wr_val[12:11];
-            mstatus_mpie <= csr_wr_val[7];
-            mstatus_mie  <= csr_wr_val[3];
             mstatus_fs_dirty <= (LEN5_F_EN || LEN5_D_EN) && (|csr_wr_val[14:13]);
           end
         end
@@ -474,5 +492,6 @@ module csrs (
   // Data to commit logic
   assign data_o      = csr_rd_val;
   assign mtvec_o     = mtvec;
+  assign mepc_o      = mepc;
 
 endmodule

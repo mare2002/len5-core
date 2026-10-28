@@ -744,11 +744,11 @@ module issue_decoder (
       // RV32SYSTEM
       // TODO: add support for SYSTEM instructions
       MRET: begin
-        issue_type    = ISSUE_TYPE_EXCEPT;
-        skip_eu       = 1'b1;
-        order_crit    = 1'b1;
-        opcode_except = 1'b1;
-        except_code   = E_ENV_CALL_MMODE;
+        // Reuse the serialized issue path; commit decodes the MRET operation.
+        issue_type = ISSUE_TYPE_CSR;
+        skip_eu    = 1'b1;
+        order_crit = 1'b1;
+        rd_upd     = 1'b0;
       end
       WFI: begin
         issue_type = ISSUE_TYPE_STALL;

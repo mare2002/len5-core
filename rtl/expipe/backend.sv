@@ -205,8 +205,11 @@ module backend (
   // Commit logic <--> CSRs
   // ----------------------
   logic                                 comm_csr_valid;
+  logic                                 comm_csr_trap_enter;
+  logic                                 comm_csr_mret_commit;
   logic            [          XLEN-1:0] csr_comm_data;
   csr_mtvec_t                           csr_comm_mtvec;
+  csr_mepc_t                            csr_comm_mepc;
   comm_csr_instr_t                      comm_csr_comm_insn;
   //logic                                 comm_csr_comm_jb; // TODO: check
   csr_op_t                              comm_csr_op;
@@ -550,36 +553,42 @@ module backend (
     .rd_idx_o  (comm_rf_rd_idx),
     .rd_value_o(comm_rf_rd_value),
 
-    .csr_valid_o    (comm_csr_valid),
-    .csr_data_i     (csr_comm_data),
-    .csr_mtvec_i    (csr_comm_mtvec),
-    .csr_comm_insn_o(comm_csr_comm_insn),
-    .csr_op_o       (comm_csr_op),
-    .csr_addr_o     (comm_csr_addr),
-    .csr_rs1_idx_o  (comm_csr_rs1_idx),
-    .csr_data_o     (comm_csr_data),
-    .csr_rd_idx_o   (comm_csr_rd_idx)
+    .csr_valid_o      (comm_csr_valid),
+    .csr_trap_enter_o (comm_csr_trap_enter),
+    .csr_mret_commit_o(comm_csr_mret_commit),
+    .csr_data_i       (csr_comm_data),
+    .csr_mtvec_i      (csr_comm_mtvec),
+    .csr_mepc_i       (csr_comm_mepc),
+    .csr_comm_insn_o  (comm_csr_comm_insn),
+    .csr_op_o         (comm_csr_op),
+    .csr_addr_o       (comm_csr_addr),
+    .csr_rs1_idx_o    (comm_csr_rs1_idx),
+    .csr_data_o       (comm_csr_data),
+    .csr_rd_idx_o     (comm_csr_rd_idx)
   );
 
   // ----
   // CSRS
   // ----
   csrs u_csrs (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .valid_i    (comm_csr_valid),
-    .comm_insn_i(comm_csr_comm_insn),
-    .comm_op_i  (comm_csr_op),
-    .addr_i     (comm_csr_addr),
-    .rs1_idx_i  (comm_csr_rs1_idx),
-    .data_i     (comm_csr_data),
-    .rd_idx_i   (comm_csr_rd_idx),
-    .data_o     (csr_comm_data),
-    .mtvec_o    (csr_comm_mtvec),
-    .csr_exc_o  (),                    // TODO: handle illegal CSR access exceptions
-    .fpu_frm_o  (csr_ex_frm),
+    .clk_i        (clk_i),
+    .rst_ni       (rst_ni),
+    .valid_i      (comm_csr_valid),
+    .trap_enter_i (comm_csr_trap_enter),
+    .mret_commit_i(comm_csr_mret_commit),
+    .comm_insn_i  (comm_csr_comm_insn),
+    .comm_op_i    (comm_csr_op),
+    .addr_i       (comm_csr_addr),
+    .rs1_idx_i    (comm_csr_rs1_idx),
+    .data_i       (comm_csr_data),
+    .rd_idx_i     (comm_csr_rd_idx),
+    .data_o       (csr_comm_data),
+    .mtvec_o      (csr_comm_mtvec),
+    .mepc_o       (csr_comm_mepc),
+    .csr_exc_o    (),                    // TODO: handle illegal CSR access exceptions
+    .fpu_frm_o    (csr_ex_frm),
     .fp_enabled_o(csr_il_fp_enabled),
-    .priv_mode_o(csr_il_priv_mode)
+    .priv_mode_o (csr_il_priv_mode)
   );
 
 

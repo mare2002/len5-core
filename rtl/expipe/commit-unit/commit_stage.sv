@@ -64,8 +64,11 @@ module commit_stage (
 
   // CSRs
   output logic csr_valid_o,
+  output logic csr_trap_enter_o,
+  output logic csr_mret_commit_o,
   input csr_pkg::csr_t csr_data_i,
   input csr_pkg::csr_mtvec_t csr_mtvec_i,  // mtvec data
+  input csr_pkg::csr_mepc_t csr_mepc_i,
   output expipe_pkg::comm_csr_instr_t csr_comm_insn_o,  // committing instruction type
   output csr_pkg::csr_op_t csr_op_o,
   output logic [csr_pkg::CSR_ADDR_LEN-1:0] csr_addr_o,
@@ -142,6 +145,7 @@ module commit_stage (
   logic                             cu_csr_override;
   logic                             cu_mis_flush;
   logic                             cu_except_flush;
+  logic                             cu_pc_sel_mepc;
 
   // -------
   // MODULES
@@ -340,10 +344,13 @@ module commit_stage (
     .fp_rf_valid_o     (fp_rf_valid_o),
     .csr_valid_o       (csr_valid_o),
     .csr_override_o    (cu_csr_override),
+    .csr_trap_enter_o  (csr_trap_enter_o),
+    .csr_mret_commit_o (csr_mret_commit_o),
     .csr_comm_insn_o   (csr_comm_insn_o),
     .csr_addr_o        (cu_csr_addr),
     .fe_ready_i        (fe_ready_i),
     .fe_except_raised_o(fe_except_raised_o),
+    .fe_pc_sel_mepc_o  (cu_pc_sel_mepc),
     .ex_mis_flush_o    (cu_mis_flush),
     .except_flush_o    (cu_except_flush),
     .issue_resume_o    (issue_resume_o)
@@ -411,7 +418,7 @@ module commit_stage (
   // -----------------
 
   // Data to front-end
-  assign fe_except_pc_o = adder_out;
+  assign fe_except_pc_o = cu_pc_sel_mepc ? csr_mepc_i : adder_out;
 
   // Data to the register file(s)
   assign rd_idx_o       = comm_reg_data.data.rd_idx;
@@ -440,11 +447,17 @@ module commit_stage (
   else $display("WARNING: Committing exception: %s", comm_reg_data.data.except_code.name());
   // ISR address
   property p_except;
-    @(posedge clk_i) disable iff (!rst_ni) fe_except_raised_o |->
+    @(posedge clk_i) disable iff (!rst_ni) fe_except_raised_o && !cu_pc_sel_mepc |->
       fe_except_pc_o == ((comm_reg_data.data.except_code << 2) + (csr_mtvec_i.base << 2))
   endproperty
   a_except :
   assert property (p_except);
+  property p_mret;
+    @(posedge clk_i) disable iff (!rst_ni) fe_except_raised_o && cu_pc_sel_mepc |->
+      fe_except_pc_o == csr_mepc_i;
+  endproperty
+  a_mret :
+  assert property (p_mret);
   // Detect deadlock (watchdog timer)
   property p_watchdog;
     @(posedge clk_i) disable iff (!rst_ni) u_commit_cu.curr_state == u_commit_cu.IDLE |->
