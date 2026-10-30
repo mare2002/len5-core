@@ -14,9 +14,8 @@
 #include <random>
 #include <getopt.h>
 
-#include "Valu.h"
-#include "Valu_len5_config_pkg.h"
-#include "Valu_expipe_pkg.h"
+#include "Valu_tb.h"
+#include "Valu_tb_expipe_pkg.h"
 #include "tb_components.hh"
 #include "tb_macros.hh"
 
@@ -31,11 +30,11 @@ TbLogger logger;
 
 vluint64_t sim_cycles = 0;
 
-void clkGen(Valu *dut);
-void rstDut(Valu *dut, vluint64_t sim_time);
+void clkGen(Valu_tb *dut);
+void rstDut(Valu_tb *dut, vluint64_t sim_time);
 
 // Generate an input transaction
-ReqTx *genReqTx(); 
+ReqTx *genReqTx(unsigned int rob_depth);
 
 int main(int argc, char* argv[])
 {
@@ -90,7 +89,7 @@ int main(int argc, char* argv[])
 
     // Create log directory
     Verilated::mkdir("logs");
-    
+
     // Create simulation context
     VerilatedContext *cntx = new VerilatedContext;
     if (dump_waves) cntx->traceEverOn(true); // Enable wave tracing
@@ -98,9 +97,9 @@ int main(int argc, char* argv[])
     // Pass the simulation context to the logger
     logger.setSimContext(cntx);
     logger.setLogLvl(LOG_LOW);
-    
+
     // Instatiate DUT
-    Valu *dut = new Valu(cntx); // Create instance of module
+    Valu_tb *dut = new Valu_tb(cntx); // Create instance of module
 
     // VCD file where to store waveforms
     VerilatedFstC* m_trace = new VerilatedFstC;
@@ -116,7 +115,7 @@ int main(int argc, char* argv[])
     RspMonitor *rspMon = new RspMonitor(dut, scb);
 
     // Request transaction
-    ReqTx *req = NULL;   
+    ReqTx *req = NULL;
 
     // Initialiaze PRG
     TB_CONFIG("PRG seed: %u", prg_seed);
@@ -130,7 +129,7 @@ int main(int argc, char* argv[])
     while (!cntx->gotFinish() && cntx->time() < (max_cycles << 1)) {
         // Reset DUT
         rstDut(dut, sim_cycles);
-        
+
         // Generate clock
 
         clkGen(dut);
@@ -141,7 +140,7 @@ int main(int argc, char* argv[])
         if (dut->clk_i == 1 && cntx->time() > END_OF_RESET_TIME)
         {
             // Generate a request
-            req = genReqTx();
+            req = genReqTx(dut->config_rob_depth_o);
             if (req != NULL)
             {
                 // Drive the DUT
@@ -150,7 +149,7 @@ int main(int argc, char* argv[])
                 req = NULL;
             }
 
-            // Monitor inputs and outputs   
+            // Monitor inputs and outputs
             reqMon->monitor();
             rspMon->monitor();
         }
@@ -169,11 +168,11 @@ int main(int argc, char* argv[])
     {
         TB_ERR("TEST FAILED > errors: %u/%u", scb->getErrNum(), scb->getTxNum());
     }
-    else 
+    else
     {
         TB_SUCCESS(LOG_LOW, "TEST SUCCEEDED > errors: %u/%u", scb->getErrNum(), scb->getTxNum());
     }
-    
+
     // Clean up and exit
     m_trace->close();
     delete dut;
@@ -182,12 +181,12 @@ int main(int argc, char* argv[])
 }
 
 
-void clkGen(Valu *dut)
+void clkGen(Valu_tb *dut)
 {
     dut -> clk_i ^= 1;
 }
 
-void rstDut(Valu *dut, vluint64_t sim_time)
+void rstDut(Valu_tb *dut, vluint64_t sim_time)
 {
     dut -> rst_ni = 1;
     if (sim_time > 1 && sim_time < END_OF_RESET_TIME)
@@ -224,9 +223,9 @@ const vluint64_t corner_cases[] = {
     0x5555555500000000 // most 32 bits odd
 };
 
-/* Generate an input transaction 
+/* Generate an input transaction
    Return a request object*/
-ReqTx *genReqTx()
+ReqTx *genReqTx(unsigned int rob_depth)
 {
     // Generate transaction
     int p = rand() % 100;
@@ -254,10 +253,10 @@ ReqTx *genReqTx()
         req->flush = 0;
         req->rs1 = corner_cases[rand() % (array_size(corner_cases)-1)];
         req->rs2 = corner_cases[rand() % (array_size(corner_cases)-1)];
-        // rob_ix assigned randomly, it does not have an actual effect on ALU 
-        req->rob_idx = rand() % (Valu_len5_config_pkg::ROB_DEPTH - 1);
+        // rob_ix assigned randomly, it does not have an actual effect on ALU
+        req->rob_idx = rand() % (rob_depth - 1);
         p = rand() % 14;
-        req->alu_ctl= Valu_expipe_pkg::alu_ctl_t(p);
+        req->alu_ctl= Valu_tb_expipe_pkg::alu_ctl_t(p);
         return req;
     }
     // Generate a valid transaction with 74% probability
@@ -265,10 +264,10 @@ ReqTx *genReqTx()
     req->flush = 0;
     req->rs1 = vl_rand64();
     req->rs2 = vl_rand64();
-    // rob_ix assigned randomly, it does not have an actual effect on ALU 
-    req->rob_idx = rand() % (Valu_len5_config_pkg::ROB_DEPTH - 1);
+    // rob_ix assigned randomly, it does not have an actual effect on ALU
+    req->rob_idx = rand() % (rob_depth - 1);
     p = rand() % 14;
-    req->alu_ctl= Valu_expipe_pkg::alu_ctl_t(p);
+    req->alu_ctl= Valu_tb_expipe_pkg::alu_ctl_t(p);
     return req;
 }
 

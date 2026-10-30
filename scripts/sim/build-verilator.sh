@@ -7,6 +7,11 @@ build_root=$2
 shift 2
 len5_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$len5_root"
+config_output=$(bash scripts/sim/config-args.sh all fusesoc)
+config_args=()
+if [[ -n $config_output ]]; then
+    mapfile -t config_args <<< "$config_output"
+fi
 mkdir -p "$build_root"
 build_root=$(cd "$build_root" && pwd)
 stamp="$build_root/.verilator.lock"
@@ -34,7 +39,7 @@ mapfile -t sources < <(
     find rtl tb -type f \( -name '*.sv' -o -name '*.svh' -o -name '*.v' \
         -o -name '*.vlt' -o -name '*.cpp' -o -name '*.hh' \) -print
 )
-sources+=(makefile scripts/sim/build-verilator.sh scripts/sim/copy-logs.sh)
+sources+=(makefile scripts/sim/build-verilator.sh scripts/sim/copy-logs.sh scripts/sim/config-args.sh)
 if [[ $target == sim-diff ]]; then
     sources+=(scripts/sim/prepare-diff.sh scripts/sim/prepare-spike.sh tb/verilator/diff/layout.py \
         tb/verilator/diff/bootstrap_spike.py)
@@ -45,7 +50,7 @@ fingerprint=$(
     {
         printf '%s\n' "$target" "$build_root" "${FUSESOC:-fusesoc}" "${VERILATOR:-verilator}" \
             "${SPIKE_SRC-}" "${SPIKE_BUILD-}" "${CC-}" "${CXX-}" "${AR-}" \
-            "${CFLAGS-}" "${CXXFLAGS-}" "${CPPFLAGS-}" "${LDFLAGS-}" "$PATH" "$@"
+            "${CFLAGS-}" "${CXXFLAGS-}" "${CPPFLAGS-}" "${LDFLAGS-}" "$PATH" "$@" "${config_args[@]}"
         "${VERILATOR:-verilator}" --version
         "${FUSESOC:-fusesoc}" --version
         sha256sum "${sources[@]}"
@@ -61,7 +66,7 @@ fi
 verbose=()
 case ${VERBOSE:-false} in true|1|yes) verbose=(--verbose);; esac
 command=("${FUSESOC:-fusesoc}" "${verbose[@]}" run --no-export --target "$target" \
-    --tool verilator --build-root "$build_root" "$@" --setup --build polito:len5:len5)
+    --tool verilator --build-root "$build_root" "$@" --setup --build polito:len5:len5 "${config_args[@]}")
 
 rm -f "$stamp"
 echo '## Building RTL with Verilator...'

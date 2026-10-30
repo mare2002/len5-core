@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Create an isolated, reproducible source snapshot for a memory backend build."""
 import argparse
-import re
 import shutil
 from pathlib import Path
 
@@ -24,14 +23,14 @@ for name in ("rtl", "tb", "scripts", "sw"):
     shutil.copytree(root / name, dest / name, ignore=shutil.ignore_patterns("__pycache__", "build", ".git"))
 for name in ("len5.core", "fusesoc.conf", "makefile"):
     shutil.copy2(root / name, dest / name)
-config = dest / "tb/packages/tb_config_pkg.sv"
-config.write_text(re.sub(r"(localparam memory_backend_t MEMORY_BACKEND = )\w+;",
-                         r"\g<1>MEM_BACKEND_" + a.backend + ";", config.read_text()))
-cpu_config = dest / "rtl/packages/len5_config_pkg.sv"
-cpu_config.write_text(re.sub(r"(LOAD_BUFFER_DRAIN_ON_FLUSH\s*=\s*)1'b[01]",
-                            r"\g<1>1'b" + ("0" if a.backend == "LEGACY" else "1"),
-                            cpu_config.read_text()))
-cpu_config.write_text(re.sub(r"(FETCH_MEM_DRAIN_ON_FLUSH\s*=\s*)1'b[01]",
-                            r"\g<1>1'b" + ("0" if a.backend == "LEGACY" else "1"),
-                            cpu_config.read_text()))
+drain = int(a.backend != "LEGACY")
+(dest / "config.mk").write_text(
+    f"MEMORY_BACKEND = {a.backend}\n"
+    f"LOAD_BUFFER_DRAIN_ON_FLUSH = {drain}\n"
+    f"FETCH_MEM_DRAIN_ON_FLUSH = {drain}\n"
+)
+makefile = dest / "makefile"
+text = makefile.read_text()
+if not any(line.strip() in ("include config.mk", "-include config.mk") for line in text.splitlines()):
+    makefile.write_text("-include config.mk\n\n" + text)
 print(dest)

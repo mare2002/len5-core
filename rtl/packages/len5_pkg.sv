@@ -16,9 +16,7 @@
 
 package len5_pkg;
   // LEN5 configuration
-  import len5_config_pkg::*;
 
-  localparam int unsigned LEN5_MULTIPLE_ISSUES_BITS = $clog2(LEN5_MULTIPLE_ISSUES);//number of bits that are used to show that
 
   // Parameters
   localparam int unsigned WWIDTH = 32'd32;
@@ -26,14 +24,14 @@ package len5_pkg;
   localparam int unsigned BWIDTH = 32'd8;
   localparam int unsigned HWWIDTH = WWIDTH >> 1;
   localparam int unsigned DWWIDTH = WWIDTH << 1;
-  localparam int unsigned LWIDTH = WWIDTH << LEN5_MULTIPLE_ISSUES_BITS;
+
 
   // Global constants
   localparam int unsigned ILEN = 32'd32;  // instruction width
   localparam int unsigned ALEN = 32'd64;  // address width
   localparam int unsigned XLEN = 32'd64;  // integer data width
-  localparam int unsigned FLEN = (LEN5_D_EN) ? 32'd64 : 32'd32;  // floating-point data width
-  localparam int unsigned ILEN_BYTE = (ILEN>>3);
+
+  localparam int unsigned ILEN_BYTE = (ILEN >> 3);
   localparam int unsigned ILEN_BIT_SUFF = $clog2(ILEN_BYTE);
 
   /* Instruction fileds width */
@@ -187,8 +185,5 @@ package len5_pkg;
   localparam int unsigned FREG_NUM = 32'd32;  // number of floating-point registers
   localparam int unsigned FREG_IDX_LEN = $clog2(FREG_NUM);  // FP RF address width
 
-  localparam int unsigned LDBUFF_TAG_W = $clog2(LDBUFF_DEPTH);  // load buffer address width
-  localparam int unsigned STBUFF_TAG_W = $clog2(STBUFF_DEPTH);  // store buffer address width
-  localparam int unsigned BUFF_IDX_LEN = (LDBUFF_TAG_W > STBUFF_TAG_W) ? (LDBUFF_TAG_W) : (STBUFF_TAG_W);
 
 endpackage

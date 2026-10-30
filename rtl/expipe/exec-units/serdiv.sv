@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2018 ETH Zurich and University of Bologna.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 0.51 (the "License"); you may not use this file except in
@@ -18,30 +19,32 @@
 module serdiv
   import len5_pkg::*;
 #(
-  parameter int WIDTH = 64,  // width of the input operands, need to be this typpe for correct shift_a assignment
-  parameter logic [$clog2(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int WIDTH = 64,  // width of the input operands, need to be this typpe for correct shift_a assignment
+    parameter logic [$clog2(
 WIDTH
 ):0] WIDTH_S = WIDTH[$clog2(
-      WIDTH
-  ):0],  // width of the input operands, need to be this typpe for correct shift_a assignment
-  parameter bit STABLE_HANDSHAKE = 1             // MODIFIED Guarantee a stable in_rdy_o during the input handshake. Keep it at 0 in CVA6
+        WIDTH
+    ):0],  // width of the input operands, need to be this typpe for correct shift_a assignment
+    parameter bit STABLE_HANDSHAKE = 1             // MODIFIED Guarantee a stable in_rdy_o during the input handshake. Keep it at 0 in CVA6
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  // input IF
-  input expipe_pkg::rob_idx_t id_i,
-  input logic [WIDTH-1:0] op_a_i,
-  input logic [WIDTH-1:0] op_b_i,
-  input logic [1:0] opcode_i,  // 0: udiv, 2: urem, 1: div, 3: rem
-  // handshake
-  input  logic in_vld_i, // there is a cycle delay from in_rdy_o->in_vld_i, see issue_read_operands.sv stage
-  output logic in_rdy_o,
-  input logic flush_i,
-  // output IF
-  output logic out_vld_o,
-  input logic out_rdy_i,
-  output expipe_pkg::rob_idx_t id_o,
-  output logic [WIDTH-1:0] res_o
+    input logic clk_i,
+    input logic rst_ni,
+    // input IF
+    input rob_idx_t id_i,
+    input logic [WIDTH-1:0] op_a_i,
+    input logic [WIDTH-1:0] op_b_i,
+    input logic [1:0] opcode_i,  // 0: udiv, 2: urem, 1: div, 3: rem
+    // handshake
+    input  logic in_vld_i, // there is a cycle delay from in_rdy_o->in_vld_i, see issue_read_operands.sv stage
+    output logic in_rdy_o,
+    input logic flush_i,
+    // output IF
+    output logic out_vld_o,
+    input logic out_rdy_i,
+    output rob_idx_t id_o,
+    output logic [WIDTH-1:0] res_o
 );
 
   /////////////////////////
@@ -62,7 +65,7 @@ WIDTH
   logic op_b_zero, op_b_zero_q, op_b_zero_d;
   logic op_b_neg_one, op_b_neg_one_q, op_b_neg_one_d;
 
-  expipe_pkg::rob_idx_t id_q, id_d;
+  rob_idx_t id_q, id_d;
 
   logic rem_sel_d, rem_sel_q;
   logic comp_inv_d, comp_inv_q;
@@ -98,21 +101,21 @@ WIDTH
   assign lzc_b_input  = (opcode_i[0] & op_b_sign) ? ~op_b_i : op_b_i;
 
   lzc #(
-    .MODE (1),     // count leading zeros
-    .WIDTH(WIDTH)
+      .MODE (1),     // count leading zeros
+      .WIDTH(WIDTH)
   ) i_lzc_a (
-    .in_i   (lzc_a_input),
-    .cnt_o  (lzc_a_result),
-    .empty_o(lzc_a_no_one)
+      .in_i   (lzc_a_input),
+      .cnt_o  (lzc_a_result),
+      .empty_o(lzc_a_no_one)
   );
 
   lzc #(
-    .MODE (1),     // count leading zeros
-    .WIDTH(WIDTH)
+      .MODE (1),     // count leading zeros
+      .WIDTH(WIDTH)
   ) i_lzc_b (
-    .in_i   (lzc_b_input),
-    .cnt_o  (lzc_b_result),
-    .empty_o(lzc_b_no_one)
+      .in_i   (lzc_b_input),
+      .cnt_o  (lzc_b_result),
+      .empty_o(lzc_b_no_one)
   );
 
   assign shift_a = (lzc_a_no_one) ? WIDTH_S : {1'b0, lzc_a_result};

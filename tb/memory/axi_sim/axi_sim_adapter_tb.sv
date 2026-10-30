@@ -1,6 +1,154 @@
+`include "tb_typedef.svh"
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 module axi_sim_adapter_tb #(
-  parameter bit NATIVE = 0
+    parameter int unsigned BOOT_VM_MODE = int'(len5_config_pkg::DEFAULT_LEN5_CFG.BOOT_VM_MODE),
+    parameter logic [31:0] BOOT_PC_HI = 32'((len5_config_pkg::DEFAULT_LEN5_CFG.BOOT_PC) >> 32),
+    parameter logic [31:0] BOOT_PC_LO = 32'(len5_config_pkg::DEFAULT_LEN5_CFG.BOOT_PC),
+    parameter logic [63:0] BOOT_PC = {BOOT_PC_HI, BOOT_PC_LO},
+    parameter int unsigned LEN5_MULTIPLE_ISSUES = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_MULTIPLE_ISSUES,
+    parameter bit LEN5_M_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_M_EN,
+    parameter bit LEN5_DIV_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_DIV_EN,
+    parameter bit LEN5_F_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_F_EN,
+    parameter bit LEN5_D_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_D_EN,
+    parameter bit LEN5_C_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_C_EN,
+    parameter bit LEN5_A_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_A_EN,
+    parameter bit LEN5_STORE_LOAD_FWD_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_STORE_LOAD_FWD_EN,
+    parameter int unsigned MAX_EU_N = len5_config_pkg::DEFAULT_LEN5_CFG.MAX_EU_N,
+    parameter bit ONLY_DOUBLEWORD_MEM_ACCESSES = len5_config_pkg::DEFAULT_LEN5_CFG.ONLY_DOUBLEWORD_MEM_ACCESSES,
+    parameter bit LEN5_CSR_HPMCOUNTERS_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_CSR_HPMCOUNTERS_EN,
+    parameter logic [31:0] MMAP_MASK_HI = 32'((len5_config_pkg::DEFAULT_LEN5_CFG.MMAP_MASK) >> 32),
+    parameter logic [31:0] MMAP_MASK_LO = 32'(len5_config_pkg::DEFAULT_LEN5_CFG.MMAP_MASK),
+    parameter logic [63:0] MMAP_MASK = {MMAP_MASK_HI, MMAP_MASK_LO},
+    parameter int unsigned BPU_HLEN = len5_config_pkg::DEFAULT_LEN5_CFG.BPU_HLEN,
+    parameter int unsigned BPU_BTB_BITS = len5_config_pkg::DEFAULT_LEN5_CFG.BPU_BTB_BITS,
+    parameter int unsigned RAS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.RAS_DEPTH,
+    parameter int unsigned FETCH_MEMIF_FIFO_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.FETCH_MEMIF_FIFO_DEPTH,
+    parameter bit FETCH_MEM_DRAIN_ON_FLUSH = len5_config_pkg::DEFAULT_LEN5_CFG.FETCH_MEM_DRAIN_ON_FLUSH,
+    parameter bit LOAD_BUFFER_DRAIN_ON_FLUSH = len5_config_pkg::DEFAULT_LEN5_CFG.LOAD_BUFFER_DRAIN_ON_FLUSH,
+    parameter bit FETCH_REQ_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.FETCH_REQ_SPILL_SKIP,
+    parameter bit FETCH_ANS_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.FETCH_ANS_SPILL_SKIP,
+    parameter int unsigned IQ_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.IQ_DEPTH,
+    parameter int unsigned LDBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_DEPTH,
+    parameter int unsigned STBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_DEPTH,
+    parameter bit LSU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_SPILL_SKIP,
+    parameter int unsigned ALU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RS_DEPTH,
+    parameter bit ALU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_SPILL_SKIP,
+    parameter bit ALU_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RR_ARBITER,
+    parameter int unsigned MULT_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_RS_DEPTH,
+    parameter bit LEN5_MULT_SERIAL = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_MULT_SERIAL,
+    parameter int unsigned MULT_PIPE_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_PIPE_DEPTH,
+    parameter bit MULT_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_RR_ARBITER,
+    parameter int unsigned DIV_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_RS_DEPTH,
+    parameter bit DIV_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_RR_ARBITER,
+    parameter int unsigned FPU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_RS_DEPTH,
+    parameter bit FPU_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_RR_ARBITER,
+    parameter int unsigned FPU_PIPE_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_PIPE_DEPTH,
+    parameter bit FPU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_SPILL_SKIP,
+    parameter int unsigned BU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.BU_RS_DEPTH,
+    parameter bit BU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.BU_SPILL_SKIP,
+    parameter int unsigned ROB_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ROB_DEPTH,
+    parameter bit COMMIT_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.COMMIT_SPILL_SKIP,
+    parameter int unsigned BPU_INIT_C2B = int'(len5_config_pkg::DEFAULT_LEN5_CFG.BPU_INIT_C2B),
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::build_config(
+        '{
+            BOOT_VM_MODE: len5_config_pkg::boot_mode_t'(BOOT_VM_MODE),
+            BOOT_PC: BOOT_PC,
+            LEN5_MULTIPLE_ISSUES: LEN5_MULTIPLE_ISSUES,
+            LEN5_M_EN: LEN5_M_EN,
+            LEN5_DIV_EN: LEN5_DIV_EN,
+            LEN5_F_EN: LEN5_F_EN,
+            LEN5_D_EN: LEN5_D_EN,
+            LEN5_C_EN: LEN5_C_EN,
+            LEN5_A_EN: LEN5_A_EN,
+            LEN5_STORE_LOAD_FWD_EN: LEN5_STORE_LOAD_FWD_EN,
+            MAX_EU_N: MAX_EU_N,
+            ONLY_DOUBLEWORD_MEM_ACCESSES: ONLY_DOUBLEWORD_MEM_ACCESSES,
+            LEN5_CSR_HPMCOUNTERS_EN: LEN5_CSR_HPMCOUNTERS_EN,
+            MMAP_MASK: MMAP_MASK,
+            BPU_HLEN: BPU_HLEN,
+            BPU_BTB_BITS: BPU_BTB_BITS,
+            RAS_DEPTH: RAS_DEPTH,
+            FETCH_MEMIF_FIFO_DEPTH: FETCH_MEMIF_FIFO_DEPTH,
+            FETCH_MEM_DRAIN_ON_FLUSH: FETCH_MEM_DRAIN_ON_FLUSH,
+            LOAD_BUFFER_DRAIN_ON_FLUSH: LOAD_BUFFER_DRAIN_ON_FLUSH,
+            FETCH_REQ_SPILL_SKIP: FETCH_REQ_SPILL_SKIP,
+            FETCH_ANS_SPILL_SKIP: FETCH_ANS_SPILL_SKIP,
+            IQ_DEPTH: IQ_DEPTH,
+            LDBUFF_DEPTH: LDBUFF_DEPTH,
+            STBUFF_DEPTH: STBUFF_DEPTH,
+            LSU_SPILL_SKIP: LSU_SPILL_SKIP,
+            ALU_RS_DEPTH: ALU_RS_DEPTH,
+            ALU_SPILL_SKIP: ALU_SPILL_SKIP,
+            ALU_RR_ARBITER: ALU_RR_ARBITER,
+            MULT_RS_DEPTH: MULT_RS_DEPTH,
+            LEN5_MULT_SERIAL: LEN5_MULT_SERIAL,
+            MULT_PIPE_DEPTH: MULT_PIPE_DEPTH,
+            MULT_RR_ARBITER: MULT_RR_ARBITER,
+            DIV_RS_DEPTH: DIV_RS_DEPTH,
+            DIV_RR_ARBITER: DIV_RR_ARBITER,
+            FPU_RS_DEPTH: FPU_RS_DEPTH,
+            FPU_RR_ARBITER: FPU_RR_ARBITER,
+            FPU_PIPE_DEPTH: FPU_PIPE_DEPTH,
+            FPU_SPILL_SKIP: FPU_SPILL_SKIP,
+            BU_RS_DEPTH: BU_RS_DEPTH,
+            BU_SPILL_SKIP: BU_SPILL_SKIP,
+            ROB_DEPTH: ROB_DEPTH,
+            COMMIT_SPILL_SKIP: COMMIT_SPILL_SKIP,
+            BPU_INIT_C2B: 2'(BPU_INIT_C2B)
+        }
+    ),
+    parameter int unsigned MEMORY_BACKEND = int'(tb_config_pkg::DefaultTbCfg.MEMORY_BACKEND),
+    parameter int unsigned AXI_CLOCK_HALF_PERIOD_PS = tb_config_pkg::DefaultTbCfg.AXI_CLOCK_HALF_PERIOD_PS,
+    parameter logic [31:0] IMEM_BASE_ADDR_HI = 32'((tb_config_pkg::DefaultTbCfg.IMEM_BASE_ADDR) >> 32),
+    parameter logic [31:0] IMEM_BASE_ADDR_LO = 32'(tb_config_pkg::DefaultTbCfg.IMEM_BASE_ADDR),
+    parameter logic [63:0] IMEM_BASE_ADDR = {IMEM_BASE_ADDR_HI, IMEM_BASE_ADDR_LO},
+    parameter int unsigned IMEM_SIZE_BYTES = tb_config_pkg::DefaultTbCfg.IMEM_SIZE_BYTES,
+    parameter int unsigned IMEM_LATENCY = tb_config_pkg::DefaultTbCfg.IMEM_LATENCY,
+    parameter logic [31:0] DMEM_BASE_ADDR_HI = 32'((tb_config_pkg::DefaultTbCfg.DMEM_BASE_ADDR) >> 32),
+    parameter logic [31:0] DMEM_BASE_ADDR_LO = 32'(tb_config_pkg::DefaultTbCfg.DMEM_BASE_ADDR),
+    parameter logic [63:0] DMEM_BASE_ADDR = {DMEM_BASE_ADDR_HI, DMEM_BASE_ADDR_LO},
+    parameter int unsigned DMEM_SIZE_BYTES = tb_config_pkg::DefaultTbCfg.DMEM_SIZE_BYTES,
+    parameter int unsigned DMEM_LATENCY = tb_config_pkg::DefaultTbCfg.DMEM_LATENCY,
+    parameter logic [31:0] SERIAL_ADDR_HI = 32'((tb_config_pkg::DefaultTbCfg.SERIAL_ADDR) >> 32),
+    parameter logic [31:0] SERIAL_ADDR_LO = 32'(tb_config_pkg::DefaultTbCfg.SERIAL_ADDR),
+    parameter logic [63:0] SERIAL_ADDR = {SERIAL_ADDR_HI, SERIAL_ADDR_LO},
+    parameter logic [31:0] EXIT_ADDR_HI = 32'((tb_config_pkg::DefaultTbCfg.EXIT_ADDR) >> 32),
+    parameter logic [31:0] EXIT_ADDR_LO = 32'(tb_config_pkg::DefaultTbCfg.EXIT_ADDR),
+    parameter logic [63:0] EXIT_ADDR = {EXIT_ADDR_HI, EXIT_ADDR_LO},
+    parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
+        '{
+            MEMORY_BACKEND: tb_config_pkg::memory_backend_t'(MEMORY_BACKEND),
+            AXI_CLOCK_HALF_PERIOD_PS: AXI_CLOCK_HALF_PERIOD_PS,
+            IMEM_BASE_ADDR: IMEM_BASE_ADDR,
+            IMEM_SIZE_BYTES: IMEM_SIZE_BYTES,
+            IMEM_LATENCY: IMEM_LATENCY,
+            DMEM_BASE_ADDR: DMEM_BASE_ADDR,
+            DMEM_SIZE_BYTES: DMEM_SIZE_BYTES,
+            DMEM_LATENCY: DMEM_LATENCY,
+            SERIAL_ADDR: SERIAL_ADDR,
+            EXIT_ADDR: EXIT_ADDR
+        },
+        Len5Cfg.IMEM_DATA_WIDTH
+    ),
+    localparam type dmem_axi_aw_chan_t = `LEN5_DMEM_AXI_AW_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_w_chan_t = `LEN5_DMEM_AXI_W_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_ar_chan_t = `LEN5_DMEM_AXI_AR_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_b_chan_t = `LEN5_DMEM_AXI_B_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_r_chan_t = `LEN5_DMEM_AXI_R_CHAN_T(Len5Cfg),
+    localparam type imem_axi_aw_chan_t = `LEN5_IMEM_AXI_AW_CHAN_T(Len5Cfg),
+    localparam type imem_axi_w_chan_t = `LEN5_IMEM_AXI_W_CHAN_T(Len5Cfg),
+    localparam type imem_axi_ar_chan_t = `LEN5_IMEM_AXI_AR_CHAN_T(Len5Cfg),
+    localparam type imem_axi_b_chan_t = `LEN5_IMEM_AXI_B_CHAN_T(Len5Cfg),
+    localparam type imem_axi_r_chan_t = `LEN5_IMEM_AXI_R_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_req_t =
+    `AXI_DECL_REQ_T(dmem_axi_aw_chan_t, dmem_axi_w_chan_t, dmem_axi_ar_chan_t),
+    localparam type dmem_axi_resp_t = `AXI_DECL_RESP_T(dmem_axi_b_chan_t, dmem_axi_r_chan_t),
+    localparam type id_t = `LEN5_AXI_ID_T(Len5Cfg),
+    localparam type imem_axi_req_t =
+    `AXI_DECL_REQ_T(imem_axi_aw_chan_t, imem_axi_w_chan_t, imem_axi_ar_chan_t),
+    localparam type imem_axi_resp_t = `AXI_DECL_RESP_T(imem_axi_b_chan_t, imem_axi_r_chan_t),
+    localparam type memory_response_t = `LEN5_MEMORY_RESPONSE_T(Len5Cfg),
+    parameter bit NATIVE = 0
 );
   timeunit 1ps; timeprecision 1ps;
   /* verilator lint_off BLKSEQ */
@@ -9,10 +157,10 @@ module axi_sim_adapter_tb #(
   import tb_config_pkg::*;
   import memory_backend_pkg::*;
   import axi_memory_pkg::*;
-  localparam int N = LEN5_MULTIPLE_ISSUES;
+  localparam int N = Len5Cfg.LEN5_MULTIPLE_ISSUES;
   localparam int Size = 256;
-  localparam int FetchDepth = FETCH_MEMIF_FIFO_DEPTH;
-  localparam logic [63:0] IBase = IMEM_BASE_ADDR, DBase = DMEM_BASE_ADDR;
+  localparam int FetchDepth = Len5Cfg.FETCH_MEMIF_FIFO_DEPTH;
+  localparam logic [63:0] IBase = TbCfg.IMEM_BASE_ADDR, DBase = TbCfg.DMEM_BASE_ADDR;
   typedef struct packed {
     logic [N-1:0][31:0] data;
     logic [N-1:0] except;
@@ -40,7 +188,7 @@ module axi_sim_adapter_tb #(
   dmem_axi_req_t    [1:0] dmem_req;
   dmem_axi_resp_t   [1:0] dmem_rsp;
   logic                   mmio;
-  logic [2:0][CountWidth-1:0] outstanding, occupancy;
+  logic [2:0][Len5Cfg.AXI_COUNT_WIDTH-1:0] outstanding, occupancy;
   logic imem_initialized, dmem_initialized;
   typedef struct packed {
     logic [63:0] addr;
@@ -58,9 +206,9 @@ module axi_sim_adapter_tb #(
   bit fetch_live[$];
   logic [63:0] expected_pcs[$];
   int stale_returns = 0;
-  data_expected_t expected_loads [TagCount];
-  except_code_t   expected_stores[TagCount];
-  bit [TagCount-1:0] load_pending = '0, store_pending = '0;
+  data_expected_t expected_loads[Len5Cfg.TAG_COUNT];
+  except_code_t expected_stores[Len5Cfg.TAG_COUNT];
+  bit [Len5Cfg.TAG_COUNT-1:0] load_pending = '0, store_pending = '0;
   byte unsigned reference_mem[Size];
   int accepted[3], completed[3], faults[3], native_count[5];
   int expected_native_writes = 0;
@@ -72,89 +220,114 @@ module axi_sim_adapter_tb #(
   initial clk = 0;
   fetch_pkg::prediction_t [N-1:0] fetch_prediction, returned_prediction;
   instr_t [N-1:0] returned_instruction;
-  logic [63:0] instr_address;
+  logic   [ 63:0] instr_address;
   for (genvar lane = 0; lane < N; lane++) begin : gen_fetch_lanes
-    assign fetch_prediction[lane] = '{pc: addr[0] + 64'(4 * lane), hit: 1'b0, target: '0, taken: 1'b0};
+    assign fetch_prediction[lane] = '{
+            pc: addr[0] + 64'(4 * lane),
+            hit: 1'b0,
+            target: '0,
+            taken: 1'b0
+        };
     assign buffered_instr.data[lane] = returned_instruction[lane].raw;
   end
   assign instr_result = '{data: rsp.instr_data, except: rsp.instr_except, code: rsp.instr_code};
   fetch_mem_if #(
-    .MAX_MEM_OUTSTANDING_REQUESTS(FetchDepth),
-    .DRAIN_ON_FLUSH(1'b1)
+      .Len5Cfg                     (Len5Cfg),
+      .MAX_MEM_OUTSTANDING_REQUESTS(FetchDepth),
+      .DRAIN_ON_FLUSH              (1'b1)
   ) u_frontend (
-    .clk_i(clk), .rst_ni(rst_n), .flush_i(instr_flush),
-    .fetch_valid_i(req[0]), .fetch_ready_o(instr_credit), .fetch_pred_i(fetch_prediction),
-    .valid_instr_i('1), .valid_instr_o(),
-    .issue_valid_o(buffered_instr_valid), .issue_ready_i(ready[0]),
-    .issue_instr_o(returned_instruction), .issue_pred_o(returned_prediction),
-    .issue_except_raised_o(buffered_instr.except), .issue_except_code_o(buffered_instr.code),
-    .instr_valid_i(rsp.instr_valid && allow_instruction), .instr_ready_i(rsp.instr_gnt),
-    .instr_ready_o(instr_result_ready), .instr_valid_o(instr_request), .instr_we_o(),
-    .instr_rdata_i(rsp.instr_data), .instr_addr_o(instr_address),
-    .instr_except_raised_i(rsp.instr_except), .instr_except_code_i(rsp.instr_code)
+      .clk_i                (clk),
+      .rst_ni               (rst_n),
+      .flush_i              (instr_flush),
+      .fetch_valid_i        (req[0]),
+      .fetch_ready_o        (instr_credit),
+      .fetch_pred_i         (fetch_prediction),
+      .valid_instr_i        ('1),
+      .valid_instr_o        (),
+      .issue_valid_o        (buffered_instr_valid),
+      .issue_ready_i        (ready[0]),
+      .issue_instr_o        (returned_instruction),
+      .issue_pred_o         (returned_prediction),
+      .issue_except_raised_o(buffered_instr.except),
+      .issue_except_code_o  (buffered_instr.code),
+      .instr_valid_i        (rsp.instr_valid && allow_instruction),
+      .instr_ready_i        (rsp.instr_gnt),
+      .instr_ready_o        (instr_result_ready),
+      .instr_valid_o        (instr_request),
+      .instr_we_o           (),
+      .instr_rdata_i        (rsp.instr_data),
+      .instr_addr_o         (instr_address),
+      .instr_except_raised_i(rsp.instr_except),
+      .instr_except_code_i  (rsp.instr_code)
   );
   axi_sim_adapter #(
-    .IMEM_SIZE_BYTES(Size),
-    .DMEM_SIZE_BYTES(Size)
+      .Len5Cfg        (Len5Cfg),
+      .TbCfg          (TbCfg),
+      .IMEM_SIZE_BYTES(Size),
+      .DMEM_SIZE_BYTES(Size)
   ) dut (
-    .clk_i        (clk),
-    .rst_ni       (rst_n),
-    .data_flush_i (data_flush),
-    .initialized_i(imem_initialized && dmem_initialized),
-    .instr_req_i  (instr_request),
-    .instr_ready_i(instr_result_ready && allow_instruction),
-    .instr_addr_i (instr_address),
-    .load_req_i   (req[1]),
-    .load_ready_i (ready[1]),
-    .load_addr_i  (addr[1]),
-    .load_be_i    (be[1]),
-    .load_tag_i   (load_tag),
-    .store_req_i  (req[2]),
-    .store_ready_i(ready[2]),
-    .store_we_i   (store_we),
-    .store_addr_i (addr[2]),
-    .store_data_i (wdata[2]),
-    .store_be_i   (be[2]),
-    .store_tag_i  (store_tag),
-    .response_o   (rsp),
-    .imem_req_o   (imem_req),
-    .imem_rsp_i   (imem_rsp),
-    .dmem_req_o   (dmem_req),
-    .dmem_rsp_i   (dmem_rsp),
-    .mmio_write_o (mmio),
-    .outstanding_o(outstanding),
-    .occupancy_o  (occupancy)
+      .clk_i        (clk),
+      .rst_ni       (rst_n),
+      .data_flush_i (data_flush),
+      .initialized_i(imem_initialized && dmem_initialized),
+      .instr_req_i  (instr_request),
+      .instr_ready_i(instr_result_ready && allow_instruction),
+      .instr_addr_i (instr_address),
+      .load_req_i   (req[1]),
+      .load_ready_i (ready[1]),
+      .load_addr_i  (addr[1]),
+      .load_be_i    (be[1]),
+      .load_tag_i   (load_tag),
+      .store_req_i  (req[2]),
+      .store_ready_i(ready[2]),
+      .store_we_i   (store_we),
+      .store_addr_i (addr[2]),
+      .store_data_i (wdata[2]),
+      .store_be_i   (be[2]),
+      .store_tag_i  (store_tag),
+      .response_o   (rsp),
+      .imem_req_o   (imem_req),
+      .imem_rsp_i   (imem_rsp),
+      .dmem_req_o   (dmem_req),
+      .dmem_rsp_i   (dmem_rsp),
+      .mmio_write_o (mmio),
+      .outstanding_o(outstanding),
+      .occupancy_o  (occupancy)
   );
   if (NATIVE) begin : gen_native
     axi_sim_storage #(
-      .BASE_ADDR       (IBase),
-      .SIZE_BYTES      (Size),
-      .OTHER_BASE_ADDR (DBase),
-      .OTHER_SIZE_BYTES(Size),
-      .DATA_WIDTH      (InstrDataWidth),
-      .NUM_PORTS       (1),
-      .AXI_REQ_T       (imem_axi_req_t),
-      .AXI_RESP_T      (imem_axi_resp_t)
+        .Len5Cfg         (Len5Cfg),
+        .TbCfg           (TbCfg),
+        .BASE_ADDR       (IBase),
+        .SIZE_BYTES      (Size),
+        .OTHER_BASE_ADDR (DBase),
+        .OTHER_SIZE_BYTES(Size),
+        .DATA_WIDTH      (Len5Cfg.IMEM_DATA_WIDTH),
+        .NUM_PORTS       (1),
+        .AXI_REQ_T       (imem_axi_req_t),
+        .AXI_RESP_T      (imem_axi_resp_t)
     ) imem (
-      .clk_i        (clk),
-      .rst_ni       (rst_n),
-      .req_i        (imem_req),
-      .rsp_o        (imem_rsp),
-      .initialized_o(imem_initialized)
+        .clk_i        (clk),
+        .rst_ni       (rst_n),
+        .req_i        (imem_req),
+        .rsp_o        (imem_rsp),
+        .initialized_o(imem_initialized)
     );
     axi_sim_storage #(
-      .BASE_ADDR       (DBase),
-      .SIZE_BYTES      (Size),
-      .OTHER_BASE_ADDR (IBase),
-      .OTHER_SIZE_BYTES(Size),
-      .DATA_WIDTH      (64),
-      .NUM_PORTS       (2)
+        .Len5Cfg         (Len5Cfg),
+        .TbCfg           (TbCfg),
+        .BASE_ADDR       (DBase),
+        .SIZE_BYTES      (Size),
+        .OTHER_BASE_ADDR (IBase),
+        .OTHER_SIZE_BYTES(Size),
+        .DATA_WIDTH      (64),
+        .NUM_PORTS       (2)
     ) dmem (
-      .clk_i        (clk),
-      .rst_ni       (rst_n),
-      .req_i        (dmem_req),
-      .rsp_o        (dmem_rsp),
-      .initialized_o(dmem_initialized)
+        .clk_i        (clk),
+        .rst_ni       (rst_n),
+        .req_i        (dmem_req),
+        .rsp_o        (dmem_rsp),
+        .initialized_o(dmem_initialized)
     );
     initial begin
       #1;
@@ -166,17 +339,19 @@ module axi_sim_adapter_tb #(
     assign imem_initialized = 1'b1;
     assign dmem_initialized = 1'b1;
     axi_variable_slave #(
-      .I_BASE(IBase),
-      .D_BASE(DBase),
-      .SIZE  (Size)
+        .Len5Cfg(Len5Cfg),
+        .TbCfg  (TbCfg),
+        .I_BASE (IBase),
+        .D_BASE (DBase),
+        .SIZE   (Size)
     ) slave (
-      .clk_i     (clk),
-      .rst_ni    (rst_n),
-      .block_i   (block_channels),
-      .imem_req_i(imem_req),
-      .imem_rsp_o(imem_rsp),
-      .dmem_req_i(dmem_req),
-      .dmem_rsp_o(dmem_rsp)
+        .clk_i     (clk),
+        .rst_ni    (rst_n),
+        .block_i   (block_channels),
+        .imem_req_i(imem_req),
+        .imem_rsp_o(imem_rsp),
+        .dmem_req_i(dmem_req),
+        .dmem_rsp_o(dmem_rsp)
     );
   end
 
@@ -200,7 +375,8 @@ module axi_sim_adapter_tb #(
     base = port_id == 0 ? IBase : DBase;
     if (bytes != 0 && a % 64'(bytes) != 0)
       return port_id==0?E_I_ADDR_MISALIGNED:port_id==1?E_LD_ADDR_MISALIGNED:E_ST_ADDR_MISALIGNED;
-    if (port_id == 2 && bytes != 0 && (a == SERIAL_ADDR || a == EXIT_ADDR)) return E_UNKNOWN;
+    if (port_id == 2 && bytes != 0 && (a == TbCfg.SERIAL_ADDR || a == TbCfg.EXIT_ADDR))
+      return E_UNKNOWN;
     if (bytes == 0 || a < base || a - base > 64'(Size - bytes))
       return port_id == 0 ? E_I_ACCESS_FAULT : port_id == 1 ? E_LD_ACCESS_FAULT : E_ST_ACCESS_FAULT;
     return E_UNKNOWN;
@@ -209,9 +385,9 @@ module axi_sim_adapter_tb #(
     instruction_t result;
     logic [63:0] base, word_base;
     int index;
-    result    = '0;
-    base      = N == 1 ? pc : (pc / 64'(4 * N)) * 64'(4 * N);
-    word_base = base / 64'(InstrDataWidth / 8) * 64'(InstrDataWidth / 8);
+    result = '0;
+    base = N == 1 ? pc : (pc / 64'(4 * N)) * 64'(4 * N);
+    word_base = base / 64'(Len5Cfg.IMEM_DATA_WIDTH / 8) * 64'(Len5Cfg.IMEM_DATA_WIDTH / 8);
     for (int lane = 0; lane < N; lane++) begin
       result.code[lane] = pc % 4 != 0 ? E_I_ADDR_MISALIGNED : fault(base + 64'(4 * lane), 4, 0);
       if (result.code[lane] == E_UNKNOWN && word_base == IBase + 64)
@@ -234,7 +410,7 @@ module axi_sim_adapter_tb #(
     transaction_t          transaction;
     logic           [63:0] bundle_base;
     bit             [ 2:0] accepted_now;
-    #(AXI_CLOCK_HALF_PERIOD_PS);
+    #(TbCfg.AXI_CLOCK_HALF_PERIOD_PS);
     if (history_valid && rst_n) begin
       if (previous_imem_req.ar_valid && !previous_imem_rsp.ar_ready)
         assert (imem_req.ar_valid && imem_req.ar === previous_imem_req.ar)
@@ -296,9 +472,14 @@ module axi_sim_adapter_tb #(
         if (|expected_i.except) faults[0]++;
         bundle_base = N == 1 ? addr[0] : (addr[0] / 64'(4 * N)) * 64'(4 * N);
         if (addr[0] % 4 == 0 && fault(bundle_base, 4, 0) == E_UNKNOWN)
-          expected_iar.push_back(
-              '{addr: (bundle_base / 64'(InstrDataWidth / 8)) * 64'(InstrDataWidth / 8), data: '0,
-              mask: '0, tag: '0});
+          expected_iar.push_back('{
+                                 addr:
+                                 (
+                                 bundle_base / 64'(Len5Cfg.IMEM_DATA_WIDTH / 8)
+                                 ) * 64'(
+                                 Len5Cfg.IMEM_DATA_WIDTH / 8
+                                 ),
+                                 data: '0, mask: '0, tag: '0});
       end
       if (accepted_now[1]) begin
         assert (!load_pending[load_tag])
@@ -327,7 +508,7 @@ module axi_sim_adapter_tb #(
         if (code != E_UNKNOWN) faults[2]++;
         if (store_we && fault(
                 addr[2], count, 2
-            ) == E_UNKNOWN && addr[2] != SERIAL_ADDR && addr[2] != EXIT_ADDR) begin
+            ) == E_UNKNOWN && addr[2] != TbCfg.SERIAL_ADDR && addr[2] != TbCfg.EXIT_ADDR) begin
           expected_native_writes++;
           transaction = '{addr: addr[2], data: wdata[2], mask: be[2], tag: store_tag};
           expected_aw.push_back(transaction);
@@ -337,7 +518,7 @@ module axi_sim_adapter_tb #(
       end
       assert (mmio == (accepted_now[2] && store_we && fault(
           addr[2], bytes_for(be[2]), 2
-      ) == E_UNKNOWN && (addr[2] == SERIAL_ADDR || addr[2] == EXIT_ADDR)));
+      ) == E_UNKNOWN && (addr[2] == TbCfg.SERIAL_ADDR || addr[2] == TbCfg.EXIT_ADDR)));
       if (mmio) mmios++;
       if (buffered_instr_valid && ready[0] && !instr_flush) begin
         assert (expected_buffered.size() != 0);
@@ -385,7 +566,7 @@ module axi_sim_adapter_tb #(
       transaction = expected_iar.pop_front();
       assert(imem_req.ar.id==0 && imem_req.ar.addr==transaction.addr && imem_req.ar.len==0 &&
              imem_req.ar.size==3'($clog2(
-          InstrDataWidth / 8
+          Len5Cfg.IMEM_DATA_WIDTH / 8
       )));
     end
     if (dmem_req[0].ar_valid && dmem_rsp[0].ar_ready) begin
@@ -416,7 +597,7 @@ module axi_sim_adapter_tb #(
     if (dmem_rsp[1].b_valid && dmem_req[1].b_ready) native_count[4]++;
     if (int'(outstanding[0]) > max_fetch) max_fetch = int'(outstanding[0]);
     clk = 1;
-    #(AXI_CLOCK_HALF_PERIOD_PS);
+    #(TbCfg.AXI_CLOCK_HALF_PERIOD_PS);
     clk = 0;
     cycle_no++;
   endtask
@@ -512,11 +693,11 @@ module axi_sim_adapter_tb #(
     be[2]   = 255;
     request_once(2);
     drain();
-    addr[2] = SERIAL_ADDR;
+    addr[2] = TbCfg.SERIAL_ADDR;
     be[2]   = 1;
     request_once(2);
     drain();
-    addr[2] = EXIT_ADDR;
+    addr[2] = TbCfg.EXIT_ADDR;
     request_once(2);
     drain();
     store_we = 0;
@@ -539,10 +720,10 @@ module axi_sim_adapter_tb #(
     repeat (40) tick();
     if (NATIVE) drain();
     rst_n = 0;
-    req = '0;
+    req   = '0;
     repeat (3) tick();
     assert (outstanding == '0 && !instr_request && !buffered_instr_valid);
-    rst_n             = 1;
+    rst_n = 1;
     resets++;
     ready             = '1;
     allow_instruction = 1;
@@ -615,13 +796,13 @@ module axi_sim_adapter_tb #(
     end
 
     for (int step = 0; step < cycles; step++) begin
-      instr_flush       = random32() % 23 == 0;
-      data_flush        = random32() % 41 == 0;
-      ready             = 3'(random32());
+      instr_flush = random32() % 23 == 0;
+      data_flush = random32() % 41 == 0;
+      ready = 3'(random32());
       allow_instruction = random32() % 5 != 0;
-      req               = 3'(random32());
-      load_tag          = id_t'(random32() % TagCount);
-      store_tag         = id_t'(random32() % TagCount);
+      req = 3'(random32());
+      load_tag = id_t'(random32() % Len5Cfg.TAG_COUNT);
+      store_tag = id_t'(random32() % Len5Cfg.TAG_COUNT);
       if (load_pending[load_tag]) req[1] = 0;
       if (store_pending[store_tag]) req[2] = 0;
       addr[0] = IBase + 64'(int'(random32() % 32) * 4);
@@ -635,7 +816,7 @@ module axi_sim_adapter_tb #(
       addr[2] &= ~64'(bytes_for(be[2]) - 1);
       wdata[2] = {random32(), random32()};
       if (random32() % 101 == 0) begin
-        addr[2] = SERIAL_ADDR;
+        addr[2] = TbCfg.SERIAL_ADDR;
         be[2]   = 1;
       end
       if (random32() % 103 == 0) begin
@@ -645,13 +826,13 @@ module axi_sim_adapter_tb #(
       if (step == cycles / 2) begin
         // Finish stores before reset so the byte oracle keeps committed writes.
         drain();
-        ready[0] = 0;
+        ready[0]          = 0;
         block_channels[1] = 1;
-        addr[0] = IBase;
+        addr[0]           = IBase;
         request_once(0);
         if (NATIVE) drain();
         rst_n = 0;
-        req = '0;
+        req   = '0;
         repeat (3) tick();
         rst_n = 1;
         resets++;

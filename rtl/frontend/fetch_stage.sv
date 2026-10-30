@@ -13,50 +13,51 @@
 // Date: 07/10/2019
 
 module fetch_stage #(
-  parameter int unsigned HLEN = 4,
-  parameter int unsigned BTB_BITS = 4,
-  parameter longint unsigned BOOT_PC = 64'h0,
-  parameter int unsigned MEMIF_FIFO_DEPTH = 2,  // maximum memory transactions and completion reservations
-  parameter bit MEM_DRAIN_ON_FLUSH = len5_config_pkg::FETCH_MEM_DRAIN_ON_FLUSH
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter int unsigned HLEN = Len5Cfg.BPU_HLEN,
+    parameter int unsigned BTB_BITS = Len5Cfg.BPU_BTB_BITS,
+    parameter longint unsigned BOOT_PC = Len5Cfg.BOOT_PC,
+    parameter int unsigned MEMIF_FIFO_DEPTH = Len5Cfg.FETCH_MEMIF_FIFO_DEPTH,  // maximum memory transactions and completion reservations
+    parameter bit MEM_DRAIN_ON_FLUSH = Len5Cfg.FETCH_MEM_DRAIN_ON_FLUSH
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
-  input logic flush_bpu_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
+    input logic flush_bpu_i,
 
-  // From/to memory
-  input  logic                                         instr_valid_i,
-  input  logic                                         instr_ready_i,
-  output logic                                         instr_ready_o,
-  output logic                                         instr_valid_o,
-  output logic                                         instr_we_o,
-  input  logic [LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instr_rdata_i,
-  output logic                    [len5_pkg::ALEN-1:0] instr_addr_o,
-  output logic                                         early_jump_mem_flush_o,
-  input  logic [LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_i,
-  input  fetch_pkg::except_code_t [LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_i,
+    // From/to memory
+    input logic instr_valid_i,
+    input logic instr_ready_i,
+    output logic instr_ready_o,
+    output logic instr_valid_o,
+    output logic instr_we_o,
+    input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] instr_rdata_i,
+    output logic [len5_pkg::ALEN-1:0] instr_addr_o,
+    output logic early_jump_mem_flush_o,
+    input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_i,
+    input fetch_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_i,
 
-  // From/to instruction decode
-  input  logic                    issue_ready_i,
-  output logic                    issue_valid_o,
-  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_valid_instr_o,
-  output len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_instr_o,
-  output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
-  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_except_raised_o,
-  output fetch_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_except_code_o,
+    // From/to instruction decode
+    input  logic                                                       issue_ready_i,
+    output logic                                                       issue_valid_o,
+    output logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_valid_instr_o,
+    output len5_pkg::instr_t        [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_instr_o,
+    output fetch_pkg::prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
+    output logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_except_raised_o,
+    output fetch_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_except_code_o,
 
-  // From branch unit
-  output logic                      bu_pcgen_ready_o,
-  input  logic                      bu_bpu_valid_i,
-  input  logic                      bu_pcgen_valid_i,
-  input  fetch_pkg::resolution_t    bu_res_i,
-  input  logic                      bu_call_confirm_i,
-  input  logic                      bu_ret_confirm_i,
-  input  logic [len5_pkg::ALEN-1:0] bu_link_addr_i,
+    // From branch unit
+    output logic                                        bu_pcgen_ready_o,
+    input  logic                                        bu_bpu_valid_i,
+    input  logic                                        bu_pcgen_valid_i,
+    input  fetch_pkg::resolution_t                      bu_res_i,
+    input  logic                                        bu_call_confirm_i,
+    input  logic                                        bu_ret_confirm_i,
+    input  logic                   [len5_pkg::ALEN-1:0] bu_link_addr_i,
 
-  // From commit unit
-  input logic                      comm_except_raised_i,
-  input logic [len5_pkg::ALEN-1:0] comm_except_pc_i
+    // From commit unit
+    input logic                      comm_except_raised_i,
+    input logic [len5_pkg::ALEN-1:0] comm_except_pc_i
 );
 
   import len5_pkg::ALEN;
@@ -68,61 +69,61 @@ module fetch_stage #(
   // ----------------
 
   // Current program counter
-  logic        [ALEN-1:0] curr_pc;
-  prediction_t [LEN5_MULTIPLE_ISSUES-1:0] curr_pred;
+  logic         [                        ALEN-1:0] curr_pc;
+  prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] curr_pred;
 
   // Memory Interface <--> PC generator
-  logic                   memif_pcgen_ready;
-  logic                   pcgen_memif_valid;
+  logic                                            memif_pcgen_ready;
+  logic                                            pcgen_memif_valid;
 
   // Memory Interface <--> Issue stage
-  logic                   issue_valid;
+  logic                                            issue_valid;
 
   // Jump early decoder
-  instr_t [LEN5_MULTIPLE_ISSUES-1:0] fetched_instr;
-  logic                   early_jump_valid;
-  logic        [ALEN-1:0] early_jump_offs;
-  logic        [ALEN-1:0] early_jump_target;
-  logic        [ALEN-1:0] early_jump_base;
-  prediction_t [LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred;
+  instr_t       [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetched_instr;
+  logic                                            early_jump_valid;
+  logic         [                        ALEN-1:0] early_jump_offs;
+  logic         [                        ALEN-1:0] early_jump_target;
+  logic         [                        ALEN-1:0] early_jump_base;
+  prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred;
 
   //gen valid instr <--> Memory Interface
-  logic [LEN5_MULTIPLE_ISSUES-1:0] gen_valid_mem;
+  logic         [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] gen_valid_mem;
 
   //gen valid instr <--> PC generator
-  prediction_t taken_pred;
+  prediction_t                                     taken_pred;
 
   // Memory Interface <--> early jump unit
-  logic [LEN5_MULTIPLE_ISSUES-1:0] mem_valid_early;
+  logic         [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mem_valid_early;
 
   //Early jump unit <--> mixer stage
-  logic [LEN5_MULTIPLE_ISSUES-1:0] early_valid_mixer;
-  prediction_t [LEN5_MULTIPLE_ISSUES-1:0] early_pred_mixer;
+  logic         [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] early_valid_mixer;
+  prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] early_pred_mixer;
 
   //Memory Interface <--> mixer
-  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_except_raised_mixer;
-  except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] fetch_except_code_mixer;
+  logic         [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_except_raised_mixer;
+  except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_except_code_mixer;
 
   //Instr mixer <--> spill cell
-  prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_pred_spill;
-  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_except_raised_spill;
-  except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_except_code_spill;
-  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_valid_instr_spill;
-  instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mixer_instr_spill;
+  prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mixer_pred_spill;
+  logic         [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mixer_except_raised_spill;
+  except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mixer_except_code_spill;
+  logic         [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mixer_valid_instr_spill;
+  instr_t       [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mixer_instr_spill;
 
   //Spill cell <--> Early, mem
-  logic spill_ready;
+  logic                                            spill_ready;
 
   //Spill cell interface
   typedef struct packed {
-    prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] pred;
-    logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr;
-    instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr;
-    logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] except_raised;
-    except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] except_code;
-  }fetch_stage_output_p;
+    prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred;
+    logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr;
+    instr_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr;
+    logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_raised;
+    except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_code;
+  } fetch_stage_output_t;
 
-  fetch_stage_output_p mixer_spill, spill_issue;
+  fetch_stage_output_t mixer_spill, spill_issue;
 
   // -------
   // MODULES
@@ -140,147 +141,156 @@ module fetch_stage #(
   // NOTE: the prediction is provided in the same cycle as the PC, so no
   //       synchronization is required.
   bpu #(
-    .HLEN    (HLEN),
-    .BTB_BITS(BTB_BITS),
-    .INIT_C2B(INIT_C2B)
+      .Len5Cfg (Len5Cfg),
+      .HLEN    (HLEN),
+      .BTB_BITS(BTB_BITS),
+      .INIT_C2B(fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B))
   ) u_bpu (
-    .clk_i         (clk_i),
-    .rst_ni        (rst_ni),
-    .flush_i       (flush_bpu_i),
-    .curr_pc_i     (curr_pc),
-    .bu_res_valid_i(bu_bpu_valid_i),
-    .bu_res_i      (bu_res_i),
-    .pred_o        (curr_pred)
+      .clk_i         (clk_i),
+      .rst_ni        (rst_ni),
+      .flush_i       (flush_bpu_i),
+      .curr_pc_i     (curr_pc),
+      .bu_res_valid_i(bu_bpu_valid_i),
+      .bu_res_i      (bu_res_i),
+      .pred_o        (curr_pred)
   );
 
   // PC GENERATOR
   // ------------
   pc_gen #(
-    .BOOT_PC(BOOT_PC)
+      .Len5Cfg(Len5Cfg),
+      .BOOT_PC(BOOT_PC)
   ) u_pc_gen (
-    .clk_i               (clk_i),
-    .rst_ni              (rst_ni),
-    .comm_except_raised_i(comm_except_raised_i),
-    .comm_except_pc_i    (comm_except_pc_i),
-    .bu_res_valid_i      (bu_pcgen_valid_i),
-    .bu_res_i            (bu_res_i),
-    .pred_target_i       (taken_pred.target),
-    .pred_taken_i        (taken_pred.hit & taken_pred.taken),
-    .mem_ready_i         (memif_pcgen_ready),
-    .valid_o             (pcgen_memif_valid),
-    .bu_ready_o          (bu_pcgen_ready_o),
-    .pc_o                (curr_pc),
-    .early_jump_valid_i  (early_jump_valid),
-    .early_jump_offs_i   (early_jump_offs),
-    .early_jump_base_i   (early_jump_base),
-    .early_jump_target_o (early_jump_target)
+      .clk_i               (clk_i),
+      .rst_ni              (rst_ni),
+      .comm_except_raised_i(comm_except_raised_i),
+      .comm_except_pc_i    (comm_except_pc_i),
+      .bu_res_valid_i      (bu_pcgen_valid_i),
+      .bu_res_i            (bu_res_i),
+      .pred_target_i       (taken_pred.target),
+      .pred_taken_i        (taken_pred.hit & taken_pred.taken),
+      .mem_ready_i         (memif_pcgen_ready),
+      .valid_o             (pcgen_memif_valid),
+      .bu_ready_o          (bu_pcgen_ready_o),
+      .pc_o                (curr_pc),
+      .early_jump_valid_i  (early_jump_valid),
+      .early_jump_offs_i   (early_jump_offs),
+      .early_jump_base_i   (early_jump_base),
+      .early_jump_target_o (early_jump_target)
   );
 
   // MEMORY INTERFACE
   // ----------------
   fetch_mem_if #(
-    .MAX_MEM_OUTSTANDING_REQUESTS(MEMIF_FIFO_DEPTH),
-    .DRAIN_ON_FLUSH(MEM_DRAIN_ON_FLUSH)
+      .Len5Cfg                     (Len5Cfg),
+      .MAX_MEM_OUTSTANDING_REQUESTS(MEMIF_FIFO_DEPTH),
+      .DRAIN_ON_FLUSH              (MEM_DRAIN_ON_FLUSH)
   ) u_mem_if (
-    .clk_i                (clk_i),
-    .rst_ni               (rst_ni),
-    .flush_i              (flush_i | early_jump_mem_flush_o),
-    .fetch_valid_i        (pcgen_memif_valid),
-    .fetch_ready_o        (memif_pcgen_ready),
-    .valid_instr_i        (gen_valid_mem),
-    .valid_instr_o        (mem_valid_early),
-    .fetch_pred_i         (curr_pred),
-    .issue_valid_o        (issue_valid),
-    .issue_ready_i        (spill_ready),
-    .issue_instr_o        (fetched_instr),
-    .issue_pred_o         (mem_if_pred),
-    .issue_except_raised_o(fetch_except_raised_mixer),
-    .issue_except_code_o  (fetch_except_code_mixer),
-    .instr_valid_i        (instr_valid_i),
-    .instr_ready_i        (instr_ready_i),
-    .instr_ready_o        (instr_ready_o),
-    .instr_valid_o        (instr_valid_o),
-    .instr_we_o           (instr_we_o),
-    .instr_rdata_i        (instr_rdata_i),
-    .instr_addr_o         (instr_addr_o),
-    .instr_except_raised_i(instr_except_raised_i),
-    .instr_except_code_i  (instr_except_code_i)
+      .clk_i                (clk_i),
+      .rst_ni               (rst_ni),
+      .flush_i              (flush_i | early_jump_mem_flush_o),
+      .fetch_valid_i        (pcgen_memif_valid),
+      .fetch_ready_o        (memif_pcgen_ready),
+      .valid_instr_i        (gen_valid_mem),
+      .valid_instr_o        (mem_valid_early),
+      .fetch_pred_i         (curr_pred),
+      .issue_valid_o        (issue_valid),
+      .issue_ready_i        (spill_ready),
+      .issue_instr_o        (fetched_instr),
+      .issue_pred_o         (mem_if_pred),
+      .issue_except_raised_o(fetch_except_raised_mixer),
+      .issue_except_code_o  (fetch_except_code_mixer),
+      .instr_valid_i        (instr_valid_i),
+      .instr_ready_i        (instr_ready_i),
+      .instr_ready_o        (instr_ready_o),
+      .instr_valid_o        (instr_valid_o),
+      .instr_we_o           (instr_we_o),
+      .instr_rdata_i        (instr_rdata_i),
+      .instr_addr_o         (instr_addr_o),
+      .instr_except_raised_i(instr_except_raised_i),
+      .instr_except_code_i  (instr_except_code_i)
   );
 
   // JUMP early-decoder
-  early_jump_unit u_early_jump_unit (
-    .clk_i              (clk_i),
-    .rst_ni             (rst_ni),
-    .flush_i            (flush_i),
-    .instr_valid_i      (issue_valid),
-    .instr_i            (fetched_instr),
-    .issue_ready_i      (spill_ready),
-    .valid_instr_i      (mem_valid_early),
-    .valid_instr_o      (early_valid_mixer),
-    .early_jump_target_i(early_jump_target),
-    .call_confirm_i     (bu_call_confirm_i),
-    .ret_confirm_i      (bu_ret_confirm_i),
-    .res_link_addr_i    (bu_link_addr_i),
-    .mem_if_pred_i      (mem_if_pred),
-    .issue_pred_o       (early_pred_mixer),
-    .early_jump_valid_o (early_jump_valid),
-    .mem_flush_o        (early_jump_mem_flush_o),
-    .early_jump_offs_o  (early_jump_offs),
-    .early_jump_base_o  (early_jump_base)
+  early_jump_unit #(
+      .Len5Cfg(Len5Cfg)
+  ) u_early_jump_unit (
+      .clk_i              (clk_i),
+      .rst_ni             (rst_ni),
+      .flush_i            (flush_i),
+      .instr_valid_i      (issue_valid),
+      .instr_i            (fetched_instr),
+      .issue_ready_i      (spill_ready),
+      .valid_instr_i      (mem_valid_early),
+      .valid_instr_o      (early_valid_mixer),
+      .early_jump_target_i(early_jump_target),
+      .call_confirm_i     (bu_call_confirm_i),
+      .ret_confirm_i      (bu_ret_confirm_i),
+      .res_link_addr_i    (bu_link_addr_i),
+      .mem_if_pred_i      (mem_if_pred),
+      .issue_pred_o       (early_pred_mixer),
+      .early_jump_valid_o (early_jump_valid),
+      .mem_flush_o        (early_jump_mem_flush_o),
+      .early_jump_offs_o  (early_jump_offs),
+      .early_jump_base_o  (early_jump_base)
   );
 
   //generate valid instruction that should be executed
-  gen_valid_instr u_gen_valid_instr(
-    .pc_i(curr_pc),
-    .pred_i(curr_pred),
-    .valid_o(gen_valid_mem),
-    .pred_o(taken_pred)
+  gen_valid_instr #(
+      .Len5Cfg(Len5Cfg)
+  ) u_gen_valid_instr (
+      .pc_i   (curr_pc),
+      .pred_i (curr_pred),
+      .valid_o(gen_valid_mem),
+      .pred_o (taken_pred)
   );
 
-  //instruction mixer 
-  instr_mixer u_instr_mixer(
-    .valid_i(early_valid_mixer),
-    .instructions_i(fetched_instr),
-    .pred_i(early_pred_mixer),
-    .except_raised_i(fetch_except_raised_mixer),
-    .except_code_i(fetch_except_code_mixer),
-    .valid_o(mixer_valid_instr_spill),
-    .instructions_o(mixer_instr_spill),
-    .pred_o(mixer_pred_spill),
-    .except_raised_o(mixer_except_raised_spill),
-    .except_code_o(mixer_except_code_spill)
+  //instruction mixer
+  instr_mixer #(
+      .Len5Cfg(Len5Cfg)
+  ) u_instr_mixer (
+      .valid_i        (early_valid_mixer),
+      .instructions_i (fetched_instr),
+      .pred_i         (early_pred_mixer),
+      .except_raised_i(fetch_except_raised_mixer),
+      .except_code_i  (fetch_except_code_mixer),
+      .valid_o        (mixer_valid_instr_spill),
+      .instructions_o (mixer_instr_spill),
+      .pred_o         (mixer_pred_spill),
+      .except_raised_o(mixer_except_raised_spill),
+      .except_code_o  (mixer_except_code_spill)
   );
-  
+
   // SPILL CELLL INTERFACE
-  assign mixer_spill.valid_instr = mixer_valid_instr_spill;
-  assign mixer_spill.instr = mixer_instr_spill;
-  assign mixer_spill.pred = mixer_pred_spill;
+  assign mixer_spill.valid_instr   = mixer_valid_instr_spill;
+  assign mixer_spill.instr         = mixer_instr_spill;
+  assign mixer_spill.pred          = mixer_pred_spill;
   assign mixer_spill.except_raised = mixer_except_raised_spill;
-  assign mixer_spill.except_code = mixer_except_code_spill;
+  assign mixer_spill.except_code   = mixer_except_code_spill;
 
   //SPILL CELL
   //----------
   //breaks the loop that would originally come from the issue stage free counter
   spill_cell_flush #(
-    .DATA_T(fetch_stage_output_p)
-  ) u_out_reg(
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(flush_i),
-    .valid_i(issue_valid),
-    .ready_i(issue_ready_i),
-    .valid_o(issue_valid_o),
-    .ready_o(spill_ready),
-    .data_i (mixer_spill),
-    .data_o (spill_issue)
+      .DATA_T(fetch_stage_output_t)
+  ) u_out_reg (
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(flush_i),
+      .valid_i(issue_valid),
+      .ready_i(issue_ready_i),
+      .valid_o(issue_valid_o),
+      .ready_o(spill_ready),
+      .data_i (mixer_spill),
+      .data_o (spill_issue)
   );
-  
+
   // Output signals
   // --------------
-  assign issue_instr_o = spill_issue.instr;
-  assign issue_valid_instr_o = spill_issue.valid_instr;
-  assign issue_pred_o = spill_issue.pred;
-  assign issue_except_code_o = spill_issue.except_code;
+  assign issue_instr_o         = spill_issue.instr;
+  assign issue_valid_instr_o   = spill_issue.valid_instr;
+  assign issue_pred_o          = spill_issue.pred;
+  assign issue_except_code_o   = spill_issue.except_code;
   assign issue_except_raised_o = spill_issue.except_raised;
 
 endmodule

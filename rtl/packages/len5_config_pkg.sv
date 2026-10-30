@@ -22,152 +22,335 @@ package len5_config_pkg;
     SV39,
     SV48
   } boot_mode_t;
-  localparam boot_mode_t BOOT_VM_MODE = BARE;  // BARE|SV39|SV48
+  typedef struct packed {
+    boot_mode_t BOOT_VM_MODE;  // BARE|SV39|SV48
 
-  // Boot program counter
-  localparam logic [63:0] BOOT_PC = 64'h180;
+    // Boot program counter
+    logic [63:0] BOOT_PC;
 
-  // -----------------
-  // FEATURES SWITCHES
-  // -----------------
+    // -----------------
+    // FEATURES SWITCHES
+    // -----------------
 
-  // Multi-issue architecture
-  // ------------------------
-  localparam int unsigned LEN5_MULTIPLE_ISSUES = 32'd8;//maximum number of issues per cycle
+    // Multi-issue architecture
+    // ------------------------
+    int unsigned LEN5_MULTIPLE_ISSUES;  //maximum number of issues per cycle
 
-  // Enable M extension support
-  // --------------------------
-  localparam bit LEN5_M_EN = 1'b1;  // integer hardware multiplication and division
-  localparam bit LEN5_DIV_EN = 1'b1;  // integer division (not compliant if set to 0)
+    // Enable M extension support
+    // --------------------------
+    bit LEN5_M_EN;    // integer hardware multiplication and division
+    bit LEN5_DIV_EN;  // integer division (not compliant if set to 0)
 
-  // Enable floating-point support (F,D extensions)
-  // ----------------------------------------------
-  localparam bit LEN5_F_EN = 1'b1;  // single-precision instructions
-  localparam bit LEN5_D_EN = 1'b1;  // double-precision instructions
+    // Enable floating-point support (F,D extensions)
+    // ----------------------------------------------
+    bit LEN5_F_EN;  // single-precision instructions
+    bit LEN5_D_EN;  // double-precision instructions
 
-  // Enable C extension support
-  // --------------------------
-  // NOTE: CURRENTLY UNSUPPORTED
-  localparam bit LEN5_C_EN = 1'b0;  // compressed instructions
+    // Enable C extension support
+    // --------------------------
+    // NOTE: CURRENTLY UNSUPPORTED
+    bit LEN5_C_EN;  // compressed instructions
 
-  // Enable A extension support
-  // --------------------------
-  // NOTE: CURRENTLY UNSUPPORTED
-  localparam bit LEN5_A_EN = 1'b0;  // atomic instructions
+    // Enable A extension support
+    // --------------------------
+    // NOTE: CURRENTLY UNSUPPORTED
+    bit LEN5_A_EN;  // atomic instructions
 
-  // Enable store-to-load forwarding
-  // -------------------------------
-  // This switch instantiates a small cache with the same size as store buffer
-  // inside the Load-Store Unit. This cache records the store buffer entry
-  // containing the latest instruction that wrote a certain memory location.
-  // When a load instruction accesses the same location, the forwarding of the
-  // stored result is attempted.
-  // IMPORTANT: this feature breaks reads from memory-mapped devices, therefore
-  // it is only applied to memory addresses outside of the region masked by
-  // 'MMAP_MASK' (defined above).
-  localparam bit LEN5_STORE_LOAD_FWD_EN = 1'b1;
+    // Enable store-to-load forwarding
+    // -------------------------------
+    // This switch instantiates a small cache with the same size as store buffer
+    // inside the Load-Store Unit. This cache records the store buffer entry
+    // containing the latest instruction that wrote a certain memory location.
+    // When a load instruction accesses the same location, the forwarding of the
+    // stored result is attempted.
+    // IMPORTANT: this feature breaks reads from memory-mapped devices, therefore
+    // it is only applied to memory addresses outside of the region masked by
+    // 'MMAP_MASK' (defined above).
+    bit LEN5_STORE_LOAD_FWD_EN;
 
-  // Maximum number of execution units :
-  // load buffer, store buffer, branch unit, ALU, MULT, DIV, FPU
-  localparam int unsigned MAX_EU_N = 32'd7;
+    // Maximum number of execution units :
+    // load buffer, store buffer, branch unit, ALU, MULT, DIV, FPU
+    int unsigned MAX_EU_N;
 
-  // Memory
-  // ------
-  // If defined, instantiate a byte selector in the load buffer. All memory
-  // accesses are aligned on 64 bits, and the selector picks the correct
-  // word/halfword/byte from it the fetched doubleword.
-  localparam bit ONLY_DOUBLEWORD_MEM_ACCESSES = 1'b0;
+    // Memory
+    // ------
+    // If defined, instantiate a byte selector in the load buffer. All memory
+    // accesses are aligned on 64 bits, and the selector picks the correct
+    // word/halfword/byte from it the fetched doubleword.
+    bit ONLY_DOUBLEWORD_MEM_ACCESSES;
 
-  // CSRs
-  // ----
-  // If defined, instantiate additional performance counters (mcycle and
-  // minstret are always instantiated). See 'csrs.sv' to see what counters are
-  // available in LEN5.
-  localparam bit LEN5_CSR_HPMCOUNTERS_EN = 1'b1;
+    // CSRs
+    // ----
+    // If defined, instantiate additional performance counters (mcycle and
+    // minstret are always instantiated). See 'csrs.sv' to see what counters are
+    // available in LEN5.
+    bit LEN5_CSR_HPMCOUNTERS_EN;
 
-  // MEMORY-MAPPED DEVICES
-  // ---------------------
-  // Address mask for memory-mapped devices
-  // This mask defines the address range that is reserved to memory-mapped
-  // devices. Store-to-load forwarding (see below) in this region is not
-  // performed. This must be consistent with PERI_BASE in `len5.h`.
-  localparam logic [63:0] MMAP_MASK = 64'hffffffffe0000000;  // above 512MB
+    // MEMORY-MAPPED DEVICES
+    // ---------------------
+    // Address mask for memory-mapped devices
+    // This mask defines the address range that is reserved to memory-mapped
+    // devices. Store-to-load forwarding (see below) in this region is not
+    // performed. This must be consistent with PERI_BASE in `len5.h`.
+    logic [63:0] MMAP_MASK;  // above 512MB
 
-  // FRONTEND PARAMETERS
-  // -------------------
-  // BPU g-share predictor global history length
-  localparam int unsigned BPU_HLEN = 32'd4;
-  // BPU Branch Target Buffer (BTB) addressing bits (the remaining ones are used
-  // as tag)
-  localparam int unsigned BPU_BTB_BITS = 32'd4;
+    // FRONTEND PARAMETERS
+    // -------------------
+    // BPU g-share predictor global history length
+    int unsigned BPU_HLEN;
+    // BPU Branch Target Buffer (BTB) addressing bits (the remaining ones are used
+    // as tag)
+    int unsigned BPU_BTB_BITS;
 
-  // -------------------
-  // PIPELINE PARAMETERS
-  // -------------------
-  // The following switches enable or disable some of the sequential elements
-  // inside some functional units, therefore reducing the latency at the
-  // expense of increased delay on the involved lines. The increased delay
-  // may impact on the operation frequency if the combinational unit enters
-  // the processor critical path. The pipeline of the processor can handle
-  // functional units with arbitrary latency, including 0-cycle, so this
-  // changes do not require any modification.
+    // -------------------
+    // PIPELINE PARAMETERS
+    // -------------------
+    // The following switches enable or disable some of the sequential elements
+    // inside some functional units, therefore reducing the latency at the
+    // expense of increased delay on the involved lines. The increased delay
+    // may impact on the operation frequency if the combinational unit enters
+    // the processor critical path. The pipeline of the processor can handle
+    // functional units with arbitrary latency, including 0-cycle, so this
+    // changes do not require any modification.
 
-  // FETCH STAGE
-  // -----------
-  // Return Address Stack (RAS) depth
-  localparam int unsigned RAS_DEPTH = 32'd4;
+    // FETCH STAGE
+    // -----------
+    // Return Address Stack (RAS) depth
+    int unsigned RAS_DEPTH;
 
-  // Fetch memory interface
-  // verilog_lint: waive parameter-name-style
-  localparam int unsigned FETCH_MEMIF_FIFO_DEPTH = 32'd8;  // completion queue entries (positive power of two)
-  // Drain ordered fetch responses when memory cannot cancel accepted requests.
-  // verilog_lint: waive parameter-name-style
-  localparam bit FETCH_MEM_DRAIN_ON_FLUSH = 1'b1;
-  // Retain accepted load tags across flush when the memory cannot cancel requests.
-  // verilog_lint: waive parameter-name-style
-  localparam bit LOAD_BUFFER_DRAIN_ON_FLUSH = 1'b1;
-  // NOTE: if the memory is 0-latency, at least one of the fetch unit registers
-  // must be enabled (i.e., not skipped). Therefore, at least one of the
-  // following switches must be commented in this case.
-  localparam bit FETCH_REQ_SPILL_SKIP = 1'b1; // memory requests from the fetch unit are directly passed to the memory
-  localparam bit FETCH_ANS_SPILL_SKIP = 1'b0; // fetched instructions are directly passed to the issue stage
+    // Fetch memory interface
+    int unsigned FETCH_MEMIF_FIFO_DEPTH;  // completion queue entries (positive power of two)
+    // Drain ordered fetch responses when memory cannot cancel accepted requests.
+    bit FETCH_MEM_DRAIN_ON_FLUSH;
+    // Retain accepted load tags across flush when the memory cannot cancel requests.
+    bit LOAD_BUFFER_DRAIN_ON_FLUSH;
+    // NOTE: if the memory is 0-latency, at least one of the fetch unit registers
+    // must be enabled (i.e., not skipped). Therefore, at least one of the
+    // following switches must be commented in this case.
+    bit FETCH_REQ_SPILL_SKIP; // memory requests from the fetch unit are directly passed to the memory
+    bit FETCH_ANS_SPILL_SKIP;  // fetched instructions are directly passed to the issue stage
 
-  // EXECUTION PIPELINE
-  // ------------------
-  // ISSUE QUEUE
-  localparam int unsigned IQ_DEPTH = 32'd16;  // number of entries in the issue queue (power of 2)
+    // EXECUTION PIPELINE
+    // ------------------
+    // ISSUE QUEUE
+    int unsigned IQ_DEPTH;  // number of entries in the issue queue (power of 2)
 
-  // LOAD/STORE UNIT
-  localparam int unsigned LDBUFF_DEPTH = 32'd8;  // number of entries in the load buffer
-  localparam int unsigned STBUFF_DEPTH = 32'd16;  // number of entries in the store buffer
-  localparam bit LSU_SPILL_SKIP = 1'b1;  // make address adder fully combinational
+    // LOAD/STORE UNIT
+    int unsigned LDBUFF_DEPTH;  // number of entries in the load buffer
+    int unsigned STBUFF_DEPTH;  // number of entries in the store buffer
+    bit LSU_SPILL_SKIP;  // make address adder fully combinational
 
-  // ALU UNIT
-  localparam int unsigned ALU_RS_DEPTH = 32'd8;
-  localparam bit ALU_SPILL_SKIP = 1'b1;  // make the ALU fully combinational
-  localparam bit ALU_RR_ARBITER = 1'b1;  // round-robin arbiter for the reservation station
+    // ALU UNIT
+    int unsigned ALU_RS_DEPTH;
+    bit ALU_SPILL_SKIP;  // make the ALU fully combinational
+    bit ALU_RR_ARBITER;  // round-robin arbiter for the reservation station
 
-  // MULT UNIT
-  localparam int unsigned MULT_RS_DEPTH = 32'd4;
-  localparam bit LEN5_MULT_SERIAL = 1'b0;
-  localparam int unsigned MULT_PIPE_DEPTH = 32'd1;  // pipeline stages (only if 'LEN5_MULT_SERIAL' is 0)
-  localparam bit MULT_RR_ARBITER = 1'b1;  // round-robin arbiter for the reservation station
+    // MULT UNIT
+    int unsigned MULT_RS_DEPTH;
+    bit LEN5_MULT_SERIAL;
+    int unsigned MULT_PIPE_DEPTH;  // pipeline stages (only if 'LEN5_MULT_SERIAL' is 0)
+    bit MULT_RR_ARBITER;  // round-robin arbiter for the reservation station
 
-  // DIV UNIT
-  localparam int unsigned DIV_RS_DEPTH = 32'd4;
-  localparam bit DIV_RR_ARBITER = 1'b1;  // round-robin arbiter for the reservation station
+    // DIV UNIT
+    int unsigned DIV_RS_DEPTH;
+    bit DIV_RR_ARBITER;  // round-robin arbiter for the reservation station
 
-  // FPU UNIT
-  localparam int unsigned FPU_RS_DEPTH = 32'd8;
-  localparam bit FPU_RR_ARBITER = 1'b1;  // round-robin arbiter for the reservation station
-  localparam int unsigned FPU_PIPE_DEPTH = 32'd4;  // pipeline stages
-  localparam bit FPU_SPILL_SKIP = 1'b1;  // skip input registers
+    // FPU UNIT
+    int unsigned FPU_RS_DEPTH;
+    bit FPU_RR_ARBITER;  // round-robin arbiter for the reservation station
+    int unsigned FPU_PIPE_DEPTH;  // pipeline stages
+    bit FPU_SPILL_SKIP;  // skip input registers
 
-  // BRANCH UNIT
-  localparam int unsigned BU_RS_DEPTH = 32'd4;
-  localparam bit BU_SPILL_SKIP = 1'b1;  // make the target address adder fully combinational
+    // BRANCH UNIT
+    int unsigned BU_RS_DEPTH;
+    bit BU_SPILL_SKIP;  // make the target address adder fully combinational
 
-  // COMMIT STAGE
-  localparam int unsigned ROB_DEPTH  /* verilator public */ = 32'd32;  // Number of entries in the ROB
-  localparam bit COMMIT_SPILL_SKIP = 1'b1;  // directly connect the commit CU to the ROB output
+    // COMMIT STAGE
+    int unsigned ROB_DEPTH;  // Number of entries in the ROB
+    bit COMMIT_SPILL_SKIP;  // directly connect the commit CU to the ROB output
+    logic [1:0] BPU_INIT_C2B;
+  } len5_user_cfg_t;
+
+  typedef struct packed {
+    boot_mode_t BOOT_VM_MODE;
+    logic [63:0] BOOT_PC;
+    int unsigned LEN5_MULTIPLE_ISSUES;
+    bit LEN5_M_EN;
+    bit LEN5_DIV_EN;
+    bit LEN5_F_EN;
+    bit LEN5_D_EN;
+    bit LEN5_C_EN;
+    bit LEN5_A_EN;
+    bit LEN5_STORE_LOAD_FWD_EN;
+    int unsigned MAX_EU_N;
+    bit ONLY_DOUBLEWORD_MEM_ACCESSES;
+    bit LEN5_CSR_HPMCOUNTERS_EN;
+    logic [63:0] MMAP_MASK;
+    int unsigned BPU_HLEN;
+    int unsigned BPU_BTB_BITS;
+    int unsigned RAS_DEPTH;
+    int unsigned FETCH_MEMIF_FIFO_DEPTH;
+    bit FETCH_MEM_DRAIN_ON_FLUSH;
+    bit LOAD_BUFFER_DRAIN_ON_FLUSH;
+    bit FETCH_REQ_SPILL_SKIP;
+    bit FETCH_ANS_SPILL_SKIP;
+    int unsigned IQ_DEPTH;
+    int unsigned LDBUFF_DEPTH;
+    int unsigned STBUFF_DEPTH;
+    bit LSU_SPILL_SKIP;
+    int unsigned ALU_RS_DEPTH;
+    bit ALU_SPILL_SKIP;
+    bit ALU_RR_ARBITER;
+    int unsigned MULT_RS_DEPTH;
+    bit LEN5_MULT_SERIAL;
+    int unsigned MULT_PIPE_DEPTH;
+    bit MULT_RR_ARBITER;
+    int unsigned DIV_RS_DEPTH;
+    bit DIV_RR_ARBITER;
+    int unsigned FPU_RS_DEPTH;
+    bit FPU_RR_ARBITER;
+    int unsigned FPU_PIPE_DEPTH;
+    bit FPU_SPILL_SKIP;
+    int unsigned BU_RS_DEPTH;
+    bit BU_SPILL_SKIP;
+    int unsigned ROB_DEPTH;
+    bit COMMIT_SPILL_SKIP;
+    logic [1:0] BPU_INIT_C2B;
+
+    // Computed once by build_config; consumers reuse these fields.
+    int unsigned LEN5_MULTIPLE_ISSUES_BITS;
+    int unsigned LWIDTH;
+    int unsigned FLEN;
+    int unsigned LDBUFF_TAG_W;
+    int unsigned STBUFF_TAG_W;
+    int unsigned BUFF_IDX_LEN;
+    int unsigned ROB_IDX_LEN;
+    int unsigned COMMIT_UNIT_DEPTH;
+    int unsigned IQ_IDX_LEN;
+    int unsigned MULT_EU_N;
+    int unsigned DIV_EU_N;
+    int unsigned FP_EU_N;
+    int unsigned EU_N;
+    int unsigned REGSTAT_CNT_W;
+    int unsigned IMEM_DATA_WIDTH;
+    int unsigned TAG_COUNT;
+    int unsigned AXI_COUNT_WIDTH;
+  } len5_cfg_t;
+  typedef len5_cfg_t len5_cfg;
+
+  localparam len5_user_cfg_t DEFAULT_LEN5_USER_CFG = '{
+      BOOT_VM_MODE: BARE,
+      BOOT_PC: 64'h180,
+      LEN5_MULTIPLE_ISSUES: 32'd8,
+      LEN5_M_EN: 1'b1,
+      LEN5_DIV_EN: 1'b1,
+      LEN5_F_EN: 1'b1,
+      LEN5_D_EN: 1'b1,
+      LEN5_C_EN: 1'b0,
+      LEN5_A_EN: 1'b0,
+      LEN5_STORE_LOAD_FWD_EN: 1'b1,
+      MAX_EU_N: 32'd7,
+      ONLY_DOUBLEWORD_MEM_ACCESSES: 1'b0,
+      LEN5_CSR_HPMCOUNTERS_EN: 1'b1,
+      MMAP_MASK: 64'hffffffffe0000000,
+      BPU_HLEN: 32'd4,
+      BPU_BTB_BITS: 32'd4,
+      RAS_DEPTH: 32'd4,
+      FETCH_MEMIF_FIFO_DEPTH: 32'd8,
+      FETCH_MEM_DRAIN_ON_FLUSH: 1'b1,
+      LOAD_BUFFER_DRAIN_ON_FLUSH: 1'b1,
+      FETCH_REQ_SPILL_SKIP: 1'b1,
+      FETCH_ANS_SPILL_SKIP: 1'b0,
+      IQ_DEPTH: 32'd16,
+      LDBUFF_DEPTH: 32'd8,
+      STBUFF_DEPTH: 32'd16,
+      LSU_SPILL_SKIP: 1'b1,
+      ALU_RS_DEPTH: 32'd8,
+      ALU_SPILL_SKIP: 1'b1,
+      ALU_RR_ARBITER: 1'b1,
+      MULT_RS_DEPTH: 32'd4,
+      LEN5_MULT_SERIAL: 1'b0,
+      MULT_PIPE_DEPTH: 32'd1,
+      MULT_RR_ARBITER: 1'b1,
+      DIV_RS_DEPTH: 32'd4,
+      DIV_RR_ARBITER: 1'b1,
+      FPU_RS_DEPTH: 32'd8,
+      FPU_RR_ARBITER: 1'b1,
+      FPU_PIPE_DEPTH: 32'd4,
+      FPU_SPILL_SKIP: 1'b1,
+      BU_RS_DEPTH: 32'd4,
+      BU_SPILL_SKIP: 1'b1,
+      ROB_DEPTH: 32'd32,
+      COMMIT_SPILL_SKIP: 1'b1,
+      BPU_INIT_C2B: 2'd2
+  };
+
+  function automatic len5_cfg build_config(len5_user_cfg_t user_cfg);
+    len5_cfg cfg;
+    cfg.BOOT_VM_MODE = user_cfg.BOOT_VM_MODE;
+    cfg.BOOT_PC = user_cfg.BOOT_PC;
+    cfg.LEN5_MULTIPLE_ISSUES = user_cfg.LEN5_MULTIPLE_ISSUES;
+    cfg.LEN5_M_EN = user_cfg.LEN5_M_EN;
+    cfg.LEN5_DIV_EN = user_cfg.LEN5_DIV_EN;
+    cfg.LEN5_F_EN = user_cfg.LEN5_F_EN;
+    cfg.LEN5_D_EN = user_cfg.LEN5_D_EN;
+    cfg.LEN5_C_EN = user_cfg.LEN5_C_EN;
+    cfg.LEN5_A_EN = user_cfg.LEN5_A_EN;
+    cfg.LEN5_STORE_LOAD_FWD_EN = user_cfg.LEN5_STORE_LOAD_FWD_EN;
+    cfg.MAX_EU_N = user_cfg.MAX_EU_N;
+    cfg.ONLY_DOUBLEWORD_MEM_ACCESSES = user_cfg.ONLY_DOUBLEWORD_MEM_ACCESSES;
+    cfg.LEN5_CSR_HPMCOUNTERS_EN = user_cfg.LEN5_CSR_HPMCOUNTERS_EN;
+    cfg.MMAP_MASK = user_cfg.MMAP_MASK;
+    cfg.BPU_HLEN = user_cfg.BPU_HLEN;
+    cfg.BPU_BTB_BITS = user_cfg.BPU_BTB_BITS;
+    cfg.RAS_DEPTH = user_cfg.RAS_DEPTH;
+    cfg.FETCH_MEMIF_FIFO_DEPTH = user_cfg.FETCH_MEMIF_FIFO_DEPTH;
+    cfg.FETCH_MEM_DRAIN_ON_FLUSH = user_cfg.FETCH_MEM_DRAIN_ON_FLUSH;
+    cfg.LOAD_BUFFER_DRAIN_ON_FLUSH = user_cfg.LOAD_BUFFER_DRAIN_ON_FLUSH;
+    cfg.FETCH_REQ_SPILL_SKIP = user_cfg.FETCH_REQ_SPILL_SKIP;
+    cfg.FETCH_ANS_SPILL_SKIP = user_cfg.FETCH_ANS_SPILL_SKIP;
+    cfg.IQ_DEPTH = user_cfg.IQ_DEPTH;
+    cfg.LDBUFF_DEPTH = user_cfg.LDBUFF_DEPTH;
+    cfg.STBUFF_DEPTH = user_cfg.STBUFF_DEPTH;
+    cfg.LSU_SPILL_SKIP = user_cfg.LSU_SPILL_SKIP;
+    cfg.ALU_RS_DEPTH = user_cfg.ALU_RS_DEPTH;
+    cfg.ALU_SPILL_SKIP = user_cfg.ALU_SPILL_SKIP;
+    cfg.ALU_RR_ARBITER = user_cfg.ALU_RR_ARBITER;
+    cfg.MULT_RS_DEPTH = user_cfg.MULT_RS_DEPTH;
+    cfg.LEN5_MULT_SERIAL = user_cfg.LEN5_MULT_SERIAL;
+    cfg.MULT_PIPE_DEPTH = user_cfg.MULT_PIPE_DEPTH;
+    cfg.MULT_RR_ARBITER = user_cfg.MULT_RR_ARBITER;
+    cfg.DIV_RS_DEPTH = user_cfg.DIV_RS_DEPTH;
+    cfg.DIV_RR_ARBITER = user_cfg.DIV_RR_ARBITER;
+    cfg.FPU_RS_DEPTH = user_cfg.FPU_RS_DEPTH;
+    cfg.FPU_RR_ARBITER = user_cfg.FPU_RR_ARBITER;
+    cfg.FPU_PIPE_DEPTH = user_cfg.FPU_PIPE_DEPTH;
+    cfg.FPU_SPILL_SKIP = user_cfg.FPU_SPILL_SKIP;
+    cfg.BU_RS_DEPTH = user_cfg.BU_RS_DEPTH;
+    cfg.BU_SPILL_SKIP = user_cfg.BU_SPILL_SKIP;
+    cfg.ROB_DEPTH = user_cfg.ROB_DEPTH;
+    cfg.COMMIT_SPILL_SKIP = user_cfg.COMMIT_SPILL_SKIP;
+    cfg.BPU_INIT_C2B = user_cfg.BPU_INIT_C2B;
+    cfg.LEN5_MULTIPLE_ISSUES_BITS = $clog2(user_cfg.LEN5_MULTIPLE_ISSUES);
+    cfg.LWIDTH = 32 * user_cfg.LEN5_MULTIPLE_ISSUES;
+    cfg.FLEN = user_cfg.LEN5_D_EN ? 64 : 32;
+    cfg.LDBUFF_TAG_W = $clog2(user_cfg.LDBUFF_DEPTH);
+    cfg.STBUFF_TAG_W = $clog2(user_cfg.STBUFF_DEPTH);
+    cfg.BUFF_IDX_LEN = cfg.LDBUFF_TAG_W > cfg.STBUFF_TAG_W ? cfg.LDBUFF_TAG_W : cfg.STBUFF_TAG_W;
+    cfg.ROB_IDX_LEN = $clog2(user_cfg.ROB_DEPTH);
+    cfg.COMMIT_UNIT_DEPTH = user_cfg.ROB_DEPTH + 3;
+    cfg.IQ_IDX_LEN = $clog2(user_cfg.IQ_DEPTH);
+    cfg.MULT_EU_N = user_cfg.LEN5_M_EN ? 1 : 0;
+    cfg.DIV_EU_N = user_cfg.LEN5_DIV_EN ? 1 : 0;
+    cfg.FP_EU_N = (user_cfg.LEN5_D_EN | user_cfg.LEN5_F_EN) ? 1 : 0;
+    cfg.EU_N = 4 + cfg.MULT_EU_N + cfg.DIV_EU_N + cfg.FP_EU_N;
+    cfg.REGSTAT_CNT_W = $clog2(cfg.COMMIT_UNIT_DEPTH);
+    cfg.IMEM_DATA_WIDTH = user_cfg.LEN5_MULTIPLE_ISSUES > 2 ? 32 * user_cfg.LEN5_MULTIPLE_ISSUES : 64;
+    cfg.TAG_COUNT = 1 << cfg.BUFF_IDX_LEN;
+    cfg.AXI_COUNT_WIDTH = $clog2((cfg.TAG_COUNT > user_cfg.FETCH_MEMIF_FIFO_DEPTH ? cfg.TAG_COUNT : user_cfg.FETCH_MEMIF_FIFO_DEPTH) + 1
+        );
+    return cfg;
+  endfunction
+
+  localparam len5_cfg DEFAULT_LEN5_CFG = build_config(DEFAULT_LEN5_USER_CFG);
 endpackage

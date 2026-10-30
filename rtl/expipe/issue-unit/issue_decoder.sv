@@ -12,27 +12,29 @@
 // Author: Michele Caon, Flavia Guella
 // Date: 13/11/2019
 
-module issue_decoder (
-  // Instruction from the issue logic
-  input len5_pkg::instr_t   instruction_i,  // the issuing instruction
-  input csr_pkg::csr_priv_t priv_mode_i,    // current privilege mode
-  input logic fp_enabled_i,                // mstatus.FS is nonzero
+module issue_decoder #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+) (
+    // Instruction from the issue logic
+    input len5_pkg::instr_t   instruction_i,  // the issuing instruction
+    input csr_pkg::csr_priv_t priv_mode_i,    // current privilege mode
+    input logic               fp_enabled_i,   // mstatus.FS is nonzero
 
-  // Issue decoder <--> issue CU
-  output expipe_pkg::issue_type_t issue_type_o,  // issue operation type
+    // Issue decoder <--> issue CU
+    output expipe_pkg::issue_type_t issue_type_o,  // issue operation type
 
-  // Information to the issue logic
-  output len5_pkg::except_code_t except_code_o,  // exception code to send to the ROB
-  output expipe_pkg::issue_eu_t assigned_eu_o,  // assigned EU
-  output logic skip_eu_o,  // do not assign to any EU
-  output expipe_pkg::eu_ctl_t eu_ctl_o,  // controls for the assigned EU
-  output logic mem_crit_o,  // memory accesses shall wait for this instruction to complete
-  output logic order_crit_o,  // out-of-order commit not allowed
-  output expipe_pkg::rs1_sel_t rs1_sel_o,  // rs1 source
-  output expipe_pkg::rs2_sel_t rs2_sel_o,  // rs2 source
-  output expipe_pkg::rs3_sel_t rs3_sel_o,  // rs3 source
-  output logic rd_upd_o,  // the instruction updates a destination register rd
-  output expipe_pkg::imm_format_t imm_format_o  // immediate format
+    // Information to the issue logic
+    output len5_pkg::except_code_t except_code_o,  // exception code to send to the ROB
+    output expipe_pkg::issue_eu_t assigned_eu_o,  // assigned EU
+    output logic skip_eu_o,  // do not assign to any EU
+    output expipe_pkg::eu_ctl_t eu_ctl_o,  // controls for the assigned EU
+    output logic mem_crit_o,  // memory accesses shall wait for this instruction to complete
+    output logic order_crit_o,  // out-of-order commit not allowed
+    output expipe_pkg::rs1_sel_t rs1_sel_o,  // rs1 source
+    output expipe_pkg::rs2_sel_t rs2_sel_o,  // rs2 source
+    output expipe_pkg::rs3_sel_t rs3_sel_o,  // rs3 source
+    output logic rd_upd_o,  // the instruction updates a destination register rd
+    output expipe_pkg::imm_format_t imm_format_o  // immediate format
 );
 
   import len5_config_pkg::*;
@@ -520,7 +522,7 @@ module issue_decoder (
 
       // RV64M
       MUL: begin
-        if (LEN5_M_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_M_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_MULT;
           eu_ctl.mult = MULT_MUL;
@@ -534,7 +536,7 @@ module issue_decoder (
         end
       end
       MULH: begin
-        if (LEN5_M_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_M_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_MULT;
           eu_ctl.mult = MULT_MULH;
@@ -548,7 +550,7 @@ module issue_decoder (
         end
       end
       MULHU: begin
-        if (LEN5_M_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_M_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_MULT;
           eu_ctl.mult = MULT_MULHU;
@@ -562,7 +564,7 @@ module issue_decoder (
         end
       end
       MULHSU: begin
-        if (LEN5_M_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_M_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_MULT;
           eu_ctl.mult = MULT_MULHSU;
@@ -576,7 +578,7 @@ module issue_decoder (
         end
       end
       MULW: begin
-        if (LEN5_M_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_M_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_MULT;
           eu_ctl.mult = MULT_MULW;
@@ -590,7 +592,7 @@ module issue_decoder (
         end
       end
       DIV: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_DIV;
@@ -604,7 +606,7 @@ module issue_decoder (
         end
       end
       DIVU: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_DIVU;
@@ -618,7 +620,7 @@ module issue_decoder (
         end
       end
       DIVW: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_DIVW;
@@ -632,7 +634,7 @@ module issue_decoder (
         end
       end
       DIVUW: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_DIVUW;
@@ -646,7 +648,7 @@ module issue_decoder (
         end
       end
       REM: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_REM;
@@ -660,7 +662,7 @@ module issue_decoder (
         end
       end
       REMU: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_REMU;
@@ -674,7 +676,7 @@ module issue_decoder (
         end
       end
       REMW: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_REMW;
@@ -688,7 +690,7 @@ module issue_decoder (
         end
       end
       REMUW: begin
-        if (LEN5_DIV_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_DIV_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;
           assigned_eu = EU_INT_DIV;
           eu_ctl.div  = DIV_REMUW;
@@ -758,7 +760,7 @@ module issue_decoder (
 
       // RV64F
       FLW: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_LOAD_BUFFER;
           eu_ctl.lsu  = LS_WORD;
@@ -772,7 +774,7 @@ module issue_decoder (
         end
       end
       FSW: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_STORE;
           assigned_eu = EU_STORE_BUFFER;
           eu_ctl.lsu  = LS_WORD;
@@ -788,7 +790,7 @@ module issue_decoder (
         end
       end
       FMADD_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MADD_S;  // TODO: check
@@ -803,7 +805,7 @@ module issue_decoder (
         end
       end
       FMSUB_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MSUB_S;  // TODO: check
@@ -818,7 +820,7 @@ module issue_decoder (
         end
       end
       FNMSUB_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMSUB_S;  // TODO: check
@@ -833,7 +835,7 @@ module issue_decoder (
         end
       end
       FNMADD_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMADD_S;  // TODO: check
@@ -848,7 +850,7 @@ module issue_decoder (
         end
       end
       FADD_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_ADD_S;  // TODO: check
@@ -862,7 +864,7 @@ module issue_decoder (
         end
       end
       FSUB_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SUB_S;  // TODO: check
@@ -876,7 +878,7 @@ module issue_decoder (
         end
       end
       FMUL_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MUL_S;  // TODO: check
@@ -890,7 +892,7 @@ module issue_decoder (
         end
       end
       FDIV_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_DIV_S;  // TODO: check
@@ -904,7 +906,7 @@ module issue_decoder (
         end
       end
       FSQRT_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SQRT_S;  // TODO: check
@@ -917,7 +919,7 @@ module issue_decoder (
         end
       end
       FSGNJ_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_S;  // TODO: check, the actual op is distinguished through rm
@@ -931,7 +933,7 @@ module issue_decoder (
         end
       end
       FSGNJN_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_S;  // TODO: check
@@ -945,7 +947,7 @@ module issue_decoder (
         end
       end
       FSGNJX_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_S;  // TODO: check
@@ -959,7 +961,7 @@ module issue_decoder (
         end
       end
       FMIN_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_S;  // TODO: check
@@ -973,7 +975,7 @@ module issue_decoder (
         end
       end
       FMAX_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_S;  // TODO: check
@@ -987,7 +989,7 @@ module issue_decoder (
         end
       end
       FCVT_W_S: begin  // single to int
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2I;  // TODO: check
@@ -1000,7 +1002,7 @@ module issue_decoder (
         end
       end
       FCVT_WU_S: begin  // single to unsigned int
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2I_U;  // TODO: check
@@ -1013,7 +1015,7 @@ module issue_decoder (
         end
       end
       FCVT_S_W: begin  // int to single
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2S;  // TODO: check
@@ -1026,7 +1028,7 @@ module issue_decoder (
         end
       end
       FCVT_S_WU: begin  // unsigned int to single
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2S_U;  // TODO: check
@@ -1039,7 +1041,7 @@ module issue_decoder (
         end
       end
       FCVT_L_S: begin  // single to long int
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2L;  // TODO: check
@@ -1052,7 +1054,7 @@ module issue_decoder (
         end
       end
       FCVT_LU_S: begin  // single to unsigned int
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2L_U;  // TODO: check
@@ -1065,7 +1067,7 @@ module issue_decoder (
         end
       end
       FCVT_S_L: begin  // long to single
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2S;  // TODO: check
@@ -1078,7 +1080,7 @@ module issue_decoder (
         end
       end
       FCVT_S_LU: begin  // unsigned long to single
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2S_U;  // TODO: check
@@ -1091,7 +1093,7 @@ module issue_decoder (
         end
       end
       FMV_X_W: begin  // single to int
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_X_W;
@@ -1104,7 +1106,7 @@ module issue_decoder (
         end
       end
       FMV_W_X: begin  // int to single
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_W_X;
@@ -1117,7 +1119,7 @@ module issue_decoder (
         end
       end
       FEQ_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_S;  // TODO: check, rm encodes comp type
@@ -1131,7 +1133,7 @@ module issue_decoder (
         end
       end
       FLT_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_S;  // TODO: check
@@ -1145,7 +1147,7 @@ module issue_decoder (
         end
       end
       FLE_S: begin
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_S;  // TODO: check
@@ -1159,7 +1161,7 @@ module issue_decoder (
         end
       end
       FCLASS_S: begin  // write to int RF
-        if (LEN5_F_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CLASS_S;  // TODO: check
@@ -1174,7 +1176,7 @@ module issue_decoder (
 
       // RV64D
       FLD: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_LOAD_BUFFER;
           eu_ctl.lsu  = LS_DOUBLEWORD;
@@ -1188,7 +1190,7 @@ module issue_decoder (
         end
       end
       FSD: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_STORE;
           assigned_eu = EU_STORE_BUFFER;
           eu_ctl.lsu  = LS_DOUBLEWORD;
@@ -1204,7 +1206,7 @@ module issue_decoder (
         end
       end
       FMADD_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MADD_D;  // TODO: check
@@ -1219,7 +1221,7 @@ module issue_decoder (
         end
       end
       FMSUB_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MSUB_D;  // TODO: check
@@ -1234,7 +1236,7 @@ module issue_decoder (
         end
       end
       FNMSUB_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMSUB_D;  // TODO: check
@@ -1249,7 +1251,7 @@ module issue_decoder (
         end
       end
       FNMADD_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMADD_D;  // TODO: check
@@ -1264,7 +1266,7 @@ module issue_decoder (
         end
       end
       FADD_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_ADD_D;  // TODO: check
@@ -1278,7 +1280,7 @@ module issue_decoder (
         end
       end
       FSUB_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SUB_D;  // TODO: check
@@ -1292,7 +1294,7 @@ module issue_decoder (
         end
       end
       FMUL_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MUL_D;  // TODO: check
@@ -1306,7 +1308,7 @@ module issue_decoder (
         end
       end
       FDIV_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_DIV_D;  // TODO: check
@@ -1320,7 +1322,7 @@ module issue_decoder (
         end
       end
       FSQRT_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SQRT_D;  // TODO: check
@@ -1333,7 +1335,7 @@ module issue_decoder (
         end
       end
       FSGNJ_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_D;  // TODO: check
@@ -1347,7 +1349,7 @@ module issue_decoder (
         end
       end
       FSGNJN_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_D;  // TODO: check
@@ -1361,7 +1363,7 @@ module issue_decoder (
         end
       end
       FSGNJX_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_D;  // TODO: check
@@ -1375,7 +1377,7 @@ module issue_decoder (
         end
       end
       FMIN_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_D;  // TODO: check
@@ -1389,7 +1391,7 @@ module issue_decoder (
         end
       end
       FMAX_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_D;  // TODO: check
@@ -1403,7 +1405,7 @@ module issue_decoder (
         end
       end
       FCVT_S_D: begin  // double to single
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2S;  // TODO: check
@@ -1416,7 +1418,7 @@ module issue_decoder (
         end
       end
       FCVT_D_S: begin  // single to double
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2D;  // TODO: check
@@ -1429,7 +1431,7 @@ module issue_decoder (
         end
       end
       FCVT_W_D: begin  // double to int
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2I;  // TODO: check
@@ -1442,7 +1444,7 @@ module issue_decoder (
         end
       end
       FCVT_WU_D: begin  // double to 32-bit int
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2I_U;  // TODO: check
@@ -1455,7 +1457,7 @@ module issue_decoder (
         end
       end
       FCVT_D_W: begin  //32-bit int to double
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2D;  // TODO: check
@@ -1468,7 +1470,7 @@ module issue_decoder (
         end
       end
       FCVT_D_WU: begin  // unsigned 32-bit int to double
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2D_U;  // TODO: check
@@ -1481,7 +1483,7 @@ module issue_decoder (
         end
       end
       FCVT_L_D: begin  // double to 64-bit int
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2L;  // TODO: check
@@ -1494,7 +1496,7 @@ module issue_decoder (
         end
       end
       FCVT_LU_D: begin  // double to 64-bit unsigned int
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2L_U;  // TODO: check
@@ -1507,7 +1509,7 @@ module issue_decoder (
         end
       end
       FCVT_D_L: begin  // long int to double
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2D;  // TODO: check
@@ -1520,7 +1522,7 @@ module issue_decoder (
         end
       end
       FCVT_D_LU: begin  // unsigned long int to double
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2D_U;  // TODO: check
@@ -1533,7 +1535,7 @@ module issue_decoder (
         end
       end
       FMV_X_D: begin  // double to 64-bit int
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_X_D;
@@ -1546,7 +1548,7 @@ module issue_decoder (
         end
       end
       FMV_D_X: begin  // int to fp reg
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_D_X;
@@ -1559,7 +1561,7 @@ module issue_decoder (
         end
       end
       FEQ_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_D;  // TODO: check
@@ -1573,7 +1575,7 @@ module issue_decoder (
         end
       end
       FLT_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_D;  // TODO: check
@@ -1587,7 +1589,7 @@ module issue_decoder (
         end
       end
       FLE_D: begin
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_D;  // TODO: check
@@ -1601,7 +1603,7 @@ module issue_decoder (
         end
       end
       FCLASS_D: begin  // write to int RF
-        if (LEN5_D_EN != 1'b0) begin
+        if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CLASS_D;  // TODO: check
@@ -1631,10 +1633,10 @@ module issue_decoder (
           (instruction_i.raw[31:20] == CSR_FFLAGS ||
            instruction_i.raw[31:20] == CSR_FRM || instruction_i.raw[31:20] == CSR_FCSR)))) begin
       opcode_except = 1'b1;
-      except_code = E_ILLEGAL_INSTRUCTION;
-      rd_upd = 1'b0;
-      mem_crit = 1'b1;
-      order_crit = 1'b1;
+      except_code   = E_ILLEGAL_INSTRUCTION;
+      rd_upd        = 1'b0;
+      mem_crit      = 1'b1;
+      order_crit    = 1'b1;
     end
   end
 

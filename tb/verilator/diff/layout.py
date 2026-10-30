@@ -119,7 +119,15 @@ def generate(source, target):
             c=v.find('const')
             if c is not None and (v.get('param') or v.get('localparam')):
                 try:
-                    out.append('{"%s.%s",%dULL},'%(mod.attrib['name'],v.attrib['name'],number(c.attrib['name'])))
+                    value = number(c.attrib['name'])
+                    dtype = types[v.attrib['dtype_id']]
+                    if mod.attrib['name'] == 'tb_bare' and v.attrib['name'] in ('Len5Cfg', 'TbCfg'):
+                        for name, offset, bits in fields(dtype):
+                            if name and bits <= 64:
+                                out.append('{"tb_bare.%s.%s",%dULL},' %
+                                           (v.attrib['name'], name, (value >> offset) & ((1 << bits) - 1)))
+                    elif width(dtype) <= 64:
+                        out.append('{"%s.%s",%dULL},' % (mod.attrib['name'], v.attrib['name'], value))
                 except (ValueError,KeyError):
                     pass
     out += ['};','}']

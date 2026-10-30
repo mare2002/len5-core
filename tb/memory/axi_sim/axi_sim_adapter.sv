@@ -1,49 +1,72 @@
+`include "tb_typedef.svh"
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // LEN5 requests are single-beat AXI transactions. CPU acceptance reserves ownership
 // before AXI acceptance; a stalled AXI VALID is never withdrawn on a CPU flush.
 module axi_sim_adapter #(
-  parameter int unsigned N = len5_config_pkg::LEN5_MULTIPLE_ISSUES,
-  parameter logic [63:0] IMEM_BASE_ADDR = tb_config_pkg::IMEM_BASE_ADDR,
-  parameter int unsigned IMEM_SIZE_BYTES = tb_config_pkg::IMEM_SIZE_BYTES,
-  parameter logic [63:0] DMEM_BASE_ADDR = tb_config_pkg::DMEM_BASE_ADDR,
-  parameter int unsigned DMEM_SIZE_BYTES = tb_config_pkg::DMEM_SIZE_BYTES,
-  parameter logic [63:0] SERIAL_ADDR = tb_config_pkg::SERIAL_ADDR,
-  parameter logic [63:0] EXIT_ADDR = tb_config_pkg::EXIT_ADDR,
-  parameter int unsigned MAX_INSTR_OUTSTANDING = len5_config_pkg::FETCH_MEMIF_FIFO_DEPTH,
-  parameter int unsigned COUNT_WIDTH = axi_memory_pkg::CountWidth
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type dmem_axi_aw_chan_t = `LEN5_DMEM_AXI_AW_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_w_chan_t = `LEN5_DMEM_AXI_W_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_ar_chan_t = `LEN5_DMEM_AXI_AR_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_b_chan_t = `LEN5_DMEM_AXI_B_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_r_chan_t = `LEN5_DMEM_AXI_R_CHAN_T(Len5Cfg),
+    localparam type imem_axi_aw_chan_t = `LEN5_IMEM_AXI_AW_CHAN_T(Len5Cfg),
+    localparam type imem_axi_w_chan_t = `LEN5_IMEM_AXI_W_CHAN_T(Len5Cfg),
+    localparam type imem_axi_ar_chan_t = `LEN5_IMEM_AXI_AR_CHAN_T(Len5Cfg),
+    localparam type imem_axi_b_chan_t = `LEN5_IMEM_AXI_B_CHAN_T(Len5Cfg),
+    localparam type imem_axi_r_chan_t = `LEN5_IMEM_AXI_R_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_req_t =
+    `AXI_DECL_REQ_T(dmem_axi_aw_chan_t, dmem_axi_w_chan_t, dmem_axi_ar_chan_t),
+    localparam type dmem_axi_resp_t = `AXI_DECL_RESP_T(dmem_axi_b_chan_t, dmem_axi_r_chan_t),
+    localparam type id_t = `LEN5_AXI_ID_T(Len5Cfg),
+    localparam type imem_axi_req_t =
+    `AXI_DECL_REQ_T(imem_axi_aw_chan_t, imem_axi_w_chan_t, imem_axi_ar_chan_t),
+    localparam type imem_axi_resp_t = `AXI_DECL_RESP_T(imem_axi_b_chan_t, imem_axi_r_chan_t),
+    localparam type memory_response_t = `LEN5_MEMORY_RESPONSE_T(Len5Cfg),
+    parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
+        tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
+    ),
+    parameter int unsigned N = Len5Cfg.LEN5_MULTIPLE_ISSUES,
+    parameter logic [63:0] IMEM_BASE_ADDR = TbCfg.IMEM_BASE_ADDR,
+    parameter int unsigned IMEM_SIZE_BYTES = TbCfg.IMEM_SIZE_BYTES,
+    parameter logic [63:0] DMEM_BASE_ADDR = TbCfg.DMEM_BASE_ADDR,
+    parameter int unsigned DMEM_SIZE_BYTES = TbCfg.DMEM_SIZE_BYTES,
+    parameter logic [63:0] SERIAL_ADDR = TbCfg.SERIAL_ADDR,
+    parameter logic [63:0] EXIT_ADDR = TbCfg.EXIT_ADDR,
+    parameter int unsigned MAX_INSTR_OUTSTANDING = Len5Cfg.FETCH_MEMIF_FIFO_DEPTH,
+    parameter int unsigned COUNT_WIDTH = Len5Cfg.AXI_COUNT_WIDTH
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic data_flush_i,
-  input logic initialized_i,
-  input logic instr_req_i,
-  input logic instr_ready_i,
-  input logic [63:0] instr_addr_i,
-  input logic load_req_i,
-  input logic load_ready_i,
-  input logic [63:0] load_addr_i,
-  input logic [7:0] load_be_i,
-  input logic [len5_pkg::BUFF_IDX_LEN-1:0] load_tag_i,
-  input logic store_req_i,
-  input logic store_ready_i,
-  input logic store_we_i,
-  input logic [63:0] store_addr_i,
-  input logic [63:0] store_data_i,
-  input logic [7:0] store_be_i,
-  input logic [len5_pkg::BUFF_IDX_LEN-1:0] store_tag_i,
-  output memory_backend_pkg::memory_response_t response_o  /* verilator split_var */,
-  output axi_memory_pkg::imem_axi_req_t imem_req_o  /* verilator split_var */,
-  input axi_memory_pkg::imem_axi_resp_t imem_rsp_i,
-  output axi_memory_pkg::dmem_axi_req_t [1:0] dmem_req_o  /* verilator split_var */,
-  input axi_memory_pkg::dmem_axi_resp_t [1:0] dmem_rsp_i,
-  output logic mmio_write_o,
-  output logic [2:0][COUNT_WIDTH-1:0] outstanding_o,
-  output logic [2:0][COUNT_WIDTH-1:0] occupancy_o
+    input logic clk_i,
+    input logic rst_ni,
+    input logic data_flush_i,
+    input logic initialized_i,
+    input logic instr_req_i,
+    input logic instr_ready_i,
+    input logic [63:0] instr_addr_i,
+    input logic load_req_i,
+    input logic load_ready_i,
+    input logic [63:0] load_addr_i,
+    input logic [7:0] load_be_i,
+    input logic [Len5Cfg.BUFF_IDX_LEN-1:0] load_tag_i,
+    input logic store_req_i,
+    input logic store_ready_i,
+    input logic store_we_i,
+    input logic [63:0] store_addr_i,
+    input logic [63:0] store_data_i,
+    input logic [7:0] store_be_i,
+    input logic [Len5Cfg.BUFF_IDX_LEN-1:0] store_tag_i,
+    output memory_response_t response_o  /* verilator split_var */,
+    output imem_axi_req_t imem_req_o  /* verilator split_var */,
+    input imem_axi_resp_t imem_rsp_i,
+    output dmem_axi_req_t [1:0] dmem_req_o  /* verilator split_var */,
+    input dmem_axi_resp_t [1:0] dmem_rsp_i,
+    output logic mmio_write_o,
+    output logic [2:0][COUNT_WIDTH-1:0] outstanding_o,
+    output logic [2:0][COUNT_WIDTH-1:0] occupancy_o
 );
   import len5_pkg::*;
   import memory_backend_pkg::*;
   import axi_memory_pkg::*;
-  localparam int unsigned InstrBytes = InstrDataWidth / 8;
+  localparam int unsigned InstrBytes = Len5Cfg.IMEM_DATA_WIDTH / 8;
   localparam int unsigned MetadataAddrWidth = MAX_INSTR_OUTSTANDING > 1 ? $clog2(
       MAX_INSTR_OUTSTANDING
   ) : 1;
@@ -80,15 +103,15 @@ module axi_sim_adapter #(
   logic metadata_full, metadata_empty, metadata_pop;
   logic [MetadataAddrWidth-1:0] metadata_usage;
   logic instr_accepted, instr_ar_fire;
-  logic instr_ar_valid_q;
+  logic              instr_ar_valid_q;
   imem_axi_ar_chan_t instr_ar_q;
 
   logic load_sram, load_mmio, load_except;
   except_code_t load_code;
   logic load_accepted, load_ar_valid_q, load_ar_fire, load_r_fire;
   dmem_axi_ar_chan_t load_ar_q;
-  load_metadata_t    load_metadata_q[TagCount];
-  logic [TagCount-1:0] load_busy_q, load_discard_q;
+  load_metadata_t load_metadata_q[Len5Cfg.TAG_COUNT];
+  logic [Len5Cfg.TAG_COUNT-1:0] load_busy_q, load_discard_q;
   logic load_response_valid_q, load_response_space, load_response_fire;
   data_response_t load_response_q, load_result;
 
@@ -98,7 +121,7 @@ module axi_sim_adapter #(
   logic store_aw_fire, store_w_fire, store_b_fire, store_slot_free;
   dmem_axi_aw_chan_t store_aw_q;
   dmem_axi_w_chan_t  store_w_q;
-  logic [TagCount-1:0] store_busy_q, store_discard_q;
+  logic [Len5Cfg.TAG_COUNT-1:0] store_busy_q, store_discard_q;
   logic store_response_valid_q, store_response_space, store_response_fire;
   data_response_t store_response_q;
 
@@ -119,16 +142,17 @@ module axi_sim_adapter #(
   assign fetch_misaligned  = instr_addr_i[1:0] != 0;
   for (genvar lane = 0; lane < N; lane++) begin : gen_instruction_checks
     memory_access_check #(
-      .BASE_ADDR (IMEM_BASE_ADDR),
-      .SIZE_BYTES(IMEM_SIZE_BYTES),
-      .KIND      (0)
+        .TbCfg     (TbCfg),
+        .BASE_ADDR (IMEM_BASE_ADDR),
+        .SIZE_BYTES(IMEM_SIZE_BYTES),
+        .KIND      (0)
     ) u_check (
-      .addr_i  (fetch_bundle_addr + 64'(lane * 4)),
-      .bytes_i (4),
-      .sram_o  (fetch_sram[lane]),
-      .mmio_o  (fetch_mmio[lane]),
-      .except_o(fetch_except[lane]),
-      .code_o  (fetch_code[lane])
+        .addr_i  (fetch_bundle_addr + 64'(lane * 4)),
+        .bytes_i (4),
+        .sram_o  (fetch_sram[lane]),
+        .mmio_o  (fetch_mmio[lane]),
+        .except_o(fetch_except[lane]),
+        .code_o  (fetch_code[lane])
     );
   end
   assign fetch_metadata.use_axi    = !fetch_misaligned && fetch_sram[0];
@@ -141,20 +165,20 @@ module axi_sim_adapter #(
   // across flush; locally detected faults use the same order. System reset
   // cancels both memory transactions and their metadata.
   fifo_v3 #(
-    .dtype(fetch_metadata_t),
-    .DEPTH(MAX_INSTR_OUTSTANDING)
+      .dtype(fetch_metadata_t),
+      .DEPTH(MAX_INSTR_OUTSTANDING)
   ) u_fetch_metadata (
-    .clk_i,
-    .rst_ni,
-    .flush_i   (1'b0),
-    .testmode_i(1'b0),
-    .full_o    (metadata_full),
-    .empty_o   (metadata_empty),
-    .usage_o   (metadata_usage),
-    .data_i    (fetch_metadata),
-    .push_i    (instr_accepted),
-    .data_o    (fetch_head),
-    .pop_i     (metadata_pop)
+      .clk_i,
+      .rst_ni,
+      .flush_i   (1'b0),
+      .testmode_i(1'b0),
+      .full_o    (metadata_full),
+      .empty_o   (metadata_empty),
+      .usage_o   (metadata_usage),
+      .data_i    (fetch_metadata),
+      .push_i    (instr_accepted),
+      .data_o    (fetch_head),
+      .pop_i     (metadata_pop)
   );
   assign response_o.instr_gnt = instr_active && !metadata_full &&
       (!fetch_metadata.use_axi || !instr_ar_valid_q || imem_rsp_i.ar_ready);
@@ -192,8 +216,8 @@ module axi_sim_adapter #(
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : update_instruction_port
     if (!rst_ni) begin
-      instr_ar_valid_q    <= 1'b0;
-      instr_ar_q          <= '0;
+      instr_ar_valid_q <= 1'b0;
+      instr_ar_q       <= '0;
     end else begin
       if (instr_ar_fire) instr_ar_valid_q <= 1'b0;
       if (instr_accepted && fetch_metadata.use_axi) begin
@@ -209,32 +233,35 @@ module axi_sim_adapter #(
   end
 
   memory_access_check #(
-    .BASE_ADDR  (DMEM_BASE_ADDR),
-    .SIZE_BYTES (DMEM_SIZE_BYTES),
-    .SERIAL_ADDR(SERIAL_ADDR),
-    .EXIT_ADDR  (EXIT_ADDR),
-    .KIND       (1)
+
+      .TbCfg      (TbCfg),
+      .BASE_ADDR  (DMEM_BASE_ADDR),
+      .SIZE_BYTES (DMEM_SIZE_BYTES),
+      .SERIAL_ADDR(SERIAL_ADDR),
+      .EXIT_ADDR  (EXIT_ADDR),
+      .KIND       (1)
   ) u_load_check (
-    .addr_i  (load_addr_i),
-    .bytes_i (access_bytes(load_be_i)),
-    .sram_o  (load_sram),
-    .mmio_o  (load_mmio),
-    .except_o(load_except),
-    .code_o  (load_code)
+      .addr_i  (load_addr_i),
+      .bytes_i (access_bytes(load_be_i)),
+      .sram_o  (load_sram),
+      .mmio_o  (load_mmio),
+      .except_o(load_except),
+      .code_o  (load_code)
   );
   memory_access_check #(
-    .BASE_ADDR  (DMEM_BASE_ADDR),
-    .SIZE_BYTES (DMEM_SIZE_BYTES),
-    .SERIAL_ADDR(SERIAL_ADDR),
-    .EXIT_ADDR  (EXIT_ADDR),
-    .KIND       (2)
+      .TbCfg      (TbCfg),
+      .BASE_ADDR  (DMEM_BASE_ADDR),
+      .SIZE_BYTES (DMEM_SIZE_BYTES),
+      .SERIAL_ADDR(SERIAL_ADDR),
+      .EXIT_ADDR  (EXIT_ADDR),
+      .KIND       (2)
   ) u_store_check (
-    .addr_i  (store_addr_i),
-    .bytes_i (access_bytes(store_be_i)),
-    .sram_o  (store_sram),
-    .mmio_o  (store_mmio),
-    .except_o(store_except),
-    .code_o  (store_code)
+      .addr_i  (store_addr_i),
+      .bytes_i (access_bytes(store_be_i)),
+      .sram_o  (store_sram),
+      .mmio_o  (store_mmio),
+      .except_o(store_except),
+      .code_o  (store_code)
   );
 
   // Loads accepted by LEN5 remain owned through flush, including an unaccepted AR.
@@ -413,18 +440,18 @@ module axi_sim_adapter #(
   assign outstanding_o[0] = metadata_full ? COUNT_WIDTH'(MAX_INSTR_OUTSTANDING) : COUNT_WIDTH'(metadata_usage);
   assign outstanding_o[1] = COUNT_WIDTH'($countones(load_busy_q));
   assign outstanding_o[2] = COUNT_WIDTH'($countones(store_busy_q));
-  assign occupancy_o[0]   = '0;
-  assign occupancy_o[1]   = COUNT_WIDTH'(load_response_valid_q);
-  assign occupancy_o[2]   = COUNT_WIDTH'(store_response_valid_q);
+  assign occupancy_o[0] = '0;
+  assign occupancy_o[1] = COUNT_WIDTH'(load_response_valid_q);
+  assign occupancy_o[2] = COUNT_WIDTH'(store_response_valid_q);
   wire unused_decode = &{1'b0, fetch_mmio, load_mmio,
                          imem_rsp_i, fetch_sram, store_response_q.data};
 
   initial begin : check_configuration
-    if (N != len5_config_pkg::LEN5_MULTIPLE_ISSUES || !(N == 1 || N == 2 || N == 4 || N == 8) ||
+    if (N != Len5Cfg.LEN5_MULTIPLE_ISSUES || !(N == 1 || N == 2 || N == 4 || N == 8) ||
         MAX_INSTR_OUTSTANDING == 0 || COUNT_WIDTH < $clog2(
             MAX_INSTR_OUTSTANDING + 1
         ) || COUNT_WIDTH < $clog2(
-            TagCount + 1
+            Len5Cfg.TAG_COUNT + 1
         ))
       $fatal(1, "Invalid AXI adapter dimensions");
     if (IMEM_SIZE_BYTES < InstrBytes || IMEM_SIZE_BYTES % InstrBytes != 0 || IMEM_BASE_ADDR % 64'(InstrBytes) != 0 ||
@@ -443,10 +470,9 @@ module axi_sim_adapter #(
             SERIAL_ADDR, 8, DMEM_BASE_ADDR, 64'(DMEM_SIZE_BYTES)
         ) || regions_overlap(
             EXIT_ADDR, 8, DMEM_BASE_ADDR, 64'(DMEM_SIZE_BYTES)
-        ) || (SERIAL_ADDR & len5_config_pkg::MMAP_MASK) == 0 ||
-            (EXIT_ADDR & len5_config_pkg::MMAP_MASK) == 0)
+        ) || (SERIAL_ADDR & Len5Cfg.MMAP_MASK) == 0 || (EXIT_ADDR & Len5Cfg.MMAP_MASK) == 0)
       $fatal(1, "Invalid AXI MMIO addresses");
-    if (len5_config_pkg::LEN5_C_EN || len5_config_pkg::ONLY_DOUBLEWORD_MEM_ACCESSES)
+    if (Len5Cfg.LEN5_C_EN || Len5Cfg.ONLY_DOUBLEWORD_MEM_ACCESSES)
       $fatal(1, "AXI_SIM requires uncompressed instructions and original data offsets");
   end
 endmodule

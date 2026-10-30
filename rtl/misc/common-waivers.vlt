@@ -36,4 +36,4 @@ lint_off -rule PINCONNECTEMPTY -file "*/fifo_nohs.sv" -match "Instance pin conne
 lint_off -rule PINCONNECTEMPTY -file "*/fifo.sv" -match "Instance pin connected by name with empty reference: '*_o'"
 
 //
-lint_off -rule UNOPTFLAT -file "*fifo_nohs.sv" -match "Signal unoptimizable: Circular combinational logic: 'tb_bare.u_datapath.u_fetch_stage.u_mem_if.u_pred_fifo.gen_fifo.head_cnt_clr'"
+lint_off -rule UNOPTFLAT -file "*fifo_nohs.sv" -match "Signal unoptimizable: Circular combinational logic: 'tb_bare.i_len5_datapath.u_fetch_stage.u_mem_if.u_pred_fifo.gen_fifo.head_cnt_clr'"

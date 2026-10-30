@@ -15,7 +15,8 @@
 import len5_pkg::*;
 
 module gshare #(
-    parameter int unsigned HLEN = 4
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  parameter int unsigned HLEN = 4
 ) (
     input logic                   clk_i,
     input logic                   rst_ni,
@@ -33,7 +34,7 @@ module gshare #(
     WT,
     ST
   } c2b_t;  // 2-bit counter enum
-  localparam c2b_t INIT_C2B = SNT;
+  localparam c2b_t fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B) = SNT;
   localparam PHT_ROWS = 1 << HLEN;
   c2b_t pht_d[PHT_ROWS], pht_q[PHT_ROWS];
 
@@ -92,11 +93,11 @@ module gshare #(
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin : pht_async_rst
       for (int i = 0; i < PHT_ROWS; i++) begin
-        pht_q[i] <= INIT_C2B;
+        pht_q[i] <= fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B);
       end
     end else if (flush_i) begin : pht_sync_flush
       for (int i = 0; i < PHT_ROWS; i++) begin
-        pht_q[i] <= INIT_C2B;
+        pht_q[i] <= fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B);
       end
     end else pht_q <= pht_d;
   end

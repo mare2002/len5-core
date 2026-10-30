@@ -28,6 +28,22 @@ FUSESOC         ?= fusesoc
 VERILATOR       ?= verilator
 JOBS            ?= 4
 
+# Export only selected elaboration overrides; absent variables retain the SV defaults.
+LEN5_CONFIG_VARS := BOOT_VM_MODE BOOT_PC LEN5_MULTIPLE_ISSUES LEN5_M_EN LEN5_DIV_EN \
+	LEN5_F_EN LEN5_D_EN LEN5_C_EN LEN5_A_EN LEN5_STORE_LOAD_FWD_EN MAX_EU_N \
+	ONLY_DOUBLEWORD_MEM_ACCESSES LEN5_CSR_HPMCOUNTERS_EN MMAP_MASK BPU_HLEN BPU_BTB_BITS \
+	RAS_DEPTH FETCH_MEMIF_FIFO_DEPTH FETCH_MEM_DRAIN_ON_FLUSH LOAD_BUFFER_DRAIN_ON_FLUSH \
+	FETCH_REQ_SPILL_SKIP FETCH_ANS_SPILL_SKIP IQ_DEPTH LDBUFF_DEPTH STBUFF_DEPTH LSU_SPILL_SKIP \
+	ALU_RS_DEPTH ALU_SPILL_SKIP ALU_RR_ARBITER MULT_RS_DEPTH LEN5_MULT_SERIAL MULT_PIPE_DEPTH \
+	MULT_RR_ARBITER DIV_RS_DEPTH DIV_RR_ARBITER FPU_RS_DEPTH FPU_RR_ARBITER FPU_PIPE_DEPTH \
+	FPU_SPILL_SKIP BU_RS_DEPTH BU_SPILL_SKIP ROB_DEPTH COMMIT_SPILL_SKIP BPU_INIT_C2B
+TB_CONFIG_VARS := MEMORY_BACKEND AXI_CLOCK_HALF_PERIOD_PS IMEM_BASE_ADDR IMEM_SIZE_BYTES \
+	IMEM_LATENCY DMEM_BASE_ADDR DMEM_SIZE_BYTES DMEM_LATENCY SERIAL_ADDR EXIT_ADDR SRAM_SIM_INIT
+CONFIG_EXPORTS := $(foreach var,$(LEN5_CONFIG_VARS) $(TB_CONFIG_VARS) MEM_DEPTH,$(if $(filter undefined,$(origin $(var))),,$(var)))
+ifneq ($(strip $(CONFIG_EXPORTS)),)
+export $(CONFIG_EXPORTS)
+endif
+
 # Debug simulation (RTL checked against Spike)
 DEBUG_BUILD_DIR ?= $(BUILD_DIR)/debug
 DEBUG_SUITE_DIR ?= $(BUILD_DIR)/$(SUITE)_debug
@@ -74,13 +90,13 @@ SIM_CPP_FILES	:= $(shell find tb/verilator -type f -name "*.cpp" -o -name "*.hh"
 .PHONY: format
 format: | .check-fusesoc
 	@echo "## Formatting RTL code..."
-	fusesoc run --no-export --target format polito:len5:len5
+	$(FUSESOC) run --no-export --target format polito:len5:len5
 
 # Static analysis
 .PHONY: lint
 lint: | .check-fusesoc
 	@echo "## Running static analysis..."
-	fusesoc run --no-export --target lint polito:len5:len5
+	$(FUSESOC) run --no-export --target lint polito:len5:len5
 
 # RTL simulation
 # --------------
@@ -99,8 +115,9 @@ verilator-sim: DUMP_TRACE ?= true
 verilator-opt: DUMP_WAVES ?= false
 verilator-opt: DUMP_TRACE ?= false
 verilator-sim verilator-opt: verilator-build $(FIRMWARE)
-	@$(FUSESOC) run --no-export --target sim --tool verilator --run \
-		--build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 \
+	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
+	$(FUSESOC) run --no-export --target sim --tool verilator --run \
+		--build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 $$config_args \
 		--log_level=$(LOG_LEVEL) \
 		--firmware="$(abspath $(FIRMWARE))" \
 		--max_cycles=$(MAX_CYCLES) \
@@ -116,8 +133,9 @@ verilator-opt-debug: DUMP_WAVES ?= false
 verilator-opt-debug: DUMP_TRACE ?= false
 verilator-sim-debug verilator-opt-debug: verilator-build-debug $(FIRMWARE)
 	@mkdir -p "$(SIM_RUN_DIR)"
-	@$(FUSESOC) run --no-export --target sim-diff --tool verilator --run \
-		--build-root "$(DEBUG_BUILD_DIR)" $(FUSESOC_FLAGS) polito:len5:len5 \
+	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
+	$(FUSESOC) run --no-export --target sim-diff --tool verilator --run \
+		--build-root "$(DEBUG_BUILD_DIR)" $(FUSESOC_FLAGS) polito:len5:len5 $$config_args \
 		--log_level=$(LOG_LEVEL) \
 		--firmware="$(abspath $(FIRMWARE))" \
 		--max_cycles=$(MAX_CYCLES) \
@@ -147,7 +165,8 @@ $(SIM_RUN_DIR)/logs/diff/annotated.gtkw:
 .PHONY: questasim-sim
 questasim-sim: | app .check-fusesoc $(BUILD_DIR)/
 	@echo "## Running simulation with QuestaSim..."
-	fusesoc run --no-export --target sim --tool modelsim $(FUSESOC_FLAGS) --build polito:len5:len5 2>&1 | tee build/build.log
+	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
+	$(FUSESOC) run --no-export --target sim --tool modelsim $(FUSESOC_FLAGS) --build polito:len5:len5 $$config_args 2>&1 | tee build/build.log
 
 # Benchmarking targets
 # --------------------
@@ -200,7 +219,7 @@ $(DEBUG_SUITE_DIR)/run/$(BENCHMARK)/main.hex: | $(DEBUG_SUITE_DIR)/logs/compiler
 .PHONY: app app-spike
 app: | $(BUILD_DIR)/
 	@echo "## Building application '$(PROJECT)'"
-	$(MAKE) -BC sw app PROJECT=$(PROJECT) BUILD_DIR=$(BUILD_DIR) COPT=$(COPT)
+	$(MAKE) -BC sw app PROJECT=$(PROJECT) BUILD_DIR="$(abspath $(BUILD_DIR))" COPT=$(COPT)
 
 $(BUILD_DIR)/spike/main.elf: app-spike
 app-spike: | $(BUILD_DIR)/spike/
@@ -247,7 +266,8 @@ $(BUILD_DIR)/sim-common/spike-trace.log: $(BUILD_DIR)/spike/main.elf | $(BUILD_D
 .PHONY: spike-check
 spike-check: verilator-build | $(BUILD_DIR)/sim-common/ .check-fusesoc
 	@echo "## Launching Verilator simulation..."
-	$(FUSESOC) run --no-export --target sim --tool verilator --run --build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 \
+	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
+	$(FUSESOC) run --no-export --target sim --tool verilator --run --build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 $$config_args \
 		--log_level=$(LOG_LEVEL) \
 		--firmware=$(BUILD_DIR)/spike/main.hex \
 		--max_cycles=$(MAX_CYCLES) \
@@ -265,8 +285,8 @@ spike-check: verilator-build | $(BUILD_DIR)/sim-common/ .check-fusesoc
 check: | check-alu .check-fusesoc
 	@echo "### Executing regression tests..."
 	@echo " ## Checking RTL..."
-	fusesoc run --no-export --target format polito:len5:len5
-	fusesoc run --no-export --target lint polito:len5:len5
+	$(FUSESOC) run --no-export --target format polito:len5:len5
+	$(FUSESOC) run --no-export --target lint polito:len5:len5
 	@echo " ## Simulating test applications..."
 	$(foreach T, $(TESTS), eval $(MAKE) app-spike PROJECT=$(T) COPT=-O0 && $(MAKE) spike-check  || exit 1;)
 	$(foreach T, $(TESTS), eval $(MAKE) app-spike PROJECT=$(T) COPT=-O1 && $(MAKE) spike-check  || exit 1;)
@@ -279,7 +299,8 @@ check: | check-alu .check-fusesoc
 .PHONY: check-alu
 check-alu: | .check-fusesoc
 	@echo "## Checking ALU RTL..."
-	fusesoc run --no-export --target sim --tool verilator polito:len5:alu-tb \
+	@config_args="$$(bash scripts/sim/config-args.sh rtl fusesoc)" || exit $$?; \
+	$(FUSESOC) run --no-export --target sim --tool verilator polito:len5:alu-tb $$config_args \
 		--log_level=LOG_LOW \
 		--dump_waves=false \
 		--max_cycles=1000000
@@ -457,7 +478,8 @@ check-fetch-mem-if-mutations: fetch-mem-if-build
 # Directed native-memory drain protocol at the source-selected depth and width.
 .PHONY: check-fetch-mem-if-drain
 check-fetch-mem-if-drain:
-	@$(FUSESOC) run --target drain --tool verilator --build-root "$(BUILD_DIR)/fetch-mem-if/drain" polito:len5:fetch-mem-if-tb
+	@config_args="$$(bash scripts/sim/config-args.sh rtl fusesoc)" || exit $$?; \
+	$(FUSESOC) run --target drain --tool verilator --build-root "$(BUILD_DIR)/fetch-mem-if/drain" polito:len5:fetch-mem-if-tb $$config_args
 
 # Closed-loop complete production frontend. Only source-selected configuration.
 STRICT_COMPLETION ?= false

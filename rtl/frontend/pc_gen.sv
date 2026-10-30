@@ -13,25 +13,28 @@
 // Date: 03/10/2019
 
 
+
+
 module pc_gen #(
-  parameter logic [len5_pkg::XLEN-1:0] BOOT_PC = 64'h0
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter logic [len5_pkg::XLEN-1:0] BOOT_PC = Len5Cfg.BOOT_PC
 ) (
-  input  logic                                        clk_i,
-  input  logic                                        rst_ni,
-  input  logic                                        comm_except_raised_i,
-  input  logic                   [len5_pkg::XLEN-1:0] comm_except_pc_i,
-  input  logic                                        bu_res_valid_i,
-  input  fetch_pkg::resolution_t                      bu_res_i,
-  input  logic                   [len5_pkg::XLEN-1:0] pred_target_i,
-  input  logic                                        pred_taken_i,
-  input  logic                                        mem_ready_i,
-  output logic                                        valid_o,
-  output logic                                        bu_ready_o,
-  output logic                   [len5_pkg::XLEN-1:0] pc_o,
-  input  logic                                        early_jump_valid_i,
-  input  logic                   [len5_pkg::XLEN-1:0] early_jump_offs_i,
-  input  logic                   [len5_pkg::XLEN-1:0] early_jump_base_i,
-  output logic                   [len5_pkg::XLEN-1:0] early_jump_target_o
+    input  logic                                        clk_i,
+    input  logic                                        rst_ni,
+    input  logic                                        comm_except_raised_i,
+    input  logic                   [len5_pkg::XLEN-1:0] comm_except_pc_i,
+    input  logic                                        bu_res_valid_i,
+    input  fetch_pkg::resolution_t                      bu_res_i,
+    input  logic                   [len5_pkg::XLEN-1:0] pred_target_i,
+    input  logic                                        pred_taken_i,
+    input  logic                                        mem_ready_i,
+    output logic                                        valid_o,
+    output logic                                        bu_ready_o,
+    output logic                   [len5_pkg::XLEN-1:0] pc_o,
+    input  logic                                        early_jump_valid_i,
+    input  logic                   [len5_pkg::XLEN-1:0] early_jump_offs_i,
+    input  logic                   [len5_pkg::XLEN-1:0] early_jump_base_i,
+    output logic                   [len5_pkg::XLEN-1:0] early_jump_target_o
 );
 
   import len5_pkg::*;
@@ -41,20 +44,20 @@ module pc_gen #(
   // INTERNAL SIGNALS
   // ----------------
   logic [len5_pkg::XLEN-1:0] next_pc, add_pc_base, adder_out, add_pc_offset, add_pc_early_jump;
-  logic [LEN5_MULTIPLE_ISSUES_BITS:0] pc_increase;
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS:0] pc_increase;
 
   // -------------------
   // PC GENERATION LOGIC
   // -------------------
   // Target address operands mux
-  if (LEN5_MULTIPLE_ISSUES==1) begin: gen_single_pc_increase
+  if (Len5Cfg.LEN5_MULTIPLE_ISSUES == 1) begin : gen_single_pc_increase
     assign pc_increase = -1'b1;
-  end else begin: gen_multiple_pc_increase
+  end else begin : gen_multiple_pc_increase
     always_comb begin : pc_increase_mux
       if (bu_res_valid_i && bu_res_i.mispredict) begin
-        pc_increase = {{LEN5_MULTIPLE_ISSUES_BITS{1'b0}}, 1'b1};
+        pc_increase = {{Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS{1'b0}}, 1'b1};
       end else begin
-        pc_increase = -{1'b1, pc_o[ILEN_BIT_SUFF+LEN5_MULTIPLE_ISSUES_BITS-1:ILEN_BIT_SUFF]};
+        pc_increase = -{1'b1, pc_o[ILEN_BIT_SUFF+Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:ILEN_BIT_SUFF]};
       end
     end
   end
@@ -64,7 +67,9 @@ module pc_gen #(
       add_pc_offset     = early_jump_base_i;
       add_pc_early_jump = early_jump_offs_i;
     end else begin
-      add_pc_offset     = {{{(64-LEN5_MULTIPLE_ISSUES_BITS-1){1'b0}}, pc_increase}<<ILEN_BIT_SUFF};
+      add_pc_offset = {
+        {{(64 - Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS - 1) {1'b0}}, pc_increase} << ILEN_BIT_SUFF
+      };
       add_pc_early_jump = {pc_o[XLEN-1:ILEN_BIT_SUFF], {ILEN_BIT_SUFF{1'b0}}};
     end
   end

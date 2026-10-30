@@ -16,7 +16,7 @@
 `define FETCH_PKG_SVH_
 
 package fetch_pkg;
-  import len5_config_pkg::*;
+
   import len5_pkg::XLEN;
   import len5_pkg::ILEN;
   import len5_pkg::except_code_t;
@@ -64,13 +64,7 @@ package fetch_pkg;
   //TODO Check with Michele whether we change the structure to accomodate more instr
   //or we keep the structures the same and just use them more([3:0])
   // Memory interface answer spill cell data type
-  typedef struct packed {
-    logic [LEN5_MULTIPLE_ISSUES-1:0][ILEN-1:0] instr;
-    prediction_t [LEN5_MULTIPLE_ISSUES-1:0] pred_data;
-    logic [LEN5_MULTIPLE_ISSUES-1:0] except_raised;
-    except_code_t [LEN5_MULTIPLE_ISSUES-1:0] except_code;
-    logic [LEN5_MULTIPLE_ISSUES-1:0] valid_instr;
-  } mem_if_ans_reg_t;
+
 
   // ----------
   // PARAMETERS
@@ -82,11 +76,10 @@ package fetch_pkg;
   );  // 2 LSB of addresses are always 0, so no use in using them for indexing
 
   // G-share branch predictor history length and counters intial value
-  localparam int unsigned HLEN = BPU_HLEN;
-  localparam c2b_t INIT_C2B = WT;
+
 
   // Branch target buffer bits
-  localparam int unsigned BTB_BITS = BPU_BTB_BITS;
+
 
 endpackage
 

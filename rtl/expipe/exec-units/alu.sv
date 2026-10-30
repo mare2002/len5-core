@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2021 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -13,28 +14,30 @@
 // Date: 10/11/2021
 
 module alu #(
-  parameter bit SKIP_REG = 1'b1,  // make the ALU fully combinational
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter bit SKIP_REG = Len5Cfg.ALU_SPILL_SKIP,  // make the ALU fully combinational
 
-  // EU-specific parameters
-  parameter int unsigned EU_CTL_LEN = 4
+    // EU-specific parameters
+    parameter int unsigned EU_CTL_LEN = 4
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Handshake from/to the reservation station unit
-  input  logic valid_i,
-  input  logic ready_i,
-  output logic valid_o,
-  output logic ready_o,
+    // Handshake from/to the reservation station unit
+    input  logic valid_i,
+    input  logic ready_i,
+    output logic valid_o,
+    output logic ready_o,
 
-  // Data from/to the reservation station unit
-  input  logic                 [    EU_CTL_LEN-1:0] ctl_i,
-  input  expipe_pkg::rob_idx_t                      rob_idx_i,
-  input  logic                 [len5_pkg::XLEN-1:0] rs1_i,
-  input  logic                 [len5_pkg::XLEN-1:0] rs2_i,
-  output expipe_pkg::rob_idx_t                      rob_idx_o,
-  output logic                 [len5_pkg::XLEN-1:0] result_o
+    // Data from/to the reservation station unit
+    input  logic     [    EU_CTL_LEN-1:0] ctl_i,
+    input  rob_idx_t                      rob_idx_i,
+    input  logic     [len5_pkg::XLEN-1:0] rs1_i,
+    input  logic     [len5_pkg::XLEN-1:0] rs2_i,
+    output rob_idx_t                      rob_idx_o,
+    output logic     [len5_pkg::XLEN-1:0] result_o
 );
 
   import len5_pkg::*;
@@ -198,17 +201,17 @@ module alu #(
 
   // Output register
   spill_cell_flush #(
-    .DATA_T(out_reg_data_t),
-    .SKIP  (SKIP_REG)
+      .DATA_T(out_reg_data_t),
+      .SKIP  (SKIP_REG)
   ) u_out_reg (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(flush_i),
-    .valid_i(valid_i),
-    .ready_i(ready_i),
-    .valid_o(valid_o),
-    .ready_o(ready_o),
-    .data_i (out_reg_data_in),
-    .data_o (out_reg_data_out)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(flush_i),
+      .valid_i(valid_i),
+      .ready_i(ready_i),
+      .valid_o(valid_o),
+      .ready_o(ready_o),
+      .data_i (out_reg_data_in),
+      .data_o (out_reg_data_out)
   );
 endmodule

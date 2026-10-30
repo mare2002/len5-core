@@ -21,28 +21,29 @@
  *          the load without accessing the memory.
  */
 module l0_cache #(
-  /* Dependent parameters: do NOT override */
-  localparam int unsigned StIdxW = $clog2(len5_config_pkg::STBUFF_DEPTH)
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    /* Dependent parameters: do NOT override */
+    localparam int unsigned StIdxW = Len5Cfg.STBUFF_TAG_W
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i, // flush after exception
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i, // flush after exception
 
-  // Store buffer
-  input logic st_valid_i,  // store instruction valid
-  input logic [len5_pkg::ALEN-1:0] st_addr_i,  // store address
-  input logic [StIdxW-1:0] st_idx_i,  // store buffer index
-  input logic st_cached_i,  // the store instruction is cached
-  input logic [len5_pkg::ALEN-1:0] st_cached_addr_i,  // cached store address
-  input expipe_pkg::ldst_width_t st_cached_width_i,  // cached store width
-  input logic [len5_pkg::XLEN-1:0] st_cached_value_i,  // cached store value
-  output logic [StIdxW-1:0] st_idx_o,  // store buffer index
+    // Store buffer
+    input logic st_valid_i,  // store instruction valid
+    input logic [len5_pkg::ALEN-1:0] st_addr_i,  // store address
+    input logic [StIdxW-1:0] st_idx_i,  // store buffer index
+    input logic st_cached_i,  // the store instruction is cached
+    input logic [len5_pkg::ALEN-1:0] st_cached_addr_i,  // cached store address
+    input expipe_pkg::ldst_width_t st_cached_width_i,  // cached store width
+    input logic [len5_pkg::XLEN-1:0] st_cached_value_i,  // cached store value
+    output logic [StIdxW-1:0] st_idx_o,  // store buffer index
 
-  // Load buffer
-  input  logic                    [len5_pkg::ALEN-1:0] ld_addr_i,   // load address
-  input  expipe_pkg::ldst_width_t                      ld_width_i,  // load width
-  output logic                                         ld_valid_o,  // forwarding succeeded
-  output logic                    [len5_pkg::XLEN-1:0] ld_value_o   // cached value
+    // Load buffer
+    input  logic                    [len5_pkg::ALEN-1:0] ld_addr_i,   // load address
+    input  expipe_pkg::ldst_width_t                      ld_width_i,  // load width
+    output logic                                         ld_valid_o,  // forwarding succeeded
+    output logic                    [len5_pkg::XLEN-1:0] ld_value_o   // cached value
 );
 
   import len5_config_pkg::*;
@@ -55,23 +56,23 @@ module l0_cache #(
     logic              valid;
     logic [StIdxW-1:0] st_idx;
   } l0_cache_t;
-  l0_cache_t [STBUFF_DEPTH-1:0] data;
+  l0_cache_t [Len5Cfg.STBUFF_DEPTH-1:0] data;
 
   // Address and tag
-  logic      [      StIdxW-1:0] st_idx;
-  logic      [      StIdxW-1:0] ld_idx;
+  logic      [              StIdxW-1:0] st_idx;
+  logic      [              StIdxW-1:0] ld_idx;
 
   // Cache control
-  logic                         addr_valid;
-  logic                         cache_upd;
-  logic                         st_hit;
+  logic                                 addr_valid;
+  logic                                 cache_upd;
+  logic                                 st_hit;
 
   // --------------------
   // LEVEL-0 CACHE UPDATE
   // --------------------
   // Update the cache when a valid store is detected and the address is not
   // reserved.
-  assign addr_valid = (st_addr_i & MMAP_MASK) == 64'h0;
+  assign addr_valid = (st_addr_i & Len5Cfg.MMAP_MASK) == 64'h0;
   assign cache_upd  = st_valid_i & addr_valid;
   assign st_idx     = st_addr_i[StIdxW+3-1:3];  // doubleword-indexed
   always_ff @(posedge clk_i or negedge rst_ni) begin : blockName
@@ -85,7 +86,7 @@ module l0_cache #(
   end
 
   // Load address found in cache
-  assign ld_idx     = ld_addr_i[StIdxW+3-1:3];
+  assign ld_idx = ld_addr_i[StIdxW+3-1:3];
 
   // Cached instruction still valid in store buffer
   assign st_hit     = data[ld_idx].valid & st_cached_i &
@@ -95,7 +96,7 @@ module l0_cache #(
   // OUTPUT NETWORK
   // --------------
   // To store buffer
-  assign st_idx_o   = data[ld_idx].st_idx;
+  assign st_idx_o = data[ld_idx].st_idx;
   // Forwarding occurs when:
   // - the target address is found
   // - the target store instruction is still cached in the store buffer

@@ -20,7 +20,8 @@ def build(build_dir):
         fcntl.flock(lock,fcntl.LOCK_EX)
         if not binary.exists() or not (binary.parent/'fetch_stage_build.cfg').exists():
             print('## Building real fetch_stage with Verilator...',flush=True)
-            command=[os.environ.get('FUSESOC','fusesoc'),'run','--target','sim','--tool','verilator','--build-root',str(root),'--setup','--build','polito:len5:fetch-stage-tb','--MEM_DEPTH='+str(c['metadata_depth']),'--BOOT_PC='+str(c['boot_pc'])]
+            command=[os.environ.get('FUSESOC','fusesoc'),'run','--target','sim','--tool','verilator','--build-root',str(root),'--setup','--build','polito:len5:fetch-stage-tb','--MEM_DEPTH='+str(c['metadata_depth']),'--BOOT_PC_HI='+str(c['boot_pc'] >> 32),'--BOOT_PC_LO='+str(c['boot_pc'] & 0xffffffff)]
+            command += cfg.pc.build_arguments('rtl')
             with (root/'build.log').open('w') as f:r=subprocess.run(command,cwd=cfg.ROOT,stdout=f,stderr=subprocess.STDOUT)
             if r.returncode:
                 print('\n'.join((root/'build.log').read_text().splitlines()[-65:]));raise RuntimeError('fetch_stage build failed: '+str(root/'build.log'))

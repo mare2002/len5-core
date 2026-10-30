@@ -12,70 +12,77 @@
 // Author: Marco Andorno
 // Date: 7/8/2019
 
-module bpu #(
-  parameter int unsigned     HLEN     = 4,
-  parameter int unsigned     BTB_BITS = 4,
-  parameter fetch_pkg::c2b_t INIT_C2B = fetch_pkg::WNT
-) (
-  input logic                                        clk_i,
-  input logic                                        rst_ni,
-  input logic                                        flush_i,
-  input logic                   [len5_pkg::XLEN-1:0] curr_pc_i,
-  input logic                                        bu_res_valid_i,
-  input fetch_pkg::resolution_t                      bu_res_i,
 
-  output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] pred_o
+module bpu #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg  = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter int unsigned              HLEN     = Len5Cfg.BPU_HLEN,
+    parameter int unsigned              BTB_BITS = Len5Cfg.BPU_BTB_BITS,
+    parameter fetch_pkg::c2b_t          INIT_C2B = fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)
+) (
+    input logic                                        clk_i,
+    input logic                                        rst_ni,
+    input logic                                        flush_i,
+    input logic                   [len5_pkg::XLEN-1:0] curr_pc_i,
+    input logic                                        bu_res_valid_i,
+    input fetch_pkg::resolution_t                      bu_res_i,
+
+    output fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_o
 );
 
   import len5_pkg::*;
   import fetch_pkg::*;
   import len5_config_pkg::*;
   // Signal definitions
-  logic btb_del_entry;
-  logic [LEN5_MULTIPLE_ISSUES-1:0] btb_hit;
-  logic [LEN5_MULTIPLE_ISSUES-1:0] gshare_taken;
-  logic [LEN5_MULTIPLE_ISSUES-1:0] [XLEN-OFFSET-1:0] btb_target;
+  logic                                                     btb_del_entry;
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0]                  btb_hit;
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0]                  gshare_taken;
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][XLEN-OFFSET-1:0] btb_target;
 
   // Gshare branch predictor
   gshare #(
-    .HLEN    (HLEN),
-    .INIT_C2B(INIT_C2B)
+      .Len5Cfg (Len5Cfg),
+      .HLEN    (HLEN),
+      .INIT_C2B(INIT_C2B)
   ) u_gshare (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .flush_i    (flush_i),
-    .curr_hist_i(curr_pc_i[HLEN+OFFSET-1:OFFSET+LEN5_MULTIPLE_ISSUES_BITS]),
-    .res_valid_i(bu_res_valid_i),
-    .res_taken_i(bu_res_i.taken),
-    .res_hist_i (bu_res_i.pc[HLEN+OFFSET-1:OFFSET]),
-    .taken_o    (gshare_taken)
+      .clk_i(clk_i),
+      .rst_ni(rst_ni),
+      .flush_i(flush_i),
+      .curr_hist_i(curr_pc_i[HLEN+OFFSET-1:OFFSET+Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS]),
+      .res_valid_i(bu_res_valid_i),
+      .res_taken_i(bu_res_i.taken),
+      .res_hist_i(bu_res_i.pc[HLEN+OFFSET-1:OFFSET]),
+      .taken_o(gshare_taken)
   );
 
   // Branch Target Buffer (BTB)
   assign btb_del_entry = bu_res_i.mispredict & ~bu_res_i.taken;
   btb #(
-    .BTB_BITS(BTB_BITS)
+      .Len5Cfg (Len5Cfg),
+      .BTB_BITS(BTB_BITS)
   ) u_btb (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    .flush_i     (flush_i),
-    .curr_pc_i   (curr_pc_i),
-    .valid_i     (bu_res_valid_i),
-    .del_entry_i (btb_del_entry),
-    .res_pc_i    (bu_res_i.pc),
-    .res_target_i(bu_res_i.target),
-    .hit_o       (btb_hit),
-    .target_o    (btb_target)
+      .clk_i       (clk_i),
+      .rst_ni      (rst_ni),
+      .flush_i     (flush_i),
+      .curr_pc_i   (curr_pc_i),
+      .valid_i     (bu_res_valid_i),
+      .del_entry_i (btb_del_entry),
+      .res_pc_i    (bu_res_i.pc),
+      .res_target_i(bu_res_i.target),
+      .hit_o       (btb_hit),
+      .target_o    (btb_target)
   );
 
   // Output network
   // --------------
-  for(genvar i = 0; i<LEN5_MULTIPLE_ISSUES; i++) begin : gen_outputs_pred
-    if (LEN5_MULTIPLE_ISSUES==1)begin : gen_single 
-      assign pred_o[i].pc     = curr_pc_i;
-    end
-    else begin : gen_multiple
-      assign pred_o[i].pc     = {curr_pc_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS+2], i[LEN5_MULTIPLE_ISSUES_BITS-1:0], 2'b00};
+  for (genvar i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin : gen_outputs_pred
+    if (Len5Cfg.LEN5_MULTIPLE_ISSUES == 1) begin : gen_single
+      assign pred_o[i].pc = curr_pc_i;
+    end else begin : gen_multiple
+      assign pred_o[i].pc = {
+        curr_pc_i[XLEN-1:Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS+2],
+        i[Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:0],
+        2'b00
+      };
     end
     assign pred_o[i].hit    = btb_hit[i];
     assign pred_o[i].taken  = gshare_taken[i];

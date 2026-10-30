@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2022 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -19,48 +20,51 @@
  *          updates from the CDB.
  */
 module rob #(
-  parameter int DEPTH = 4
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int DEPTH = Len5Cfg.ROB_DEPTH
 ) (
-  // Clock and reset
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    // Clock and reset
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Issue stage
-  input logic issue_valid_i,  // from upstream hardware
-  output logic issue_ready_o,  // to upstream hardware
-  input expipe_pkg::rob_entry_t issue_data_i,
-  output expipe_pkg::rob_idx_t issue_tail_idx_o,  // the ROB entry where the new instruction is being allocated
-  input expipe_pkg::rob_idx_t issue_rs1_rob_idx_i,
-  input expipe_pkg::rob_idx_t issue_rs2_rob_idx_i,
-  input expipe_pkg::rob_idx_t issue_rs3_rob_idx_i,
+    // Issue stage
+    input logic issue_valid_i,  // from upstream hardware
+    output logic issue_ready_o,  // to upstream hardware
+    input expipe_pkg::rob_entry_t issue_data_i,
+    output rob_idx_t issue_tail_idx_o,  // the ROB entry where the new instruction is being allocated
+    input rob_idx_t issue_rs1_rob_idx_i,
+    input rob_idx_t issue_rs2_rob_idx_i,
+    input rob_idx_t issue_rs3_rob_idx_i,
 
-  // Operands forwarding logic
-  output logic                      opfwd_rs1_valid_o,
-  output logic                      opfwd_rs1_ready_o,
-  output logic [len5_pkg::XLEN-1:0] opfwd_rs1_value_o,
-  output logic                      opfwd_rs2_valid_o,
-  output logic                      opfwd_rs2_ready_o,
-  output logic [len5_pkg::XLEN-1:0] opfwd_rs2_value_o,
-  output logic                      opfwd_rs3_valid_o,
-  output logic                      opfwd_rs3_ready_o,
-  output logic [len5_pkg::XLEN-1:0] opfwd_rs3_value_o,
+    // Operands forwarding logic
+    output logic                      opfwd_rs1_valid_o,
+    output logic                      opfwd_rs1_ready_o,
+    output logic [len5_pkg::XLEN-1:0] opfwd_rs1_value_o,
+    output logic                      opfwd_rs2_valid_o,
+    output logic                      opfwd_rs2_ready_o,
+    output logic [len5_pkg::XLEN-1:0] opfwd_rs2_value_o,
+    output logic                      opfwd_rs3_valid_o,
+    output logic                      opfwd_rs3_ready_o,
+    output logic [len5_pkg::XLEN-1:0] opfwd_rs3_value_o,
 
 
-  // Store buffer
-  input  expipe_pkg::rob_idx_t sb_mem_idx_i,   // executing store ROB index
-  output logic                 sb_mem_clear_o, // store is clear to execute
+    // Store buffer
+    input  rob_idx_t sb_mem_idx_i,   // executing store ROB index
+    output logic     sb_mem_clear_o, // store is clear to execute
 
-  // Commit stage
-  output logic                   comm_valid_o,  // to downstream hardware
-  input  logic                   comm_ready_i,  // from downstream hardware
-  output expipe_pkg::rob_entry_t comm_data_o,
-  output expipe_pkg::rob_idx_t   comm_idx_o,    // ROB head idx to update register status
+    // Commit stage
+    output logic                   comm_valid_o,  // to downstream hardware
+    input  logic                   comm_ready_i,  // from downstream hardware
+    output expipe_pkg::rob_entry_t comm_data_o,
+    output rob_idx_t               comm_idx_o,    // ROB head idx to update register status
 
-  // Common data bus (CDB)
-  input  logic                  cdb_valid_i,
-  input  expipe_pkg::cdb_data_t cdb_data_i,
-  output logic                  cdb_ready_o
+    // Common data bus (CDB)
+    input  logic      cdb_valid_i,
+    input  cdb_data_t cdb_data_i,
+    output logic      cdb_ready_o
 );
 
   import expipe_pkg::*;
@@ -191,7 +195,7 @@ module rob #(
           data[i]       <= issue_data_i;
         end else if ((fifo_pop) && commit_idx == i[$clog2(DEPTH)-1:0]) begin
           data_valid[i] <= 1'b0;
-        end else if (update_res && cdb_data_i.rob_idx == i[ROB_IDX_LEN-1:0]) begin
+        end else if (update_res && cdb_data_i.rob_idx == i[Len5Cfg.ROB_IDX_LEN-1:0]) begin
           data[i].res_ready     <= 1'b1;
           data[i].res_value     <= cdb_data_i.res_value;
           data[i].except_raised <= cdb_data_i.except_raised;
@@ -224,41 +228,41 @@ module rob #(
   // Tail counter
   // Tracks the first available empty entry in the ROB
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) u_tail_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (tail_cnt_en),
-    .clr_i  (tail_cnt_clr),
-    .count_o(tail_idx),
-    .tc_o   ()               // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (tail_cnt_en),
+      .clr_i  (tail_cnt_clr),
+      .count_o(tail_idx),
+      .tc_o   ()               // not needed
   );
 
   // Clear counter for store instructions
   // Tracks the oldest instruction that is NOT "clear to commit"
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) u_clear_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (clear_cnt_en),
-    .clr_i  (clear_cnt_clr),
-    .count_o(clear_idx),
-    .tc_o   ()                // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (clear_cnt_en),
+      .clr_i  (clear_cnt_clr),
+      .count_o(clear_idx),
+      .tc_o   ()                // not needed
   );
 
   // Work counter for out-of-order commit
   // Tracks the oldest instruction that is NOT "clear to commit"
   modn_counter #(
-    .N   (DEPTH),
-    .INIT(1)
+      .N   (DEPTH),
+      .INIT(1)
   ) u_work_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (work_cnt_en),
-    .clr_i  (work_cnt_clr),
-    .count_o(work_idx),
-    .tc_o   ()               // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (work_cnt_en),
+      .clr_i  (work_cnt_clr),
+      .count_o(work_idx),
+      .tc_o   ()               // not needed
   );
 
   // --------------

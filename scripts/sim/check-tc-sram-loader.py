@@ -4,6 +4,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import importlib.util
+_spec = importlib.util.spec_from_file_location("memory_map", Path(__file__).resolve().parents[1] / "gen-memory-map.py")
+_config = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_config)
+build_arguments = _config.build_arguments
 
 root = Path(__file__).resolve().parents[2]
 os.chdir(root)
@@ -11,7 +18,7 @@ axi = os.environ.get("LOADER_BACKEND", "TC_SRAM") == "AXI_SIM"
 assert os.environ.get("LOADER_BACKEND", "TC_SRAM") in ("TC_SRAM", "AXI_SIM")
 build = Path(os.environ.get("TC_SRAM_LOADER_BUILD_DIR", root / ("build/axi-sim-loader" if axi else "build/tc-sram-loader")))
 build.mkdir(parents=True, exist_ok=True)
-sources = ["rtl/misc/packages-waivers.vlt",
+sources = ["+incdir+tb/packages", "+incdir+rtl/packages", "+incdir+rtl/vendor/pulp-axi/include","rtl/misc/packages-waivers.vlt",
            "rtl/packages/util_pkg.sv", "rtl/packages/len5_config_pkg.sv", "rtl/packages/len5_pkg.sv",
            "tb/packages/tb_config_pkg.sv", "tb/memory/tc_sram/memory_backend_pkg.sv",
            "+incdir+tb/memory"]
@@ -56,6 +63,7 @@ for width, ilat, dlat in ((64, 0, 3), (128, 1, 1), (256, 4, 0)):
                "-Wall", "-Wno-UNUSEDSIGNAL", "-Wno-UNUSEDPARAM", f"-GI_WIDTH={width}"]
         cmd += (["--timescale", "1ps/1ps", "-Wno-PINCONNECTEMPTY"] if axi else
                 [f'-GSIM_INIT="{mode}"', f"-GI_LATENCY={ilat}", f"-GD_LATENCY={dlat}"])
+        cmd += [arg for kind in ("rtl", "tb") for arg in build_arguments(kind, output="verilator")]
         cmd += sources
         with (out / "build.log").open("w") as log:
             subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True)

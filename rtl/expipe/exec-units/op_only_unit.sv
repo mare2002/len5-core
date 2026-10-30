@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2021 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -18,34 +19,37 @@
  */
 
 module op_only_unit #(
-  parameter int unsigned RS_DEPTH = 4,  // must be a power of 2
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int unsigned RS_DEPTH = 4,  // must be a power of 2
 
-  // EU-specific parameters
-  parameter int unsigned EU_CTL_LEN = 4
+    // EU-specific parameters
+    parameter int unsigned EU_CTL_LEN = 4
 ) (
-  // Clock, reset, and flush
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    // Clock, reset, and flush
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Handshake from/to issue arbiter
-  input  logic issue_valid_i,
-  output logic issue_ready_o,
+    // Handshake from/to issue arbiter
+    input  logic issue_valid_i,
+    output logic issue_ready_o,
 
-  // Data from the decode stage
-  input logic                                      rs1_ready_i,
-  input expipe_pkg::rob_idx_t                      rs1_idx_i,
-  input logic                 [len5_pkg::XLEN-1:0] rs1_value_i,
-  input expipe_pkg::rob_idx_t                      dest_idx_i,
+    // Data from the decode stage
+    input logic                          rs1_ready_i,
+    input rob_idx_t                      rs1_idx_i,
+    input logic     [len5_pkg::XLEN-1:0] rs1_value_i,
+    input rob_idx_t                      dest_idx_i,
 
-  // Hanshake from/to the CDB
-  input  logic cdb_ready_i,
-  input  logic cdb_valid_i,  // to know if the CDB is carrying valid data
-  output logic cdb_valid_o,
+    // Hanshake from/to the CDB
+    input  logic cdb_ready_i,
+    input  logic cdb_valid_i,  // to know if the CDB is carrying valid data
+    output logic cdb_valid_o,
 
-  // Data from/to the CDB
-  input  expipe_pkg::cdb_data_t cdb_data_i,
-  output expipe_pkg::cdb_data_t cdb_data_o
+    // Data from/to the CDB
+    input  cdb_data_t cdb_data_i,
+    output cdb_data_t cdb_data_o
 );
 
   import len5_config_pkg::*;
@@ -54,23 +58,24 @@ module op_only_unit #(
   // Instantiate reservation station
   // -------------------------------
   op_only_rs #(
-    .RS_DEPTH  (RS_DEPTH),
-    .EU_CTL_LEN(EU_CTL_LEN)
+      .Len5Cfg   (Len5Cfg),
+      .RS_DEPTH  (RS_DEPTH),
+      .EU_CTL_LEN(EU_CTL_LEN)
   ) u_op_only_rs (
-    .clk_i        (clk_i),
-    .rst_ni       (rst_ni),
-    .flush_i      (flush_i),
-    .issue_valid_i(issue_valid_i),
-    .issue_ready_o(issue_ready_o),
-    .rs1_ready_i  (rs1_ready_i),
-    .rs1_idx_i    (rs1_idx_i),
-    .rs1_value_i  (rs1_value_i),
-    .dest_idx_i   (dest_idx_i),
-    .cdb_ready_i  (cdb_ready_i),
-    .cdb_valid_i  (cdb_valid_i),
-    .cdb_valid_o  (cdb_valid_o),
-    .cdb_data_i   (cdb_data_i),
-    .cdb_data_o   (cdb_data_o)
+      .clk_i        (clk_i),
+      .rst_ni       (rst_ni),
+      .flush_i      (flush_i),
+      .issue_valid_i(issue_valid_i),
+      .issue_ready_o(issue_ready_o),
+      .rs1_ready_i  (rs1_ready_i),
+      .rs1_idx_i    (rs1_idx_i),
+      .rs1_value_i  (rs1_value_i),
+      .dest_idx_i   (dest_idx_i),
+      .cdb_ready_i  (cdb_ready_i),
+      .cdb_valid_i  (cdb_valid_i),
+      .cdb_valid_o  (cdb_valid_o),
+      .cdb_data_i   (cdb_data_i),
+      .cdb_data_o   (cdb_data_o)
   );
 
 endmodule

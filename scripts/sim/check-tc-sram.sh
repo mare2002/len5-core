@@ -3,7 +3,11 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 test_build_dir=${TC_SRAM_BUILD_DIR:-"$PWD/build/tc-sram"}
 mkdir -p "$test_build_dir"
+config_output=$(bash scripts/sim/config-args.sh all verilator)
+config_args=()
+if [[ -n $config_output ]]; then mapfile -t config_args <<< "$config_output"; fi
 "${VERILATOR:-verilator}" --binary --timing --assert -j "${JOBS:-4}" \
+  "${config_args[@]}" +incdir+tb/packages +incdir+rtl/packages +incdir+rtl/vendor/pulp-axi/include +incdir+tb/memory \
   -MAKEFLAGS "OBJCACHE= CXX=${CXX:-/usr/bin/g++}" --Mdir "$test_build_dir" --top-module tc_sram_adapter_tb \
   -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY \
   tb/memory/tc_sram/waivers.vlt rtl/misc/packages-waivers.vlt \

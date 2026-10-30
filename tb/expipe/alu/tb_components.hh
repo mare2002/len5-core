@@ -2,14 +2,14 @@
 #define ALU_TB_COMPONENTS_HH_
 
 #include <verilated.h>
-#include "Valu.h"
+#include "Valu_tb.h"
 
 class ReqTx
 {
 public:
     vluint64_t rs1;
     vluint64_t rs2;
-    vluint8_t alu_ctl; 
+    vluint8_t alu_ctl;
     vluint8_t valid;
     vluint8_t flush;
     vluint32_t rob_idx;
@@ -32,10 +32,10 @@ public:
 class Drv
 {
 private:
-    Valu *dut;
+    Valu_tb *dut;
 
 public:
-    Drv(Valu *dut);
+    Drv(Valu_tb *dut);
     ~Drv();
 
     void drive(ReqTx *req);
@@ -50,7 +50,7 @@ private:
     unsigned int err_num;
 
     void checkRes();
-    
+
 public:
     Scb();
     ~Scb();
@@ -67,13 +67,13 @@ public:
 class ReqMonitor
 {
 private:
-    Valu *dut;
+    Valu_tb *dut;
     Scb *scb;
     ReqTx *req;
     uint8_t req_busy;
 
 public:
-    ReqMonitor(Valu *dut, Scb *scb);
+    ReqMonitor(Valu_tb *dut, Scb *scb);
     ~ReqMonitor();
 
     void monitor();
@@ -82,11 +82,11 @@ public:
 class RspMonitor
 {
 private:
-    Valu *dut;
+    Valu_tb *dut;
     Scb *scb;
 
 public:
-    RspMonitor(Valu *dut, Scb *scb);
+    RspMonitor(Valu_tb *dut, Scb *scb);
     ~RspMonitor();
 
     void monitor();

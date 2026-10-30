@@ -14,7 +14,7 @@
 // Date: 03/08/2019
 
 package csr_pkg;
-  import len5_config_pkg::LEN5_M_EN;
+
   import len5_pkg::XLEN;
 
   // ----
@@ -289,34 +289,36 @@ package csr_pkg;
 
   // MISA extensions
   // ---------------
-  localparam misa_extensions_t MISA_EXT = {
-    1'b0,  // A
-    1'b0,  // B
-    1'b0,  // C
-    1'b0,  // D
-    1'b0,  // E
-    1'b0,  // F
-    1'b0,  // G
-    1'b0,  // H
-    1'b1,  // I
-    1'b0,  // J
-    1'b0,  // K
-    1'b0,  // L
-    LEN5_M_EN,  // M    // TODO: divider not supported yet
-    1'b0,  // N
-    1'b0,  // O
-    1'b0,  // P
-    1'b0,  // Q
-    1'b0,  // R
-    1'b0,  // S
-    1'b0,  // T
-    1'b0,  // U
-    1'b0,  // V
-    1'b0,  // W
-    1'b0,  // X
-    1'b0,  // Y
-    1'b0  // Z
-  };
+  function automatic misa_extensions_t misa_extensions(bit len5_m_en);
+    return {
+      1'b0,  // A
+      1'b0,  // B
+      1'b0,  // C
+      1'b0,  // D
+      1'b0,  // E
+      1'b0,  // F
+      1'b0,  // G
+      1'b0,  // H
+      1'b1,  // I
+      1'b0,  // J
+      1'b0,  // K
+      1'b0,  // L
+      len5_m_en,  // M    // TODO: divider not supported yet
+      1'b0,  // N
+      1'b0,  // O
+      1'b0,  // P
+      1'b0,  // Q
+      1'b0,  // R
+      1'b0,  // S
+      1'b0,  // T
+      1'b0,  // U
+      1'b0,  // V
+      1'b0,  // W
+      1'b0,  // X
+      1'b0,  // Y
+      1'b0  // Z
+    };
+  endfunction
 
   // Implementation IDs
   // ------------------

@@ -12,28 +12,29 @@
 // Author: Michele Caon, Flavia Guella
 // Date: 12/11/2019
 
-module fp_rf (
-  input logic clk_i,
-  input logic rst_ni,
+module fp_rf #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+) (
+    input logic clk_i,
+    input logic rst_ni,
 
-  // Handshake from the commit logic
-  input logic comm_valid_i,
-  // output  logic                       comm_ready_o,
+    // Handshake from the commit logic
+    input logic comm_valid_i,
+    // output  logic                       comm_ready_o,
 
-  // Data from the commit logic (result write port)
-  input logic [len5_pkg::FREG_IDX_LEN-1:0] comm_rd_idx_i,
-  input logic [        len5_pkg::FLEN-1:0] comm_rd_value_i,
+    // Data from the commit logic (result write port)
+    input logic [len5_pkg::FREG_IDX_LEN-1:0] comm_rd_idx_i,
+    input logic [          Len5Cfg.FLEN-1:0] comm_rd_value_i,
 
-  // Data to the issue stage (operands read ports)
-  input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs1_idx_i,
-  input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs2_idx_i,
-  input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs3_idx_i,
-  output logic [        len5_pkg::FLEN-1:0] issue_rs1_value_o,
-  output logic [        len5_pkg::FLEN-1:0] issue_rs2_value_o,
-  output logic [        len5_pkg::FLEN-1:0] issue_rs3_value_o
+    // Data to the issue stage (operands read ports)
+    input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs1_idx_i,
+    input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs2_idx_i,
+    input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs3_idx_i,
+    output logic [          Len5Cfg.FLEN-1:0] issue_rs1_value_o,
+    output logic [          Len5Cfg.FLEN-1:0] issue_rs2_value_o,
+    output logic [          Len5Cfg.FLEN-1:0] issue_rs3_value_o
 );
 
-  import len5_pkg::FLEN;
   import len5_pkg::FREG_NUM;
   import len5_pkg::FREG_IDX_LEN;
   import expipe_pkg::*;
@@ -41,7 +42,7 @@ module fp_rf (
   // DEFINITIONS
 
   // Register file data
-  logic [FLEN-1:0] rf_data[FREG_NUM];
+  logic [Len5Cfg.FLEN-1:0] rf_data[FREG_NUM];
 
   // ------------------------
   // REGISTER FILE WRITE PORT

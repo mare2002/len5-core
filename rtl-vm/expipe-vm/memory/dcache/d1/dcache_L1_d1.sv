@@ -1,3 +1,4 @@
+`include "len5_memory_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -15,7 +16,14 @@
 
 import memory_pkg::*;
 
-module dcache_L1_d1
+module dcache_L1_d1 #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type d0_d1_req_t = `LEN5_VM_D0_D1_REQ_T(Len5Cfg),
+  localparam type d1_d0_req_t = `LEN5_VM_D1_D0_REQ_T(Len5Cfg),
+  localparam type d1_req_info_t = `LEN5_VM_D1_REQ_INFO_T(Len5Cfg),
+  localparam type l1dc_lsq_ans_t = `LEN5_VM_L1DC_LSQ_ANS_T(Len5Cfg),
+  localparam type l1dc_replay_t = `LEN5_VM_L1DC_REPLAY_T(Len5Cfg)
+)
 (
   // Main
   input  logic          clk_i,
@@ -218,7 +226,7 @@ module dcache_L1_d1
     end
   end
 
-  d1_d0_data_sel i_d1_d0_data_sel (
+  d1_d0_data_sel #(.Len5Cfg(Len5Cfg)) i_d1_d0_data_sel (
     .d1_req_type_i(d0_reg_out_q.req_type),
     .d1_d0_req_type_i(d1_d0_req_type_from_ctrl),
     .d1_d0_req_valid_i(d1_d0_req_type_from_ctrl_valid),

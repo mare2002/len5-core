@@ -1,5 +1,5 @@
 #include "tb_components.hh"
-#include "Valu_expipe_pkg.h"
+#include "Valu_tb_expipe_pkg.h"
 #include "tb_macros.hh"
 #include <inttypes.h>
 
@@ -37,7 +37,7 @@ RspTx::~RspTx()
 {
 }
 
-Drv::Drv(Valu *dut)
+Drv::Drv(Valu_tb *dut)
 {
     this->dut = dut;
 }
@@ -56,11 +56,11 @@ void Drv::drive(ReqTx *req)
     if (req != NULL)
     {
         dut->rs1_i = req->rs1;
-        dut->rs2_i = req>rs2;
+        dut->rs2_i = req->rs2;
         dut-> ctl_i = req->alu_ctl;
         dut->valid_i = req->valid;
         dut->flush_i = req->flush;
-        dut->rob_idx_i = req->rob_idx;  
+        dut->rob_idx_i = req->rob_idx;
     }
 }
 
@@ -85,7 +85,7 @@ void Scb::writeRsp(RspTx *rsp)
     this->checkRes();
 }
 
-void Scb::flush() 
+void Scb::flush()
 {
     // Tell me that C++ sucks without telling me that C++ sucks...
     while (!this->req_q.empty()) {
@@ -118,7 +118,7 @@ void Scb::checkRes()
 
     int64_t rs1_int = (int64_t) req->rs1;
     int64_t rs2_int = (int64_t) req->rs2;
-    
+
     uint64_t rs1_w_int = (int32_t) req->rs1;
     uint64_t rs2_w_int = (int32_t) req->rs2;
 
@@ -133,59 +133,59 @@ void Scb::checkRes()
     // Check if the result is correct
     switch (req->alu_ctl)
     {
-    case Valu_expipe_pkg::ALU_ADD:
+    case Valu_tb_expipe_pkg::ALU_ADD:
         exp_res = (vluint64_t) rs1_int + rs2_int;
         break;
-    case Valu_expipe_pkg::ALU_ADDW:
+    case Valu_tb_expipe_pkg::ALU_ADDW:
         exp_res_32 = (vluint32_t) rs1_w_int + rs2_w_int;
         // sign extend the result on 64 bits
         exp_res = (exp_res_32 & 0x80000000) ? 0xffffffff00000000 | exp_res_32 : exp_res_32;
         break;
-    case Valu_expipe_pkg::ALU_SUB:
+    case Valu_tb_expipe_pkg::ALU_SUB:
         exp_res = (vluint64_t) rs1_int - rs2_int;
         break;
-    case Valu_expipe_pkg::ALU_SUBW:
+    case Valu_tb_expipe_pkg::ALU_SUBW:
         exp_res_32 = (int32_t) rs1_w_int - rs2_w_int;
         // sign extend the result on 64 bits
         exp_res = (exp_res_32 & 0x80000000) ? 0xffffffff00000000 | exp_res_32 : exp_res_32;
         break;
-    case Valu_expipe_pkg::ALU_AND:
+    case Valu_tb_expipe_pkg::ALU_AND:
         exp_res = (vluint64_t) (req->rs1 & req->rs2);
         break;
-    case Valu_expipe_pkg::ALU_OR:
+    case Valu_tb_expipe_pkg::ALU_OR:
         exp_res = (vluint64_t) (req->rs1 | req->rs2);
         break;
-    case Valu_expipe_pkg::ALU_XOR:
+    case Valu_tb_expipe_pkg::ALU_XOR:
         exp_res = (vluint64_t) (req->rs1 ^ req->rs2);
         break;
-    case Valu_expipe_pkg::ALU_SLL:
+    case Valu_tb_expipe_pkg::ALU_SLL:
         exp_res = (vluint64_t) (req->rs1 << shamt);
         break;
-    case Valu_expipe_pkg::ALU_SLLW:
+    case Valu_tb_expipe_pkg::ALU_SLLW:
         exp_res_32 = (vluint32_t) (rs1_w_int << shamt_w);
         // sign extend the result on 64 bits
         exp_res = ((exp_res_32 & 0x80000000) != 0) ? 0xffffffff00000000 | exp_res_32 : exp_res_32;
         break;
-    case Valu_expipe_pkg::ALU_SRL:
+    case Valu_tb_expipe_pkg::ALU_SRL:
         exp_res = (vluint64_t) (req->rs1 >> shamt);
         break;
-    case Valu_expipe_pkg::ALU_SRLW:
+    case Valu_tb_expipe_pkg::ALU_SRLW:
         exp_res_32 = (vluint32_t) (((vluint32_t) req->rs1) >> shamt_w);
         // sign extend the result on 64 bits
         exp_res = ((exp_res_32 & 0x80000000) != 0) ? 0xffffffff00000000 | exp_res_32 : exp_res_32;
         break;
-    case Valu_expipe_pkg::ALU_SRA:
+    case Valu_tb_expipe_pkg::ALU_SRA:
         exp_res = (vluint64_t) (rs1_int >> shamt);
         break;
-    case Valu_expipe_pkg::ALU_SRAW:
+    case Valu_tb_expipe_pkg::ALU_SRAW:
         exp_res_32 = (vluint32_t) (rs1_w_int >> shamt_w);
         // sign extend the result on 64 bits
         exp_res = ((exp_res_32 & 0x80000000) != 0) ? 0xffffffff00000000 | exp_res_32 : exp_res_32;
         break;
-    case Valu_expipe_pkg::ALU_SLT:
+    case Valu_tb_expipe_pkg::ALU_SLT:
         exp_res = (vluint64_t) (rs1_int < rs2_int) ? 1 : 0;
         break;
-    case Valu_expipe_pkg::ALU_SLTU:
+    case Valu_tb_expipe_pkg::ALU_SLTU:
         exp_res = (vluint64_t) (req->rs1 < req->rs2) ? 1 : 0;
         break;
     default: // ADD
@@ -195,13 +195,13 @@ void Scb::checkRes()
     if ( rsp->res != exp_res)
     {
         TB_ERR("Received wrong result!");
-        TB_ERR("RSP > op: %-5s rs1: 0x%016lx | rs2: 0x%016lx --> res: 0x%016lx (expected: 0x%016lx)", 
+        TB_ERR("RSP > op: %-5s rs1: 0x%016lx | rs2: 0x%016lx --> res: 0x%016lx (expected: 0x%016lx)",
                 op_str[req->alu_ctl], req->rs1, req->rs2, rsp->res, exp_res);
         err_num++;
     }
     else
     {
-        TB_SUCCESS(LOG_MEDIUM, "RSP > op: %-5s rs1: 0x%016lx | rs2: 0x%016lx --> res: 0x%016lx (expected: 0x%016lx)", 
+        TB_SUCCESS(LOG_MEDIUM, "RSP > op: %-5s rs1: 0x%016lx | rs2: 0x%016lx --> res: 0x%016lx (expected: 0x%016lx)",
                 op_str[req->alu_ctl], req->rs1, req->rs2, rsp->res, exp_res);
     }
     // Clean up
@@ -224,7 +224,7 @@ int Scb::isDone()
     return this->req_q.empty() && this->rsp_q.empty();
 }
 
-ReqMonitor::ReqMonitor(Valu *dut, Scb *scb)
+ReqMonitor::ReqMonitor(Valu_tb *dut, Scb *scb)
 {
     this->dut = dut;
     this->scb = scb;
@@ -263,7 +263,7 @@ void ReqMonitor::monitor()
     }
 }
 
-RspMonitor::RspMonitor(Valu *dut, Scb *scb)
+RspMonitor::RspMonitor(Valu_tb *dut, Scb *scb)
 {
     this->dut = dut;
     this->scb = scb;

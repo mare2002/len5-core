@@ -12,20 +12,23 @@
 // Author: Marco Andorno
 // Date: 26/07/2019
 
-module gshare #(
-  parameter int unsigned     HLEN     = 4,
-  parameter fetch_pkg::c2b_t INIT_C2B = fetch_pkg::WNT
-) (
-  input logic            clk_i,
-  input logic            rst_ni,
-  input logic            flush_i,
-  input logic [HLEN-LEN5_MULTIPLE_ISSUES_BITS-1:0] curr_hist_i,
-  input logic            res_valid_i,
-  input logic            res_taken_i,
-  input logic [HLEN-1:0] res_hist_i,
 
-  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] taken_o
+module gshare #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg  = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter int unsigned              HLEN     = Len5Cfg.BPU_HLEN,
+    parameter fetch_pkg::c2b_t          INIT_C2B = fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)
+) (
+    input logic                                              clk_i,
+    input logic                                              rst_ni,
+    input logic                                              flush_i,
+    input logic [HLEN-Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:0] curr_hist_i,
+    input logic                                              res_valid_i,
+    input logic                                              res_taken_i,
+    input logic [                                  HLEN-1:0] res_hist_i,
+
+    output logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] taken_o
 );
+
   import len5_pkg::*;
   import fetch_pkg::*;
   import len5_config_pkg::*;
@@ -36,7 +39,7 @@ module gshare #(
   // ----------------
   c2b_t pht_d[PhtRows], pht_q[PhtRows];  // 2-bit predictor counters
   logic [HLEN-1:0] history, index_w;  // global branch history
-  logic [LEN5_MULTIPLE_ISSUES-1:0][HLEN-1:0] index_r;//global branch history
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][HLEN-1:0] index_r;  //global branch history
   // --------------------------
   // Branch History Table (BHT)
   // --------------------------
@@ -98,18 +101,18 @@ module gshare #(
   // Assignments
   //assign index_r = history ^ curr_hist_i;  // XOR hashing
   assign index_w = history ^ res_hist_i;
-  if (LEN5_MULTIPLE_ISSUES==1) begin : gen_single_issue
+  if (Len5Cfg.LEN5_MULTIPLE_ISSUES == 1) begin : gen_single_issue
     //single issue
     assign index_r = history ^ curr_hist_i;
     assign taken_o = pht_q[index_r][1];
   end else begin : gen_multiple_issues
     //multiple issue
     //change just the lowest bits of the pc counter, they are zero either way, history is always the same so we are using bundle history
-    for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++)begin : gen_read_indx
-      assign index_r[i] = history ^ {curr_hist_i, i[LEN5_MULTIPLE_ISSUES_BITS-1:0]};
+    for (genvar i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin : gen_read_indx
+      assign index_r[i] = history ^ {curr_hist_i, i[Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:0]};
     end
     //network to determine the outputs, it uses index_r
-    for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++)begin : gen_output
+    for (genvar i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin : gen_output
       assign taken_o[i] = pht_q[index_r[i]][1];
     end
   end

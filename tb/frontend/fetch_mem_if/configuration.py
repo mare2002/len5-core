@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-"""pc_gen source-parser/cache policy adapted for the real fetch-memory DUT."""
+"""SV elaboration/cache policy adapted for the real fetch-memory DUT."""
 import argparse
 import hashlib
 import importlib.util
@@ -13,28 +13,24 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('pc_gen_source_configuration', HERE.parent/'pc_gen/configuration.py')
 pc_config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pc_config)
-literal = pc_config.literal  # Reuse the existing production-literal parser unchanged.
 
 
 def configuration():
     config = pc_config.configuration(0)
     config.pop('boot_pc')
-    import re
-    rtl = (ROOT/'rtl/frontend/fetch_mem_if.sv').read_text()
-    match = re.search(r'parameter\s+int\s+unsigned\s+MAX_MEM_OUTSTANDING_REQUESTS\s*=\s*([^\n,)]+)', rtl)
-    if not match:
-        raise ValueError('cannot parse production MAX_MEM_OUTSTANDING_REQUESTS default')
-    config['metadata_depth'] = literal('localparam int unsigned D = '+match[1]+';', 'D')
-    config['request_skip'] = literal((ROOT/'rtl/packages/len5_config_pkg.sv').read_text(), 'FETCH_REQ_SPILL_SKIP')
-    config['answer_skip'] = literal((ROOT/'rtl/packages/len5_config_pkg.sv').read_text(), 'FETCH_ANS_SPILL_SKIP')
-    config['cause_bits'] = literal((ROOT/'rtl/packages/len5_pkg.sv').read_text(), 'EXCEPT_TYPE_LEN')
+    selected = pc_config.rtl_configuration()
+    architecture = pc_config.config_tools.elaborated_configuration('architecture')
+    config['metadata_depth'] = int(os.environ.get('MEM_DEPTH', '2'), 0)
+    config['request_skip'] = selected['FETCH_REQ_SPILL_SKIP']
+    config['answer_skip'] = selected['FETCH_ANS_SPILL_SKIP']
+    config['cause_bits'] = architecture['EXCEPT_TYPE_LEN']
     if (config['metadata_depth'],config['request_skip'],config['answer_skip'],config['cause_bits']) != (2,1,0,5):
         raise ValueError('FQ08: initial transport profile supports source depth=2, request bypass, registered answer, 5-bit causes')
     return config
 
 
 def sources():
-    paths = set((ROOT/'rtl/packages').glob('*.sv'))
+    paths = set((ROOT/'rtl/packages').glob('*.sv*'))
     paths.update([ROOT/'rtl/packages.core', ROOT/'rtl/misc/packages-waivers.vlt',
                   ROOT/'rtl/frontend/fetch_mem_if.sv', ROOT/'rtl/common/completion_fifo.sv',
                   ROOT/'rtl/common/spill_cell_flush.sv', ROOT/'rtl/common/spill_cell_flush_cu.sv', ROOT/'rtl/common/modn_counter.sv',
@@ -45,11 +41,12 @@ def sources():
                   ROOT/'tb/frontend/pc_gen/configuration.py', ROOT/'scripts/sim/check-fetch-mem-if.sh'])
     paths.update(p for p in HERE.iterdir() if p.suffix in ('.cpp', '.hh', '.sv', '.core', '.vlt') and not p.name.endswith('_unit.cpp'))
     paths.add(Path(__file__).resolve())
+    paths.update([ROOT/'scripts/gen-memory-map.py', ROOT/'scripts/sim/config-args.sh', ROOT/'tb/config/len5_config_probe.sv', ROOT/'tb/tb_bare.sv', ROOT/'tb/packages/tb_config_pkg.sv'])
     return sorted(paths)
 
 
 def fingerprint(config):
-    digest = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
+    digest = hashlib.sha256(json.dumps([config, pc_config.rtl_configuration()], sort_keys=True).encode())
     for path in sources():
         digest.update(str(path.relative_to(ROOT)).encode()+b'\0'+path.read_bytes()+b'\0')
     return digest.hexdigest()

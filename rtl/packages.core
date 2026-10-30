@@ -10,6 +10,8 @@ filesets:
   len5-packages:
     files:
     - packages/util_pkg.sv
+    - packages/len5_memory_typedef.svh: {is_include_file: true, include_path: packages}
+    - packages/len5_typedef.svh: {is_include_file: true, include_path: packages}
     - packages/len5_config_pkg.sv
     - packages/len5_pkg.sv
     - packages/instr_pkg.sv

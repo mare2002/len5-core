@@ -15,24 +15,25 @@
 import len5_pkg::*;
 
 module pc_gen #(
-    parameter [len5_pkg::XLEN-1:0] BOOT_PC = 'h0
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  parameter [len5_pkg::XLEN-1:0] BOOT_PC = 'h0
 ) (
-    input logic                   clk_i,
-    input logic                   rst_ni,
-    input logic                   except_i,
-    input logic        [len5_pkg::XLEN-1:0] except_pc_i,
-    input resolution_t            res_i,
-    input prediction_t            pred_i,
-    input logic                   fetch_ready_i,
+  input logic                             clk_i,
+  input logic                             rst_ni,
+  input logic                             except_i,
+  input logic        [len5_pkg::XLEN-1:0] except_pc_i,
+  input resolution_t                      res_i,
+  input prediction_t                      pred_i,
+  input logic                             fetch_ready_i,
 
-    output logic [len5_pkg::XLEN-1:0] pc_o
+  output logic [len5_pkg::XLEN-1:0] pc_o
 );
 
   // Logic declarations
   logic [XLEN-1:0] next_pc, add_pc, adder_out;
 
   // Mux + adder
-  assign add_pc = (res_i.valid && res_i.mispredict) ? res_i.pc : pc_o;
+  assign add_pc    = (res_i.valid && res_i.mispredict) ? res_i.pc : pc_o;
   assign adder_out = add_pc + ILEN / 8;
 
   // Priority list for choosing next PC:

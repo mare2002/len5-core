@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-"""Short isolated production-width tests; never edits the live source selection."""
+"""Short isolated elaboration-width tests; preserve production source bytes."""
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import tempfile
@@ -29,13 +28,9 @@ def snapshot(parent,n,optimization='no-dfg'):
     if not source.exists():
         target.mkdir(parents=True,exist_ok=True)
         staging=Path(tempfile.mkdtemp(prefix='export-',dir=target))
-        for folder in ('rtl','tb'):
+        for folder in ('rtl','tb','scripts'):
             shutil.copytree(ROOT/folder,staging/folder,ignore=shutil.ignore_patterns('__pycache__'))
         (staging/'fusesoc.conf').write_text('[library.len5]\nlocation = .\nsync-type = local\n')
-        config=staging/'rtl/packages/len5_config_pkg.sv'
-        text,count=re.subn(r'(\bLEN5_MULTIPLE_ISSUES\s*=\s*)[^;]+',r'\g<1>'+"32'd"+str(n),config.read_text())
-        if count!=1:raise ValueError('expected exactly one production width definition')
-        config.write_text(text)
         core=staging/'tb/frontend/fetch_stage/fetch_stage_tb.core'
         if optimization!='no-dfg':
             core.write_text(core.read_text().replace('        - -fno-dfg\n','        - -O0\n' if optimization=='O0' else ''))
@@ -44,13 +39,14 @@ def snapshot(parent,n,optimization='no-dfg'):
 
 def build(parent,n,optimization='no-dfg'):
     target,source=snapshot(parent,n,optimization)
-    env={**os.environ,'BUILD_DIR':str(target/'build')}
+    env={**os.environ,'BUILD_DIR':str(target/'build'),'LEN5_MULTIPLE_ISSUES':str(n)}
     script=source/'tb/frontend/fetch_stage/run.py'
     with (target/'build-console.log').open('w') as f:
         r=subprocess.run(['python3',str(script),'--build-only'],cwd=source,env=env,stdout=f,stderr=subprocess.STDOUT)
-    result={'N':n,'optimization':optimization,'source':str(source),'build_exit':r.returncode}
+    result={'N':n,'optimization':optimization,'source':str(source),'build_exit':r.returncode,
+            'elaboration_overrides':{'LEN5_MULTIPLE_ISSUES':n}}
     if not r.returncode:
-        binary=subprocess.check_output(['python3',str(source/'tb/frontend/fetch_stage/configuration.py'),'--binary','--build-dir',env['BUILD_DIR']],cwd=source,text=True).strip()
+        binary=subprocess.check_output(['python3',str(source/'tb/frontend/fetch_stage/configuration.py'),'--binary','--build-dir',env['BUILD_DIR']],cwd=source,env=env,text=True).strip()
         result['binary']=binary
     else:result['build_log']=str(target/'build-console.log')
     return result

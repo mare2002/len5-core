@@ -1,47 +1,45 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-"""Read the production configuration; never select or rewrite an issue width."""
+"""Read elaborated SV configuration and fingerprint the production sources."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 SOURCE = ROOT / 'rtl/packages/len5_config_pkg.sv'
 PACKAGES = ROOT / 'rtl/packages/len5_pkg.sv'
+spec = importlib.util.spec_from_file_location('len5_elaborated_configuration', ROOT/'scripts/gen-memory-map.py')
+config_tools = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(config_tools)
 
 
-def literal(text, name):
-    text = re.sub(r'/\*.*?\*/|//[^\n]*', '', text, flags=re.S)
-    matches = re.findall(r'\blocalparam\s+[^;=]*\b' + re.escape(name) + r'\s*=\s*([^;]+);', text)
-    if len(matches) != 1:
-        raise ValueError('configuration requires one localparam definition of ' + name)
-    value = matches[0].strip().replace('_', '')
-    match = re.fullmatch(r"(?:\d+)?'[sS]?([bBoOdDhH])([0-9a-fA-F]+)", value)
-    if match:
-        return int(match[2], {'b': 2, 'o': 8, 'd': 10, 'h': 16}[match[1].lower()])
-    if re.fullmatch(r'\d+', value):
-        return int(value, 10)
-    raise ValueError(name + ' must use a supported integer literal; expression is not silently guessed: ' + value)
+def rtl_configuration(source=SOURCE):
+    return config_tools.elaborated_configuration('rtl', source=source)
+
+
+def build_arguments(kind='rtl', environ=None, output='fusesoc', exclude=()):
+    return config_tools.build_arguments(kind, environ, output, exclude)
 
 
 def configuration(boot=0, source=SOURCE, packages=PACKAGES):
-    n = literal(source.read_text(), 'LEN5_MULTIPLE_ISSUES')
+    selected = rtl_configuration(source)
+    n = selected['LEN5_MULTIPLE_ISSUES']
     if n not in (1, 2, 4, 8):
         raise ValueError('unsupported LEN5_MULTIPLE_ISSUES=%d; supported values: 1, 2, 4, 8' % n)
     if not 0 <= boot < 2**64:
         raise ValueError('BOOT_PC must be an unsigned 64-bit address')
-    text = packages.read_text()
-    xlen, alen, ilen = [literal(text, field) for field in ('XLEN', 'ALEN', 'ILEN')]
-    if (xlen, alen, ilen) != (64, 64, 32) or literal(source.read_text(), 'LEN5_C_EN'):
+    architecture = config_tools.elaborated_configuration('architecture')
+    xlen, alen, ilen = [architecture[field] for field in ('XLEN', 'ALEN', 'ILEN')]
+    if (xlen, alen, ilen) != (64, 64, 32) or selected['LEN5_C_EN']:
         raise ValueError('pc_gen verification supports XLEN=ALEN=64, ILEN=32, C disabled (Q6/Q7)')
     return dict(boot_pc=boot, bundle_instructions=n, instruction_bytes=ilen//8,
                 xlen=xlen, alen=alen, issue_bits=n.bit_length()-1,
-                instruction_bits=2, bundle_bytes=n*(ilen//8), lwidth=literal(text, 'WWIDTH')*n,
+                instruction_bits=2, bundle_bytes=n*(ilen//8), lwidth=architecture['WWIDTH']*n,
                 source=str(source.resolve()))
 
 
@@ -49,7 +47,11 @@ def sources():
     # All compiled sources, package/core definitions and harness headers enter
     # the key. No generated evidence or file timestamps enter it.
     paths = set((ROOT / 'rtl/packages').glob('*.sv'))
+    paths.update((ROOT/'rtl/packages').glob('*.svh'))
     paths.update([ROOT/'rtl/packages.core', ROOT/'rtl/misc/packages-waivers.vlt',
+                  ROOT/'scripts/gen-memory-map.py', ROOT/'scripts/sim/config-args.sh',
+                  ROOT/'tb/config/len5_config_probe.sv', ROOT/'tb/tb_bare.sv',
+                  ROOT/'tb/packages/tb_config_pkg.sv',
                   ROOT/'rtl/frontend/pc_gen.sv', ROOT/'tb/verilator/verilator-common.core', ROOT/'rtl/frontend.core', ROOT/'rtl/common.core',
                   ROOT/'tb/verilator/tb_macros.cpp', ROOT/'tb/verilator/tb_macros.hh',
                   ROOT/'scripts/sim/check-pc-gen.sh'])
@@ -61,6 +63,7 @@ def sources():
 
 def fingerprint(config):
     digest = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
+    digest.update(json.dumps(rtl_configuration(Path(config['source'])), sort_keys=True).encode())
     for path in sources():
         digest.update(str(path.relative_to(ROOT)).encode()+b'\0'+path.read_bytes()+b'\0')
     return digest.hexdigest()
@@ -76,7 +79,10 @@ def write_manifest(directory, config):
     directory.mkdir(parents=True, exist_ok=True)
     # Native startup compares these exact production sources to their snapshots,
     # then checks source-derived constants against the elaborated adapter.
-    paths = sorted((ROOT/'rtl/packages').glob('*.sv'))
+    paths = sorted([*(ROOT/'rtl/packages').glob('*.sv'), *(ROOT/'rtl/packages').glob('*.svh'),
+                    ROOT/'scripts/gen-memory-map.py', ROOT/'scripts/sim/config-args.sh',
+                    ROOT/'tb/config/len5_config_probe.sv', ROOT/'tb/tb_bare.sv',
+                    ROOT/'tb/packages/tb_config_pkg.sv'])
     lines = ['%s=%s' % (k, v) for k, v in sorted(config.items())]
     for index, path in enumerate(paths):
         snapshot = 'pc_gen_package_%d.snapshot' % index

@@ -14,7 +14,7 @@
 
 package memory_pkg;
   import len5_pkg::*;
-  import len5_config_pkg::*;
+
   import csr_pkg::csr_priv_t;
   import expipe_pkg::ldst_width_t;
   import util_pkg::*;
@@ -80,23 +80,10 @@ package memory_pkg;
   // ------------------------
 
   // Request to the memory
-  typedef struct packed {
-    logic [BUFF_IDX_LEN-1:0]   tag;       // instruction tag
-    mem_acc_t                  acc_type;
-    ldst_width_t               ls_type;
-    logic [len5_pkg::XLEN-1:0] addr;      // physical address
-    logic [len5_pkg::XLEN-1:0] value;
-  } mem_req_t;
+
 
   // Answer from the memory
-  typedef struct packed {
-    logic [BUFF_IDX_LEN-1:0]   tag;            // instruction tag
-    mem_acc_t                  acc_type;
-    logic [len5_pkg::XLEN-1:0] addr;
-    logic [len5_pkg::XLEN-1:0] value;          // fetched value
-    logic                      except_raised;
-    except_code_t              except_code;
-  } mem_ans_t;
+
 
   //--------\\
     // CACHEs \\
@@ -291,16 +278,8 @@ package memory_pkg;
   } line_addr_t;
 
   // LSQ -> L1 D-Cache
-  localparam int unsigned LSBUFF_LEN = ($clog2(
-      LDBUFF_DEPTH
-  ) > $clog2(
-      STBUFF_DEPTH
-  )) ? $clog2(
-      LDBUFF_DEPTH
-  ) : $clog2(
-      STBUFF_DEPTH
-  );
-  typedef logic [LSBUFF_LEN-1:0] lsq_addr_t;
+
+
   typedef enum logic {
     Load,
     Store
@@ -313,22 +292,10 @@ package memory_pkg;
     DW
   } store_width_e;
 
-  typedef struct packed {
-    dcache_L1_addr_t           paddr;        // the physical cache address
-    logic [len5_pkg::XLEN-1:0] data;         // data to be stored
-    lsq_d0_req_type_e          req_type;     // Load or Store
-    store_width_e              store_width;  // B, HW, W, DW (for Store!)
-    lsq_addr_t                 lsq_addr;     // to address the answer to LSQ
-    logic                      valid;        // request valid
-  } lsq_l1dc_req_t;
+
 
   // L1 D-Cache -> LSQ
-  typedef struct packed {
-    logic [len5_pkg::XLEN-1:0] data;       // loaded data
-    logic                      was_store;  // '1' if the answer is relative to a store
-    lsq_addr_t                 lsq_addr;   // to address the answer
-    logic                      valid;      // valid answer
-  } l1dc_lsq_ans_t;
+
 
   // L1 D-Cache -> LSQ (wake-up)
   typedef struct packed {
@@ -383,16 +350,7 @@ package memory_pkg;
 
   // d0 data sel block -> output registers
 
-  typedef struct packed {
-    d0_d1_req_type_e           req_type;     // request type
-    dcache_L1_addr_t           paddr;        // the physical cache address
-    logic [len5_pkg::XLEN-1:0] data;         // doubleword to be stored
-    dcache_line_t              line;
-    store_width_e              store_width;  // B, HW, W, DW (for Store!)
-    wbb_tag_t                  wbb_tag;      // tag for L2 -> WBB answers
-    lsq_addr_t                 lsq_addr;     // to address the answer to LSQ
-    logic                      valid;        // request valid
-  } d1_req_info_t;
+
 
   typedef struct packed {
     dcache_tag_t [DCACHE_L1_ASSOCIATIVITY-1:0]  tag_vec;
@@ -401,10 +359,7 @@ package memory_pkg;
     dcache_data_t [DCACHE_L1_ASSOCIATIVITY-1:0] data_vec;
   } d1_mem_out_t;
 
-  typedef struct packed {
-    d1_req_info_t info;
-    d1_mem_out_t  mem_out;
-  } d0_d1_req_t;
+
 
   // d1 -> d0
   typedef enum logic [2:0] {
@@ -417,18 +372,7 @@ package memory_pkg;
     WaitL2UpdatingCnt  // wait for the L2 upd counter to be updated
   } d1_d0_req_type_e;
 
-  typedef struct packed {
-    d1_d0_req_type_e           req_type;     // d1 -> d0 request type
-    dcache_L1_addr_t           paddr;        // the physical cache address
-    logic [len5_pkg::XLEN-1:0] data;         // data to be stored
-    dcache_line_t              line;         // forwarded line
-    store_width_e              store_width;  // B, HW, W, DW (for Store!)
-    lsq_addr_t                 lsq_addr;     // to address the answer to LSQ
-    hit_vec_t                  hit_vec;      // hit lines from the comparison block in d1
-    dirty_vec_t                dirty_vec;    // one hotted dirty vector from d1
-    repl_vec_t                 replace_vec;  // updateL2 replace idx
-    logic                      valid;        // request valid
-  } d1_d0_req_t;
+
 
   typedef struct packed {
     logic                                 cs;
@@ -495,13 +439,7 @@ package memory_pkg;
     WBB
   } mshr_wbb_winner_e;
 
-  typedef struct packed {
-    d1_d0_req_type_e           req_type;
-    dcache_L1_addr_t           paddr;
-    logic [len5_pkg::XLEN-1:0] doubleword;
-    lsq_addr_t                 lsq_addr;
-    store_width_e              store_width;
-  } l1dc_replay_t;
+
 
   //---------\\
     // L1 MSHR \\
@@ -721,20 +659,9 @@ package memory_pkg;
 
     localparam int unsigned D_TLB_ENTRIES = 8;
 
-  typedef struct packed {
-    logic [VPN_LEN-1:0] vpn;
-    logic               is_store;
-    lsq_addr_t          lsq_addr;
-    logic               valid;
-  } lsq_dtlb_req_t;
 
-  typedef struct packed {
-    logic [PPN_LEN-1:0] ppn;
-    exception_e         exception;
-    logic               was_store;
-    lsq_addr_t          lsq_addr;
-    logic               valid;
-  } dtlb_lsq_ans_t;
+
+
 
   typedef struct packed {
     logic [VPN_LEN-1:0] vpn;

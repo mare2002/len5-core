@@ -1,45 +1,35 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-"""Reuse the pc_gen production parser; fingerprint the complete actual frontend."""
+"""Reuse elaborated SV metadata; fingerprint the complete actual frontend."""
 import argparse
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
-import re
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
 spec=importlib.util.spec_from_file_location('len5_pc_configuration',HERE.parent/'pc_gen/configuration.py')
 pc=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pc)
-literal=pc.literal
-
-def parameter(text,name):
-    text=re.sub(r'/\*.*?\*/|//[^\n]*','',text,flags=re.S)
-    m=re.search(r'parameter\s+[^=,\n]+\b'+re.escape(name)+r'\s*=\s*([^,\n)]+)',text)
-    if not m: raise ValueError('missing production parameter '+name)
-    return literal('localparam int X = '+m[1]+';','X')
 
 def configuration():
-    source=(ROOT/'rtl/packages/len5_config_pkg.sv').read_text()
-    top=(ROOT/'rtl/frontend/fetch_stage.sv').read_text()
-    boot=int(os.environ['BOOT_PC'],0) if os.environ.get('BOOT_PC') else parameter(top,'BOOT_PC')
+    selected=pc.rtl_configuration()
+    architecture=pc.config_tools.elaborated_configuration('architecture')
+    boot=int(os.environ.get('BOOT_PC', '0'),0)
     c=pc.configuration(boot)
-    c.update(hlen=literal(source,'BPU_HLEN'),btb_bits=literal(source,'BPU_BTB_BITS'),ras_depth=literal(source,'RAS_DEPTH'),
-             metadata_depth=parameter(top,'MEMIF_FIFO_DEPTH'),request_skip=literal(source,'FETCH_REQ_SPILL_SKIP'),answer_skip=literal(source,'FETCH_ANS_SPILL_SKIP'),
-             cause_bits=literal((ROOT/'rtl/packages/len5_pkg.sv').read_text(),'EXCEPT_TYPE_LEN'),iq=literal(source,'IQ_DEPTH'),rob=literal(source,'ROB_DEPTH'),branch_capacity=literal(source,'BU_RS_DEPTH'),alu_capacity=literal(source,'ALU_RS_DEPTH'))
-    pkg=(ROOT/'rtl/packages/fetch_pkg.sv').read_text()
-    m=re.search(r'localparam\s+c2b_t\s+INIT_C2B\s*=\s*(SNT|WNT|WT|ST)\s*;',pkg)
-    if not m: raise ValueError('unknown integrated predictor initialization')
-    c['initial']=['SNT','WNT','WT','ST'].index(m[1])
+    c.update(hlen=selected['BPU_HLEN'],btb_bits=selected['BPU_BTB_BITS'],ras_depth=selected['RAS_DEPTH'],
+             metadata_depth=int(os.environ.get('MEM_DEPTH', '2'),0),request_skip=selected['FETCH_REQ_SPILL_SKIP'],answer_skip=selected['FETCH_ANS_SPILL_SKIP'],
+             cause_bits=architecture['EXCEPT_TYPE_LEN'],iq=selected['IQ_DEPTH'],rob=selected['ROB_DEPTH'],branch_capacity=selected['BU_RS_DEPTH'],alu_capacity=selected['ALU_RS_DEPTH'])
+    c['initial']=selected['BPU_INIT_C2B']
     if (c['metadata_depth'],c['request_skip'],c['answer_skip'],c['ras_depth'])!=(2,1,0,4) or c['hlen']<=c['issue_bits'] or not 2<=c['hlen']<=16 or not 1<=c['btb_bits']<=16 or boot%4:
         raise ValueError('FE01/FEQ11: unsupported selected timing/predictor configuration')
     return c
 
 def sources():
-    paths=set((ROOT/'rtl/packages').glob('*.sv'))
+    paths=set((ROOT/'rtl/packages').glob('*.sv*'))
+    paths.update([ROOT/'scripts/gen-memory-map.py', ROOT/'scripts/sim/config-args.sh', ROOT/'tb/config/len5_config_probe.sv', ROOT/'tb/tb_bare.sv', ROOT/'tb/packages/tb_config_pkg.sv'])
     paths.update((ROOT/'rtl/frontend').glob('*.sv'))
     for name in ['modn_counter','modn_counter_updown','completion_fifo','spill_cell_flush','spill_cell_flush_cu','prio_enc']:
         paths.add(ROOT/('rtl/common/'+name+'.sv'))
@@ -51,7 +41,7 @@ def sources():
     return sorted(paths)
 
 def fingerprint(c):
-    h=hashlib.sha256(json.dumps(c,sort_keys=True).encode())
+    h=hashlib.sha256(json.dumps([c,pc.rtl_configuration()],sort_keys=True).encode())
     for p in sources():h.update(str(p.relative_to(ROOT)).encode()+b'\0'+p.read_bytes()+b'\0')
     return h.hexdigest()
 

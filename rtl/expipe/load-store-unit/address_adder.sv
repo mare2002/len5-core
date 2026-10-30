@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2022 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -20,20 +21,23 @@
  *          virtual memory.
  */
 module address_adder #(
-  parameter bit IS_STORE = 1'b0
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
+    localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
+    parameter bit IS_STORE = 1'b0
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  /* Load/store buffer */
-  input  logic valid_i,
-  input  logic ready_i,
-  output logic valid_o,
-  output logic ready_o,
+    /* Load/store buffer */
+    input  logic valid_i,
+    input  logic ready_i,
+    output logic valid_o,
+    output logic ready_o,
 
-  input  expipe_pkg::adder_req_t req_i,
-  output expipe_pkg::adder_ans_t ans_o
+    input  adder_req_t req_i,
+    output adder_ans_t ans_o
 );
 
   import len5_config_pkg::*;
@@ -67,18 +71,18 @@ module address_adder #(
   // Output spill cell
   // -----------------
   spill_cell_flush #(
-    .DATA_T(adder_ans_t),
-    .SKIP  (LSU_SPILL_SKIP)
+      .DATA_T(adder_ans_t),
+      .SKIP  (Len5Cfg.LSU_SPILL_SKIP)
   ) u_out_reg (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(flush_i),
-    .valid_i(valid_i),
-    .ready_i(ready_i),
-    .valid_o(valid_o),
-    .ready_o(ready_o),
-    .data_i (ans),
-    .data_o (ans_o)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(flush_i),
+      .valid_i(valid_i),
+      .ready_i(ready_i),
+      .valid_o(valid_o),
+      .ready_o(ready_o),
+      .data_i (ans),
+      .data_o (ans_o)
   );
 
 endmodule

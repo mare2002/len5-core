@@ -4,6 +4,9 @@
 set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo_root"
+config_output=$(bash scripts/sim/config-args.sh rtl fusesoc BOOT_PC)
+config_args=()
+if [[ -n $config_output ]]; then mapfile -t config_args <<< "$config_output"; fi
 build_root=${BUILD_DIR:-"$repo_root/build"}/pc-gen
 boot_pc=${BOOT_PC:-0}
 boot_fields=$(python3 -c 'import sys
@@ -30,7 +33,7 @@ if [[ ${VERILATOR:-verilator} == */* ]]; then
 fi
 echo '## Building pc_gen simulation model with Verilator...'
 if ! "${FUSESOC:-fusesoc}" run --no-export --target sim --tool verilator \
-    --build-root "$model_dir" --setup --build polito:len5:pc-gen-tb \
+    --build-root "$model_dir" --setup --build polito:len5:pc-gen-tb "${config_args[@]}" \
     --BOOT_PC_HI="$boot_high" --BOOT_PC_LO="$boot_low" > "$model_dir/build.log" 2>&1; then
     tail -n 60 "$model_dir/build.log" >&2
     echo "pc_gen build failed; see $model_dir/build.log" >&2
@@ -58,7 +61,7 @@ if [[ -n ${EARLY_TARGET:-} ]]; then arguments+=(--early_target="$EARLY_TARGET");
 if [[ -n ${INJECT_FAILURE:-} ]]; then arguments+=(--inject_failure="$INJECT_FAILURE"); fi
 set +e
 "${FUSESOC:-fusesoc}" run --no-export --target sim --tool verilator \
-    --build-root "$model_dir" --run polito:len5:pc-gen-tb "${arguments[@]}" \
+    --build-root "$model_dir" --run polito:len5:pc-gen-tb "${config_args[@]}" "${arguments[@]}" \
     > "$run_dir/console.log" 2>&1
 result=$?
 set -e

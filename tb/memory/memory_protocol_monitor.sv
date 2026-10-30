@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Observational metrics only; identical sampling for all memory backends.
 module memory_protocol_monitor #(
-    parameter int unsigned COUNT_WIDTH = memory_backend_pkg::SRAM_COUNT_WIDTH
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
+        tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
+    ),
+    parameter int unsigned COUNT_WIDTH = TbCfg.SRAM_COUNT_WIDTH
 ) (
-    input logic clk_i,
+    input logic                        clk_i,
     rst_ni,
     flush_i,
     load_flush_i,
     stop_i,
     retire_i,
-    input logic [2:0] req_i,
+    input logic [2:0]                  req_i,
     gnt_i,
     valid_i,
     ready_i,
@@ -19,38 +23,38 @@ module memory_protocol_monitor #(
   longint unsigned instr_times[$], load_times[$], store_times[$];
   function automatic int queue_size(int p);
     case (p)
-      0: return instr_times.size();
-      1: return load_times.size();
+      0:       return instr_times.size();
+      1:       return load_times.size();
       default: return store_times.size();
     endcase
   endfunction
   function automatic void clear_queue(int p);
     case (p)
-      0: instr_times.delete();
-      1: load_times.delete();
+      0:       instr_times.delete();
+      1:       load_times.delete();
       default: store_times.delete();
     endcase
   endfunction
   function automatic void push_time(int p, longint unsigned value);
     case (p)
-      0: instr_times.push_back(value);
-      1: load_times.push_back(value);
+      0:       instr_times.push_back(value);
+      1:       load_times.push_back(value);
       default: store_times.push_back(value);
     endcase
   endfunction
   function automatic longint unsigned pop_time(int p);
     case (p)
-      0: return instr_times.pop_front();
-      1: return load_times.pop_front();
+      0:       return instr_times.pop_front();
+      1:       return load_times.pop_front();
       default: return store_times.pop_front();
     endcase
   endfunction
   longint unsigned cycles, retired, accepted[3], completed[3], latency[3];
   longint unsigned sum_out[3], max_out[3], sum_occ[3], max_occ[3], req_stall[3], rsp_stall[3];
-  bit finished;
+  bit              finished;
   longint unsigned start_cycle;
-  string report_path;
-  int fd;
+  string           report_path;
+  int              fd;
   longint unsigned buffer_count;
   // Blocking assignments are intentional for ordered scoreboard/report sampling.
   /* verilator lint_off BLKSEQ */
@@ -72,7 +76,7 @@ module memory_protocol_monitor #(
         rsp_stall[p] = 0;
       end
     end else if (!finished) begin
-      if (flush_i && !len5_config_pkg::FETCH_MEM_DRAIN_ON_FLUSH) clear_queue(0);
+      if (flush_i && !Len5Cfg.FETCH_MEM_DRAIN_ON_FLUSH) clear_queue(0);
       if (load_flush_i) clear_queue(1);
       cycles++;
       retired += 64'(retire_i);
@@ -81,8 +85,8 @@ module memory_protocol_monitor #(
         if (64'(queue_size(p)) > max_out[p]) max_out[p] = 64'(queue_size(p));
         // Legacy PIPE_NUM=0: every pending response resides in the spill/output
         // registers. TC_SRAM reports only occupied skid slots, excluding in-flight reads.
-        buffer_count = tb_config_pkg::MEMORY_BACKEND == tb_config_pkg::MEM_BACKEND_LEGACY ?
-                       64'(queue_size(p)) : 64'(occupancy_i[p]);
+        buffer_count = TbCfg.MEMORY_BACKEND == tb_config_pkg::MEM_BACKEND_LEGACY ?
+            64'(queue_size(p)) : 64'(occupancy_i[p]);
         sum_occ[p] += buffer_count;
         if (buffer_count > max_occ[p]) max_occ[p] = buffer_count;
         req_stall[p] += 64'(req_i[p] && !gnt_i[p]);
@@ -92,8 +96,10 @@ module memory_protocol_monitor #(
           push_time(p, cycles);
         end
         if (valid_i[p] && ready_i[p] &&
-            !(p == 0 && flush_i && !len5_config_pkg::FETCH_MEM_DRAIN_ON_FLUSH) &&
-            !(p == 1 && load_flush_i) && queue_size(p) != 0) begin
+            !(p == 0 && flush_i && !Len5Cfg.FETCH_MEM_DRAIN_ON_FLUSH) &&
+            !(p == 1 && load_flush_i) && queue_size(
+                p
+            ) != 0) begin
           start_cycle = pop_time(p);
           if (start_cycle != 0) begin
             completed[p]++;
@@ -110,8 +116,7 @@ module memory_protocol_monitor #(
         fd = $fopen(report_path, "w");
         if (fd == 0) $fatal(1, "Cannot write memory performance report");
         $fdisplay(fd, "{\"backend\":%0d,\"cycles\":%0d,\"retired\":%0d,\"ipc\":%f,\"ports\":[",
-                  int'(tb_config_pkg::MEMORY_BACKEND), cycles, retired,
-                  real'(retired) / real'(cycles));
+                  int'(TbCfg.MEMORY_BACKEND), cycles, retired, real'(retired) / real'(cycles));
         for (int p = 0; p < 3; p++) begin
           $fwrite(
               fd,

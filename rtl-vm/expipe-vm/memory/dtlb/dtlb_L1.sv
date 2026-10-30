@@ -1,3 +1,4 @@
+`include "len5_memory_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -20,70 +21,73 @@ import csr_pkg::csr_priv_t;
 import csr_pkg::PRIV_MODE_U;
 import csr_pkg::PRIV_MODE_S;
 
-module dtlb_L1
-(
+module dtlb_L1 #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type dtlb_lsq_ans_t = `LEN5_VM_DTLB_LSQ_ANS_T(Len5Cfg),
+  localparam type lsq_dtlb_req_t = `LEN5_VM_LSQ_DTLB_REQ_T(Len5Cfg)
+) (
   // Main signals
-  input  logic            clk_i,
-  input  logic            rst_ni,
-  input  logic            clr_mshr_i,           // Clear MSHR if branch mispredicted
+  input logic clk_i,
+  input logic rst_ni,
+  input logic clr_mshr_i,  // Clear MSHR if branch mispredicted
   // From CSRs
-  input  logic            sum_bit_i,            // For U bit access permissions check
-  input  logic            mxr_bit_i,            // Executable pages can become Readable
-  input  csr_priv_t       priv_mode_i,          // The actual privilege mode (filtered by the MPRV BIT!!)
-  input  asid_t           base_asid_i,          // Actual ASID from SATP
+  input logic sum_bit_i,  // For U bit access permissions check
+  input logic mxr_bit_i,  // Executable pages can become Readable
+  input csr_priv_t priv_mode_i,  // The actual privilege mode (filtered by the MPRV BIT!!)
+  input asid_t base_asid_i,  // Actual ASID from SATP
   // Flush control
-  input  tlb_flush_e      flush_type_i,         // Flush selectively the TLB and the MSHR
-  input  asid_t           flush_asid_i,         // ASID for selective flush (fence.vma)
-  input vpn_t            flush_page_i,         // Page address for selective flush (fence.vma)
+  input tlb_flush_e flush_type_i,  // Flush selectively the TLB and the MSHR
+  input asid_t flush_asid_i,  // ASID for selective flush (fence.vma)
+  input vpn_t flush_page_i,  // Page address for selective flush (fence.vma)
   // LSQ -> D-TLB translation request
-  input lsq_dtlb_req_t   lsq_dtlb_req_i,
-  output logic            dtlb_lsq_req_rdy_o,
+  input lsq_dtlb_req_t lsq_dtlb_req_i,
+  output logic dtlb_lsq_req_rdy_o,
   // D-TLB -> LSQ answer and wake-up
-  output dtlb_lsq_ans_t   dtlb_lsq_ans_o,
-  output dtlb_lsq_wup_t   dtlb_lsq_wup_o,
+  output dtlb_lsq_ans_t dtlb_lsq_ans_o,
+  output dtlb_lsq_wup_t dtlb_lsq_wup_o,
   // D-TLB -> L2-TLB miss request (via the MSHR)
-  output dtlb_l2tlb_req_t dtlb_l2tlb_req_o,     // MSHR to L2-TLB request
-  input  logic            l2tlb_dtlb_req_rdy_i, // L2-TLB ready for MSHR req?
+  output dtlb_l2tlb_req_t dtlb_l2tlb_req_o,  // MSHR to L2-TLB request
+  input logic l2tlb_dtlb_req_rdy_i,  // L2-TLB ready for MSHR req?
   // L2-TLB -> D-TLB answer
   input l2tlb_dtlb_ans_t l2tlb_dtlb_ans_i      // Always ready for the L2-TLB, because it has the highest req priority
 );
 
-  localparam N      = D_TLB_ENTRIES;
+  localparam N = D_TLB_ENTRIES;
   localparam LOG2_N = $clog2(N);
-  localparam M      = DTLB_MSHR_ENTRIES;
+  localparam M = DTLB_MSHR_ENTRIES;
   localparam LOG2_M = $clog2(M);
 
   // D-TLB Entries
-  dtlb_entry_t       dtlb_entry_q [N];
+  dtlb_entry_t              dtlb_entry_q                                     [N];
   // Replacement block
-  logic              valid_tlb_read; // Update the replacement vector
-  logic [N-1:0]      tlb_valid_vec;
-  logic [N-1:0]      replace_vec;      // One hot replacement vector,
+  logic                     valid_tlb_read;  // Update the replacement vector
+  logic        [     N-1:0] tlb_valid_vec;
+  logic        [     N-1:0] replace_vec;  // One hot replacement vector,
   // Comparison block
-  logic              tlb_hit;
-  logic [N-1:0]      hit_vec;          // D-TLB hit vector
-  logic [LOG2_N-1:0] hit_idx;
+  logic                     tlb_hit;
+  logic        [     N-1:0] hit_vec;  // D-TLB hit vector
+  logic        [LOG2_N-1:0] hit_idx;
   // Ctrl
-  dtlb_ctrl_e        dtlb_ctrl;
-  logic [N-1:0]      flush_vec;
-  logic              add_mshr_entry;
-  logic              put_mshr_entry_wait;
-  logic              rm_mshr_entry;
-  logic              replace_entry;
+  dtlb_ctrl_e               dtlb_ctrl;
+  logic        [     N-1:0] flush_vec;
+  logic                     add_mshr_entry;
+  logic                     put_mshr_entry_wait;
+  logic                     rm_mshr_entry;
+  logic                     replace_entry;
   // Exception can come from L2-TLB answer or from the d-TLB comparison
-  exception_e        exception_dtlb, exception_l2tlb;
+  exception_e exception_dtlb, exception_l2tlb;
   // MSHR
-  dtlb_mshr_entry_t  mshr_entry_q [M];
-  vpn_t              mshr_vpn_to_be_compared;
-  logic [M-1:0]      mshr_valid_vec;
-  logic [M-1:0]      mshr_valid_not_waiting_vec;
-  logic [M-1:0]      mshr_oh_valid_not_waiting_vec;
-  logic [LOG2_M-1:0] mshr_valid_not_waiting_idx;
-  logic [M-1:0]      mshr_oh_invalid_vec;
-  logic [LOG2_M-1:0] mshr_invalid_idx;
-  logic              mshr_hit;
-  logic [M-1:0]      mshr_hit_vec;
-  logic              mshr_full;
+  dtlb_mshr_entry_t              mshr_entry_q                  [M];
+  vpn_t                          mshr_vpn_to_be_compared;
+  logic             [     M-1:0] mshr_valid_vec;
+  logic             [     M-1:0] mshr_valid_not_waiting_vec;
+  logic             [     M-1:0] mshr_oh_valid_not_waiting_vec;
+  logic             [LOG2_M-1:0] mshr_valid_not_waiting_idx;
+  logic             [     M-1:0] mshr_oh_invalid_vec;
+  logic             [LOG2_M-1:0] mshr_invalid_idx;
+  logic                          mshr_hit;
+  logic             [     M-1:0] mshr_hit_vec;
+  logic                          mshr_full;
 
 
   //-----------------------\\
@@ -93,8 +97,8 @@ module dtlb_L1
   // Control definition
   always_comb begin
     dtlb_ctrl = dtlb_NoReq;
-         if (flush_type_i != NoFlush)            dtlb_ctrl = dtlb_Flush;
-    else if (l2tlb_dtlb_ans_i.valid)             dtlb_ctrl = dtlb_L2Ans;
+    if (flush_type_i != NoFlush) dtlb_ctrl = dtlb_Flush;
+    else if (l2tlb_dtlb_ans_i.valid) dtlb_ctrl = dtlb_L2Ans;
     else if (lsq_dtlb_req_i.valid && !mshr_full) dtlb_ctrl = dtlb_LSQReq;
   end
 
@@ -119,13 +123,13 @@ module dtlb_L1
   dtlb_replacement_block #(
     .N(N)
   ) i_dtlb_replacement_block (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .tlb_valid_vec_i(tlb_valid_vec),
-    .valid_tlb_read_i(valid_tlb_read),
+    .clk_i                  (clk_i),
+    .rst_ni                 (rst_ni),
+    .tlb_valid_vec_i        (tlb_valid_vec),
+    .valid_tlb_read_i       (valid_tlb_read),
     .valid_tlb_replacement_i(replace_entry),
-    .hit_vec_i(hit_vec),
-    .replace_vec_o(replace_vec)
+    .hit_vec_i              (hit_vec),
+    .replace_vec_o          (replace_vec)
   );
 
   //----------------------------------\\
@@ -136,12 +140,12 @@ module dtlb_L1
   assign valid_tlb_read = ((dtlb_ctrl == dtlb_LSQReq) && (exception_dtlb != PageFault)) ? 1'b1 : 1'b0;
 
   always_comb begin
-      dtlb_lsq_ans_o = '0;
-      dtlb_lsq_wup_o = '0;
-      flush_vec      = '0;
-      replace_entry  = 1'b0;
-      add_mshr_entry = 1'b0;
-      rm_mshr_entry  = 1'b0;
+    dtlb_lsq_ans_o = '0;
+    dtlb_lsq_wup_o = '0;
+    flush_vec      = '0;
+    replace_entry  = 1'b0;
+    add_mshr_entry = 1'b0;
+    rm_mshr_entry  = 1'b0;
     case (dtlb_ctrl)
       // Flush control
       dtlb_Flush: begin
@@ -205,9 +209,9 @@ module dtlb_L1
   for (genvar k = 0; k < N; k++) begin
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        dtlb_entry_q[k]         <= '0;
+        dtlb_entry_q[k] <= '0;
       end else if (dtlb_ctrl == dtlb_Flush && flush_vec[k]) begin
-        dtlb_entry_q[k].valid   <= 1'b0;
+        dtlb_entry_q[k].valid <= 1'b0;
       end else if (replace_entry && replace_vec[k]) begin
         dtlb_entry_q[k].vpn     <= l2tlb_dtlb_ans_i.vpn;
         dtlb_entry_q[k].ppn     <= l2tlb_dtlb_ans_i.ppn;
@@ -243,49 +247,61 @@ module dtlb_L1
               // GibiPage hit
               if (lsq_dtlb_req_i.vpn[2] == dtlb_entry_q[k].vpn[2]) begin
                 // Executable only page without load/store permissions
-                if (!dtlb_entry_q[k].read && !mxr_bit_i)                         exception_dtlb = PageFault;
+                if (!dtlb_entry_q[k].read && !mxr_bit_i) exception_dtlb = PageFault;
                 // Store on a read-only page
-                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].write)      exception_dtlb = PageFault;
+                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].write)
+                  exception_dtlb = PageFault;
                 // Store on a clean page
-                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].dirty)      exception_dtlb = PageFault;
+                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].dirty)
+                  exception_dtlb = PageFault;
                 // User page. Supervisor access allowed only if SUM bit is asserted
-                else if (dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_S && !sum_bit_i) exception_dtlb = PageFault;
+                else if (dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_S && !sum_bit_i)
+                  exception_dtlb = PageFault;
                 // Not a User page. U mode access forbidden
-                else if (!dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_U)          exception_dtlb = PageFault;
+                else if (!dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_U)
+                  exception_dtlb = PageFault;
                 hit_vec[k] = 1'b1;
-                hit_idx = k;
+                hit_idx    = k;
               end
-            // MebiPage
+              // MebiPage
             end else if (dtlb_entry_q[k].mebi) begin
               if (lsq_dtlb_req_i.vpn[2] == dtlb_entry_q[k].vpn[2] && lsq_dtlb_req_i.vpn[1] == dtlb_entry_q[k].vpn[1]) begin
                 // Executable only page without load/store permissions
-                if (!dtlb_entry_q[k].read && !mxr_bit_i)                         exception_dtlb = PageFault;
+                if (!dtlb_entry_q[k].read && !mxr_bit_i) exception_dtlb = PageFault;
                 // Store on a read-only page
-                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].write)      exception_dtlb = PageFault;
+                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].write)
+                  exception_dtlb = PageFault;
                 // Store on a clean page
-                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].dirty)      exception_dtlb = PageFault;
+                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].dirty)
+                  exception_dtlb = PageFault;
                 // User page. Supervisor access allowed only if SUM bit is asserted
-                else if (dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_S && !sum_bit_i) exception_dtlb = PageFault;
+                else if (dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_S && !sum_bit_i)
+                  exception_dtlb = PageFault;
                 // Not a User page. U mode access forbidden
-                else if (!dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_U)          exception_dtlb = PageFault;
+                else if (!dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_U)
+                  exception_dtlb = PageFault;
                 hit_vec[k] = 1'b1;
-                hit_idx = k;
+                hit_idx    = k;
               end
-            // KibiPage
+              // KibiPage
             end else begin
               if (lsq_dtlb_req_i.vpn == dtlb_entry_q[k].vpn) begin
                 // Executable only page without load/store permissions
-                if (!dtlb_entry_q[k].read && !mxr_bit_i)                         exception_dtlb = PageFault;
+                if (!dtlb_entry_q[k].read && !mxr_bit_i) exception_dtlb = PageFault;
                 // Store on a read-only page
-                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].write)      exception_dtlb = PageFault;
+                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].write)
+                  exception_dtlb = PageFault;
                 // Store on a clean page
-                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].dirty)      exception_dtlb = PageFault;
+                else if (lsq_dtlb_req_i.is_store && !dtlb_entry_q[k].dirty)
+                  exception_dtlb = PageFault;
                 // User page. Supervisor access allowed only if SUM bit is asserted
-                else if (dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_S && !sum_bit_i) exception_dtlb = PageFault;
+                else if (dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_S && !sum_bit_i)
+                  exception_dtlb = PageFault;
                 // Not a User page. U mode access forbidden
-                else if (!dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_U)          exception_dtlb = PageFault;
+                else if (!dtlb_entry_q[k].user && priv_mode_i == PRIV_MODE_U)
+                  exception_dtlb = PageFault;
                 hit_vec[k] = 1'b1;
-                hit_idx = k;
+                hit_idx    = k;
               end
             end
           end
@@ -301,22 +317,24 @@ module dtlb_L1
   //------\\
 
   // d-TLB MSHR entries
-  for (genvar k = 0; k < M; k++) begin : dtlb_mshr_entries
+  for (
+      genvar k = 0; k < M; k++
+  ) begin : dtlb_mshr_entries
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        mshr_entry_q[k]           <=   '0;
+        mshr_entry_q[k] <= '0;
       end else if (clr_mshr_i) begin
-        mshr_entry_q[k].valid     <= 1'b0;
-        mshr_entry_q[k].waiting   <= 1'b0;
+        mshr_entry_q[k].valid   <= 1'b0;
+        mshr_entry_q[k].waiting <= 1'b0;
       end else if (rm_mshr_entry && mshr_hit_vec[k]) begin
-        mshr_entry_q[k].valid     <= 1'b0;
-        mshr_entry_q[k].waiting   <= 1'b0;
+        mshr_entry_q[k].valid   <= 1'b0;
+        mshr_entry_q[k].waiting <= 1'b0;
       end else if (put_mshr_entry_wait && mshr_oh_valid_not_waiting_vec[k]) begin
-        mshr_entry_q[k].waiting   <= 1'b1;
+        mshr_entry_q[k].waiting <= 1'b1;
       end else if (add_mshr_entry && mshr_oh_invalid_vec[k]) begin
-        mshr_entry_q[k].vpn       <= lsq_dtlb_req_i.vpn;
-        mshr_entry_q[k].valid     <= 1'b1;
-        mshr_entry_q[k].waiting   <= 1'b0;
+        mshr_entry_q[k].vpn     <= lsq_dtlb_req_i.vpn;
+        mshr_entry_q[k].valid   <= 1'b1;
+        mshr_entry_q[k].waiting <= 1'b0;
       end
     end
   end
@@ -328,11 +346,15 @@ module dtlb_L1
     for (int k = 0; k < M; k++) begin
       if (dtlb_ctrl == dtlb_L2Ans) begin
         case (l2tlb_dtlb_ans_i.page_type)
-          GibiPage: mshr_hit_vec[k] = (mshr_entry_q[k].valid && mshr_entry_q[k].vpn[2]   == mshr_vpn_to_be_compared[2]  ) ? 1'b1 : 1'b0;
-          MebiPage: mshr_hit_vec[k] = (mshr_entry_q[k].valid && mshr_entry_q[k].vpn[2:1] == mshr_vpn_to_be_compared[2:1]) ? 1'b1 : 1'b0;
-          KibiPage: mshr_hit_vec[k] = (mshr_entry_q[k].valid && mshr_entry_q[k].vpn      == mshr_vpn_to_be_compared     ) ? 1'b1 : 1'b0;
+          GibiPage:
+          mshr_hit_vec[k] = (mshr_entry_q[k].valid && mshr_entry_q[k].vpn[2]   == mshr_vpn_to_be_compared[2]  ) ? 1'b1 : 1'b0;
+          MebiPage:
+          mshr_hit_vec[k] = (mshr_entry_q[k].valid && mshr_entry_q[k].vpn[2:1] == mshr_vpn_to_be_compared[2:1]) ? 1'b1 : 1'b0;
+          KibiPage:
+          mshr_hit_vec[k] = (mshr_entry_q[k].valid && mshr_entry_q[k].vpn      == mshr_vpn_to_be_compared     ) ? 1'b1 : 1'b0;
         endcase
-      end else if (dtlb_ctrl == dtlb_LSQReq) mshr_hit_vec[k] = (mshr_entry_q[k].valid && (mshr_entry_q[k].vpn == mshr_vpn_to_be_compared)) ? 1'b1 : 1'b0;
+      end else if (dtlb_ctrl == dtlb_LSQReq)
+        mshr_hit_vec[k] = (mshr_entry_q[k].valid && (mshr_entry_q[k].vpn == mshr_vpn_to_be_compared)) ? 1'b1 : 1'b0;
     end
   end
 
@@ -344,11 +366,11 @@ module dtlb_L1
     mshr_valid_not_waiting_idx = '0;
     mshr_invalid_idx           = '0;
     // Priority encoding and multi hot vector formation
-    for (int k = M-1; k >= 0; k--) begin
+    for (int k = M - 1; k >= 0; k--) begin
       mshr_valid_vec[k] = mshr_entry_q[k].valid;
       if (mshr_entry_q[k].valid && !mshr_entry_q[k].waiting) begin
         mshr_valid_not_waiting_vec[k] = 1'b1;
-        mshr_valid_not_waiting_idx = k;
+        mshr_valid_not_waiting_idx    = k;
       end else if (!mshr_entry_q[k].valid) mshr_invalid_idx = k;
     end
   end
@@ -358,18 +380,18 @@ module dtlb_L1
 
   // One hot vector formation to selectively enable add and remove of MSHR entries
   always_comb begin
-    mshr_oh_valid_not_waiting_vec = '0;
-    mshr_oh_invalid_vec           = '0;
+    mshr_oh_valid_not_waiting_vec                             = '0;
+    mshr_oh_invalid_vec                                       = '0;
     mshr_oh_valid_not_waiting_vec[mshr_valid_not_waiting_idx] = 1'b1;
     mshr_oh_invalid_vec[mshr_invalid_idx]                     = 1'b1;
   end
 
   // A valid and not waiting entry can become an L2-TLB request
-  assign dtlb_l2tlb_req_o.vpn    = mshr_entry_q[mshr_valid_not_waiting_idx].vpn;
+  assign dtlb_l2tlb_req_o.vpn   = mshr_entry_q[mshr_valid_not_waiting_idx].vpn;
   // MSHR valid request if there is at least one valid and not waiting entry
-  assign dtlb_l2tlb_req_o.valid  = |mshr_valid_not_waiting_vec;
+  assign dtlb_l2tlb_req_o.valid = |mshr_valid_not_waiting_vec;
 
   // If valid MSHR -> L2-TLB transaction, put the entry in a waiting state
-  assign put_mshr_entry_wait     = (l2tlb_dtlb_req_rdy_i && dtlb_l2tlb_req_o.valid) ? 1'b1 : 1'b0;
+  assign put_mshr_entry_wait    = (l2tlb_dtlb_req_rdy_i && dtlb_l2tlb_req_o.valid) ? 1'b1 : 1'b0;
 
 endmodule

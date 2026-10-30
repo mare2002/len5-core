@@ -11,7 +11,7 @@ import subprocess
 import shutil
 import tempfile
 import time
-from configuration import ROOT, configuration, fingerprint, write_manifest, sources
+from configuration import ROOT, configuration, fingerprint, write_manifest, sources, pc_config
 
 
 def main():
@@ -44,7 +44,7 @@ def main():
         ('wrong-immediate-sign','04','EJ03','early_jump_unit.sv',
          'instr_i[jump_location].j.imm20,',"1'b0,",1),
         ('wrong-lane-selection','11','EJ02','early_jump_unit.sv',
-         'for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--)','for(int i = 0; i < LEN5_MULTIPLE_ISSUES; i++)',1),
+         'int i = Len5Cfg.LEN5_MULTIPLE_ISSUES - 1; i >= 0; i--','int i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++',1),
         ('wrong-jal-base','03','EJ03','early_jump_unit.sv',
          'early_jump_base = mem_if_pred_i[jump_location].pc;',"early_jump_base = mem_if_pred_i[jump_location].pc + 64'd4;",1),
         ('predicted-call-not-pushed','14','RA02','early_jump_unit.sv',
@@ -52,7 +52,7 @@ def main():
         ('suppressed-return-not-popped','14','RA02','early_jump_unit.sv',
          'ras_pop  = instr_valid_i & issue_ready_i;','ras_pop  = instr_valid_i & issue_ready_i & target_valid;',1),
         ('redundant-return-correction','14','EJ05','early_jump_unit.sv',
-         'ras_addr_valid && !(mem_if_pred_i[jump_location].hit && mem_if_pred_i[jump_location].taken && (mem_if_pred_i[jump_location].target == ras_addr))',
+         'ras_addr_valid && !return_pred_correct',
          'ras_addr_valid',1),
         ('push-while-stalled','21','RA04','early_jump_unit.sv',
          'ras_push = instr_valid_i & issue_ready_i;','ras_push = instr_valid_i;',1),
@@ -96,6 +96,7 @@ def main():
         for name,path in files.items():(staging/path.relative_to(ROOT)).write_bytes((d/name).read_bytes())
         (staging/'fusesoc.conf').write_text('[library.len5]\nlocation = .\nsync-type = local\n')
         command=[os.environ.get('FUSESOC','fusesoc'),'run','--target','sim','--tool','verilator','--build-root',str(d/'model'),'--setup','--build','polito:len5:early-jump-tb']
+        command += pc_config.build_arguments('rtl')
         with (d/'build.log').open('w') as log:built=subprocess.run(command,cwd=staging,stdout=log,stderr=subprocess.STDOUT)
         result=dict(mutation=label,behavior=f'{old} -> {new}',requirement=req,scenario='EJ-T'+scenario,build_status=built.returncode,artifacts=str(d))
         if built.returncode:

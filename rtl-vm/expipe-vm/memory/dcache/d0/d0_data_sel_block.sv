@@ -1,3 +1,4 @@
+`include "len5_memory_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -15,26 +16,31 @@
 
 import memory_pkg::*;
 
-module d0_data_sel_block (
-    // d0 req type
-    input  d0_req_type_e    d0_req_type_i,
-    input  d0_d1_req_type_e d1_req_type_i,
-    // LSQ request
-    input  lsq_l1dc_req_t   lsq_l1dc_req_i,
-    // L2C answer
-    input  l2c_l1dc_ans_t   l2c_l1dc_ans_i,
-    // d1 request
-    input  d1_d0_req_t      d1_d0_req_i,
-    // Update L2 request
-    input  upd_l1dc_req_t   upd_l1dc_req_i,
-    // Reset request
-    input  rst_l1dc_req_t   rst_l1dc_req_i,
-    // To Ouput Registers
-    output d1_req_info_t    reg_out_d_o,
-    // To the cache
-    output dcache_addr_t    dcache_addr_o,
-    output dcache_line_t    dcache_wdata_o,
-    output tvd_mem_line_t   dcache_wtvd_o
+module d0_data_sel_block #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type d1_d0_req_t = `LEN5_VM_D1_D0_REQ_T(Len5Cfg),
+  localparam type d1_req_info_t = `LEN5_VM_D1_REQ_INFO_T(Len5Cfg),
+  localparam type lsq_l1dc_req_t = `LEN5_VM_LSQ_L1DC_REQ_T(Len5Cfg)
+) (
+  // d0 req type
+  input  d0_req_type_e    d0_req_type_i,
+  input  d0_d1_req_type_e d1_req_type_i,
+  // LSQ request
+  input  lsq_l1dc_req_t   lsq_l1dc_req_i,
+  // L2C answer
+  input  l2c_l1dc_ans_t   l2c_l1dc_ans_i,
+  // d1 request
+  input  d1_d0_req_t      d1_d0_req_i,
+  // Update L2 request
+  input  upd_l1dc_req_t   upd_l1dc_req_i,
+  // Reset request
+  input  rst_l1dc_req_t   rst_l1dc_req_i,
+  // To Ouput Registers
+  output d1_req_info_t    reg_out_d_o,
+  // To the cache
+  output dcache_addr_t    dcache_addr_o,
+  output dcache_line_t    dcache_wdata_o,
+  output tvd_mem_line_t   dcache_wtvd_o
 );
 
   localparam TAG_A_LEN = DCACHE_L1_TAG_A_LEN;

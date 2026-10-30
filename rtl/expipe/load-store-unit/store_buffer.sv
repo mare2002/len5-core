@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2022 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -19,80 +20,86 @@
  *          to be directly connected to a memory module.
  */
 module store_buffer #(
-  parameter  int unsigned DEPTH = 4,
-  parameter  int unsigned LB_DEPTH = len5_config_pkg::LDBUFF_DEPTH,
-  // Dependent parameters: do NOT override
-  localparam int unsigned IdxW  = $clog2(DEPTH)
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
+    localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
+    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+    localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int unsigned DEPTH = Len5Cfg.STBUFF_DEPTH,
+    parameter int unsigned LB_DEPTH = Len5Cfg.LDBUFF_DEPTH,
+    // Dependent parameters: do NOT override
+    localparam int unsigned IdxW = $clog2(DEPTH)
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Issue stage
-  input  logic                                         issue_valid_i,
-  output logic                                         issue_ready_o,
-  input  expipe_pkg::ldst_width_t                      issue_type_i,         // byte, halfword, ...
-  input  expipe_pkg::op_data_t                         issue_rs1_i,          // base address
-  input  expipe_pkg::op_data_t                         issue_rs2_i,          // data to store
-  input  logic                    [len5_pkg::XLEN-1:0] issue_imm_i,          // offset
-  input  expipe_pkg::rob_idx_t                         issue_dest_rob_idx_i,
+    // Issue stage
+    input logic issue_valid_i,
+    output logic issue_ready_o,
+    input expipe_pkg::ldst_width_t issue_type_i,  // byte, halfword, ...
+    input op_data_t issue_rs1_i,  // base address
+    input op_data_t issue_rs2_i,  // data to store
+    input logic [len5_pkg::XLEN-1:0] issue_imm_i,  // offset
+    input rob_idx_t issue_dest_rob_idx_i,
 
-  // Commit stage
-  input  logic                 comm_mem_clear_i,
-  output expipe_pkg::rob_idx_t comm_mem_idx_o,
+    // Commit stage
+    input  logic     comm_mem_clear_i,
+    output rob_idx_t comm_mem_idx_o,
 
-  // Common data bus (CDB)
-  input  logic                  cdb_valid_i,
-  input  logic                  cdb_ready_i,
-  output logic                  cdb_valid_o,
-  input  expipe_pkg::cdb_data_t cdb_data_i,
-  output expipe_pkg::cdb_data_t cdb_data_o,
+    // Common data bus (CDB)
+    input  logic      cdb_valid_i,
+    input  logic      cdb_ready_i,
+    output logic      cdb_valid_o,
+    input  cdb_data_t cdb_data_i,
+    output cdb_data_t cdb_data_o,
 
-  // Address adder
-  input  logic                   adder_valid_i,
-  input  logic                   adder_ready_i,
-  output logic                   adder_valid_o,
-  output logic                   adder_ready_o,
-  input  expipe_pkg::adder_ans_t adder_ans_i,
-  output expipe_pkg::adder_req_t adder_req_o,
+    // Address adder
+    input  logic       adder_valid_i,
+    input  logic       adder_ready_i,
+    output logic       adder_valid_o,
+    output logic       adder_ready_o,
+    input  adder_ans_t adder_ans_i,
+    output adder_req_t adder_req_o,
 
-  // Load buffer (for load-after-store dependencies)
-  output logic            lb_latest_valid_o,      // the latest store tag is valid
-  output logic [IdxW-1:0] lb_latest_idx_o,        // tag of the latest store
-  output logic            lb_oldest_completed_o,  // the oldest store has completed
-  output logic [IdxW-1:0] lb_oldest_idx_o,        // tag of the oldest active store
+    // Load buffer (for load-after-store dependencies)
+    output logic            lb_latest_valid_o,      // the latest store tag is valid
+    output logic [IdxW-1:0] lb_latest_idx_o,        // tag of the latest store
+    output logic            lb_oldest_completed_o,  // the oldest store has completed
+    output logic [IdxW-1:0] lb_oldest_idx_o,        // tag of the oldest active store
 
-  // Older loads that still need to capture their values.
-  input  logic [LB_DEPTH-1:0] lb_pending_i,
-  output logic [LB_DEPTH-1:0] lb_older_loads_o,
-  output expipe_pkg::ldst_width_t lb_mem_type_o,
-  input  logic lb_mem_blocked_i,
+    // Older loads that still need to capture their values.
+    input  logic                    [LB_DEPTH-1:0] lb_pending_i,
+    output logic                    [LB_DEPTH-1:0] lb_older_loads_o,
+    output expipe_pkg::ldst_width_t                lb_mem_type_o,
+    input  logic                                   lb_mem_blocked_i,
 
-  // Level-zero cache control (store-to-load forwarding)
-  input  logic                    [          IdxW-1:0] l0_idx_i,           // requested entry
-  output logic                                         l0_cached_o,        // the entry is cached
-  output logic                    [len5_pkg::ALEN-1:0] l0_cached_addr_o,   // cached store tag
-  output expipe_pkg::ldst_width_t                      l0_cached_width_o,  // cached value width
-  output logic                    [len5_pkg::XLEN-1:0] l0_cached_value_o,  // cached value
+    // Level-zero cache control (store-to-load forwarding)
+    input  logic                    [          IdxW-1:0] l0_idx_i,           // requested entry
+    output logic                                         l0_cached_o,        // the entry is cached
+    output logic                    [len5_pkg::ALEN-1:0] l0_cached_addr_o,   // cached store tag
+    output expipe_pkg::ldst_width_t                      l0_cached_width_o,  // cached value width
+    output logic                    [len5_pkg::XLEN-1:0] l0_cached_value_o,  // cached value
 
-  // Memory system
-  output logic                                                mem_valid_o,
-  input  logic                                                mem_ready_i,
-  input  logic                                                mem_valid_i,
-  output logic                                                mem_ready_o,
-  output logic                                                mem_we_o,
-  output logic                   [        len5_pkg::XLEN-1:0] mem_addr_o,
-  output logic                   [                       7:0] mem_be_o,
-  output logic                   [        len5_pkg::XLEN-1:0] mem_wdata_o,
-  output logic                   [len5_pkg::BUFF_IDX_LEN-1:0] mem_tag_o,
-  input  logic                   [len5_pkg::BUFF_IDX_LEN-1:0] mem_tag_i,
-  input  logic                                                mem_except_raised_i,
-  input  len5_pkg::except_code_t                              mem_except_code_i
+    // Memory system
+    output logic mem_valid_o,
+    input logic mem_ready_i,
+    input logic mem_valid_i,
+    output logic mem_ready_o,
+    output logic mem_we_o,
+    output logic [len5_pkg::XLEN-1:0] mem_addr_o,
+    output logic [7:0] mem_be_o,
+    output logic [len5_pkg::XLEN-1:0] mem_wdata_o,
+    output logic [Len5Cfg.BUFF_IDX_LEN-1:0] mem_tag_o,
+    input logic [Len5Cfg.BUFF_IDX_LEN-1:0] mem_tag_i,
+    input logic mem_except_raised_i,
+    input len5_pkg::except_code_t mem_except_code_i
 );
 
   import len5_config_pkg::*;
   import len5_pkg::XLEN;
-  import len5_pkg::BUFF_IDX_LEN;
+
   import len5_pkg::except_code_t;
   import expipe_pkg::*;
   import memory_pkg::*;
@@ -295,7 +302,7 @@ module store_buffer #(
         end
         STORE_S_COMPLETED: begin
           if (pop && head_idx == i[IdxW-1:0]) begin
-            if (LEN5_STORE_LOAD_FWD_EN != 0) begin
+            if (Len5Cfg.LEN5_STORE_LOAD_FWD_EN != 0) begin
               next_state[i] = STORE_S_CACHED;
             end else begin
               next_state[i] = STORE_S_EMPTY;
@@ -313,7 +320,7 @@ module store_buffer #(
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_state_update
     if (!rst_ni) foreach (curr_state[i]) curr_state[i] <= STORE_S_EMPTY;
     else if (flush_i) begin
-      if (LEN5_STORE_LOAD_FWD_EN != 0) begin
+      if (Len5Cfg.LEN5_STORE_LOAD_FWD_EN != 0) begin
         foreach (curr_state[i]) begin
           curr_state[i] <= (curr_state[i] == STORE_S_CACHED) ? STORE_S_CACHED : STORE_S_EMPTY;
         end
@@ -399,7 +406,7 @@ module store_buffer #(
   // -----------------
   // Issue stage
   generate
-    if (LEN5_STORE_LOAD_FWD_EN != '0) begin : gen_issue_ready_fwd
+    if (Len5Cfg.LEN5_STORE_LOAD_FWD_EN != '0) begin : gen_issue_ready_fwd
       assign  issue_ready_o  = (curr_state[tail_idx] == STORE_S_EMPTY) | (curr_state[tail_idx] == STORE_S_CACHED);
     end else begin : gen_issue_ready_no_fwd
       assign issue_ready_o = curr_state[tail_idx] == STORE_S_EMPTY;
@@ -436,7 +443,7 @@ module store_buffer #(
 
   // Level-zero cache
   generate
-    if (LEN5_STORE_LOAD_FWD_EN != '0) begin : gen_l0_fwd
+    if (Len5Cfg.LEN5_STORE_LOAD_FWD_EN != '0) begin : gen_l0_fwd
       assign l0_cached_o  = curr_state[l0_idx_i] == STORE_S_CACHED | curr_state[l0_idx_i] == STORE_S_COMPLETED;
       assign l0_cached_addr_o = data[l0_idx_i].imm_addr_value;
       assign l0_cached_width_o = data[l0_idx_i].store_type;
@@ -444,7 +451,7 @@ module store_buffer #(
     end else begin : gen_l0_no_fwd
       assign l0_cached_o       = '0;
       assign l0_cached_addr_o  = '0;
-      assign l0_cached_width_o = '0;
+      assign l0_cached_width_o = LS_BYTE;
       assign l0_cached_value_o = '0;
     end
   endgenerate
@@ -474,64 +481,64 @@ module store_buffer #(
 
   // Head counter pointing to the oldest store
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) u_head_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (head_cnt_en),
-    .clr_i  (head_cnt_clr),
-    .count_o(head_idx),
-    .tc_o   ()               // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (head_cnt_en),
+      .clr_i  (head_cnt_clr),
+      .count_o(head_idx),
+      .tc_o   ()               // not needed
   );
 
   // Tail counter pointing to the first empty entry
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) u_tail_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (tail_cnt_en),
-    .clr_i  (tail_cnt_clr),
-    .count_o(tail_idx),
-    .tc_o   ()               // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (tail_cnt_en),
+      .clr_i  (tail_cnt_clr),
+      .count_o(tail_idx),
+      .tc_o   ()               // not needed
   );
 
   // Address counter pointing to the next instruction proceeding to address
   // computation
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) u_addr_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (addr_cnt_en),
-    .clr_i  (addr_cnt_clr),
-    .count_o(addr_idx),
-    .tc_o   ()               // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (addr_cnt_en),
+      .clr_i  (addr_cnt_clr),
+      .count_o(addr_idx),
+      .tc_o   ()               // not needed
   );
 
   // Clear check counter
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) u_clear_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (clear_cnt_en),
-    .clr_i  (clear_cnt_clr),
-    .count_o(clear_idx),
-    .tc_o   ()                // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (clear_cnt_en),
+      .clr_i  (clear_cnt_clr),
+      .count_o(clear_idx),
+      .tc_o   ()                // not needed
   );
 
   // Memory access counter pointing to the next store performing a memory
   // request
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) u_mem_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (mem_cnt_en),
-    .clr_i  (mem_cnt_clr),
-    .count_o(mem_idx),
-    .tc_o   ()              // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (mem_cnt_en),
+      .clr_i  (mem_cnt_clr),
+      .count_o(mem_idx),
+      .tc_o   ()              // not needed
   );
 
   // ----------

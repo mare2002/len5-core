@@ -6,8 +6,12 @@ test_build_dir=${BUILD_DIR:-"$repo_root/build/load-store-order"}
 test_top=${LOAD_STORE_TOP:-load_store_order_tb}
 cd "$repo_root"
 mkdir -p "$test_build_dir"
+config_output=$(bash scripts/sim/config-args.sh rtl verilator)
+config_args=()
+if [[ -n $config_output ]]; then mapfile -t config_args <<< "$config_output"; fi
 
 "${VERILATOR:-verilator}" --binary --timing --assert -j "${JOBS:-4}" \
+  "${config_args[@]}" +incdir+tb/packages +incdir+rtl/packages +incdir+tb/memory \
   -MAKEFLAGS "OBJCACHE= CXX=${CXX:-/usr/bin/g++}" --Mdir "$test_build_dir" --top-module "$test_top" \
   -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY -Wno-TIMESCALEMOD \
   rtl/misc/packages-waivers.vlt rtl/misc/common-waivers.vlt rtl/misc/expipe-waivers.vlt \

@@ -134,7 +134,7 @@ The missing-receipt checks live in `early_jump_unit/suite_unit.py:17`, reused by
 
 ## Coverage added and configuration compatibility
 
-The ordinary standalone memory and composed frontend benches intentionally select **depth 2, drain-on-flush 0** (`fetch_mem_if/fetch_mem_tb.sv:2`, `:52`; `fetch_stage/fetch_stage_tb.sv:2`, `:63`). The full core instantiates **depth 8, drain-on-flush 1** from `rtl/packages/len5_config_pkg.sv:122`, `:125`, through `rtl/datapath.sv:98`. This is a real coverage boundary; passing the ordinary C++ oracle does not validate the production drain protocol.
+The ordinary standalone memory and composed frontend benches intentionally select **depth 2, drain-on-flush 0** (`fetch_mem_if/fetch_mem_tb.sv:2`, `:52`; `fetch_stage/fetch_stage_tb.sv:2`, `:63`). The full core instantiates **depth 8, drain-on-flush 1** from `rtl/packages/len5_config_pkg.sv:122`, `:125`, through `rtl/len5_datapath.sv:98`. This is a real coverage boundary; passing the ordinary C++ oracle does not validate the production drain protocol.
 
 Added `tb/frontend/fetch_mem_if/fetch_mem_drain_tb.sv` and a `drain` target in the existing FuseSoC core. `make check-fetch-mem-if` now aggregates `check-fetch-mem-if-cancel` (the original seven-group C++ suite) and `check-fetch-mem-if-drain`; `check-frontend` invokes that aggregate. The two components run sequentially, including under `make -j`. The drain test uses the source-selected depth/width and an independent public-port queue, exact payload/metadata/fault checks, bounded waits, final count assertions, and a watchdog.
 

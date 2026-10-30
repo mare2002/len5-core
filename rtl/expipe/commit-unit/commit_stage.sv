@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -12,69 +13,73 @@
 // Author: Michele Caon
 // Date: 20/11/2019
 
-module commit_stage (
-  input logic clk_i,
-  input logic rst_ni,
+module commit_stage #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg)
+) (
+    input logic clk_i,
+    input logic rst_ni,
 
-  // Flush signal
-  output logic ex_mis_flush_o,  // flush after misprediction
-  output logic except_flush_o,  // flush after exception
+    // Flush signal
+    output logic ex_mis_flush_o,  // flush after misprediction
+    output logic except_flush_o,  // flush after exception
 
-  // Data to frontend
-  input  logic                      fe_ready_i,
-  output logic                      fe_except_raised_o,
-  output logic [len5_pkg::XLEN-1:0] fe_except_pc_o,
+    // Data to frontend
+    input  logic                      fe_ready_i,
+    output logic                      fe_except_raised_o,
+    output logic [len5_pkg::XLEN-1:0] fe_except_pc_o,
 
-  // Issue logic <--> commit stage
-  input  logic                                        issue_valid_i,
-  output logic                                        issue_ready_o,
-  input  expipe_pkg::rob_entry_t                      issue_data_i,
-  output expipe_pkg::rob_idx_t                        issue_tail_idx_o,
-  input  expipe_pkg::rob_idx_t                        issue_rs1_rob_idx_i,
-  output logic                                        issue_rs1_ready_o,
-  output logic                   [len5_pkg::XLEN-1:0] issue_rs1_value_o,
-  input  expipe_pkg::rob_idx_t                        issue_rs2_rob_idx_i,
-  output logic                                        issue_rs2_ready_o,
-  output logic                   [len5_pkg::XLEN-1:0] issue_rs2_value_o,
-  input  expipe_pkg::rob_idx_t                        issue_rs3_rob_idx_i,
-  output logic                                        issue_rs3_ready_o,
-  output logic                   [len5_pkg::XLEN-1:0] issue_rs3_value_o,
-  // resume execution after stall
-  output logic                                        issue_resume_o,
+    // Issue logic <--> commit stage
+    input  logic                                        issue_valid_i,
+    output logic                                        issue_ready_o,
+    input  expipe_pkg::rob_entry_t                      issue_data_i,
+    output rob_idx_t                                    issue_tail_idx_o,
+    input  rob_idx_t                                    issue_rs1_rob_idx_i,
+    output logic                                        issue_rs1_ready_o,
+    output logic                   [len5_pkg::XLEN-1:0] issue_rs1_value_o,
+    input  rob_idx_t                                    issue_rs2_rob_idx_i,
+    output logic                                        issue_rs2_ready_o,
+    output logic                   [len5_pkg::XLEN-1:0] issue_rs2_value_o,
+    input  rob_idx_t                                    issue_rs3_rob_idx_i,
+    output logic                                        issue_rs3_ready_o,
+    output logic                   [len5_pkg::XLEN-1:0] issue_rs3_value_o,
+    // resume execution after stall
+    output logic                                        issue_resume_o,
 
-  /* Common data bus (CDB) */
-  input  logic                  cdb_valid_i,
-  input  expipe_pkg::cdb_data_t cdb_data_i,
-  output logic                  cdb_ready_o,
+    /* Common data bus (CDB) */
+    input  logic      cdb_valid_i,
+    input  cdb_data_t cdb_data_i,
+    output logic      cdb_ready_o,
 
-  // Commit logic <--> store buffer
-  input  expipe_pkg::rob_idx_t sb_mem_idx_i,   // executing store ROB index
-  output logic                 sb_mem_clear_o, // store is clear to execute
+    // Commit logic <--> store buffer
+    input  rob_idx_t sb_mem_idx_i,   // executing store ROB index
+    output logic     sb_mem_clear_o, // store is clear to execute
 
-  // Commit logic <--> int register files and status
-  output logic int_rs_valid_o,
-  output logic int_rf_valid_o,
-  // Commit logic <--> fp register files and status
-  output logic fp_rs_valid_o,
-  output logic fp_rf_valid_o,
+    // Commit logic <--> int register files and status
+    output logic int_rs_valid_o,
+    output logic int_rf_valid_o,
+    // Commit logic <--> fp register files and status
+    output logic fp_rs_valid_o,
+    output logic fp_rf_valid_o,
 
-  // Data to the register files
-  output logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_o,   // the index of the destination register (rd)
-  output logic [       len5_pkg::XLEN-1:0] rd_value_o, // the value to be stored in rd
+    // Data to the register files
+    output logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_o,   // the index of the destination register (rd)
+    output logic [len5_pkg::XLEN-1:0] rd_value_o,  // the value to be stored in rd
 
-  // CSRs
-  output logic csr_valid_o,
-  output logic csr_trap_enter_o,
-  output logic csr_mret_commit_o,
-  input csr_pkg::csr_t csr_data_i,
-  input csr_pkg::csr_mtvec_t csr_mtvec_i,  // mtvec data
-  input csr_pkg::csr_mepc_t csr_mepc_i,
-  output expipe_pkg::comm_csr_instr_t csr_comm_insn_o,  // committing instruction type
-  output csr_pkg::csr_op_t csr_op_o,
-  output logic [csr_pkg::CSR_ADDR_LEN-1:0] csr_addr_o,
-  output logic [len5_pkg::REG_IDX_LEN-1:0] csr_rs1_idx_o,
-  output logic [len5_pkg::XLEN-1:0] csr_data_o,
-  output logic [len5_pkg::REG_IDX_LEN-1:0] csr_rd_idx_o
+    // CSRs
+    output logic csr_valid_o,
+    output logic csr_trap_enter_o,
+    output logic csr_mret_commit_o,
+    input csr_pkg::csr_t csr_data_i,
+    input csr_pkg::csr_mtvec_t csr_mtvec_i,  // mtvec data
+    input csr_pkg::csr_mepc_t csr_mepc_i,
+    output expipe_pkg::comm_csr_instr_t csr_comm_insn_o,  // committing instruction type
+    output csr_pkg::csr_op_t csr_op_o,
+    output logic [csr_pkg::CSR_ADDR_LEN-1:0] csr_addr_o,
+    output logic [len5_pkg::REG_IDX_LEN-1:0] csr_rs1_idx_o,
+    output logic [len5_pkg::XLEN-1:0] csr_data_o,
+    output logic [len5_pkg::REG_IDX_LEN-1:0] csr_rd_idx_o
 );
 
   import len5_config_pkg::*;
@@ -158,36 +163,37 @@ module commit_stage (
   // Reorder Buffer (ROB)
   // --------------------
   rob #(
-    .DEPTH(ROB_DEPTH)
+      .Len5Cfg(Len5Cfg),
+      .DEPTH  (Len5Cfg.ROB_DEPTH)
   ) u_rob (
-    .clk_i              (clk_i),
-    .rst_ni             (rst_ni),
-    .flush_i            (cu_mis_flush),
-    .issue_valid_i      (issue_valid_i),
-    .issue_ready_o      (issue_ready_o),
-    .issue_data_i       (issue_data_i),
-    .issue_tail_idx_o   (issue_tail_idx_o),
-    .issue_rs1_rob_idx_i(issue_rs1_rob_idx_i),
-    .issue_rs2_rob_idx_i(issue_rs2_rob_idx_i),
-    .issue_rs3_rob_idx_i(issue_rs3_rob_idx_i),
-    .opfwd_rs1_valid_o  (rob_opfwd_rs1_valid),
-    .opfwd_rs1_ready_o  (rob_opfwd_rs1_ready),
-    .opfwd_rs1_value_o  (rob_opfwd_rs1_value),
-    .opfwd_rs2_valid_o  (rob_opfwd_rs2_valid),
-    .opfwd_rs2_ready_o  (rob_opfwd_rs2_ready),
-    .opfwd_rs2_value_o  (rob_opfwd_rs2_value),
-    .opfwd_rs3_valid_o  (rob_opfwd_rs3_valid),
-    .opfwd_rs3_ready_o  (rob_opfwd_rs3_ready),
-    .opfwd_rs3_value_o  (rob_opfwd_rs3_value),
-    .sb_mem_idx_i       (sb_mem_idx_i),
-    .sb_mem_clear_o     (sb_mem_clear_o),
-    .comm_valid_o       (rob_reg_valid),
-    .comm_ready_i       (reg_rob_ready),
-    .comm_data_o        (rob_reg_head_entry),
-    .comm_idx_o         (rob_reg_idx),
-    .cdb_valid_i        (cdb_valid_i),
-    .cdb_data_i         (cdb_data_i),
-    .cdb_ready_o        (cdb_ready_o)
+      .clk_i              (clk_i),
+      .rst_ni             (rst_ni),
+      .flush_i            (cu_mis_flush),
+      .issue_valid_i      (issue_valid_i),
+      .issue_ready_o      (issue_ready_o),
+      .issue_data_i       (issue_data_i),
+      .issue_tail_idx_o   (issue_tail_idx_o),
+      .issue_rs1_rob_idx_i(issue_rs1_rob_idx_i),
+      .issue_rs2_rob_idx_i(issue_rs2_rob_idx_i),
+      .issue_rs3_rob_idx_i(issue_rs3_rob_idx_i),
+      .opfwd_rs1_valid_o  (rob_opfwd_rs1_valid),
+      .opfwd_rs1_ready_o  (rob_opfwd_rs1_ready),
+      .opfwd_rs1_value_o  (rob_opfwd_rs1_value),
+      .opfwd_rs2_valid_o  (rob_opfwd_rs2_valid),
+      .opfwd_rs2_ready_o  (rob_opfwd_rs2_ready),
+      .opfwd_rs2_value_o  (rob_opfwd_rs2_value),
+      .opfwd_rs3_valid_o  (rob_opfwd_rs3_valid),
+      .opfwd_rs3_ready_o  (rob_opfwd_rs3_ready),
+      .opfwd_rs3_value_o  (rob_opfwd_rs3_value),
+      .sb_mem_idx_i       (sb_mem_idx_i),
+      .sb_mem_clear_o     (sb_mem_clear_o),
+      .comm_valid_o       (rob_reg_valid),
+      .comm_ready_i       (reg_rob_ready),
+      .comm_data_o        (rob_reg_head_entry),
+      .comm_idx_o         (rob_reg_idx),
+      .cdb_valid_i        (cdb_valid_i),
+      .cdb_data_i         (cdb_data_i),
+      .cdb_ready_o        (cdb_ready_o)
   );
 
   // ROB HEAD BUFFER
@@ -199,20 +205,20 @@ module commit_stage (
 
   // Input spill cell
   spill_cell_ext #(
-    .DATA_T(inreg_data_t),
-    .SKIP  (COMMIT_SPILL_SKIP)
+      .DATA_T(inreg_data_t),
+      .SKIP  (Len5Cfg.COMMIT_SPILL_SKIP)
   ) u_input_reg (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .flush_i    (cu_mis_flush),
-    .valid_i    (rob_reg_valid),
-    .ready_i    (cu_inreg_ready),
-    .valid_o    (inreg_cu_valid),
-    .ready_o    (reg_rob_ready),
-    .data_i     (inreg_data_in),
-    .data_o     (inreg_data_out),
-    .buff_full_o(inreg_buff_full),
-    .buff_data_o(inreg_buff_data)
+      .clk_i      (clk_i),
+      .rst_ni     (rst_ni),
+      .flush_i    (cu_mis_flush),
+      .valid_i    (rob_reg_valid),
+      .ready_i    (cu_inreg_ready),
+      .valid_o    (inreg_cu_valid),
+      .ready_o    (reg_rob_ready),
+      .data_i     (inreg_data_in),
+      .data_o     (inreg_data_out),
+      .buff_full_o(inreg_buff_full),
+      .buff_data_o(inreg_buff_data)
   );
 
   // OPERANDS FORWARDING LOGIC
@@ -307,10 +313,10 @@ module commit_stage (
   // COMMIT DECODER
   // --------------
   commit_decoder u_comm_decoder (
-    .instruction_i  (inreg_data_out.data.instruction),
-    .except_raised_i(inreg_data_out.data.except_raised),
-    .comm_type_o    (cd_comm_type),
-    .csr_op_o       (cd_csr_op)
+      .instruction_i  (inreg_data_out.data.instruction),
+      .except_raised_i(inreg_data_out.data.except_raised),
+      .comm_type_o    (cd_comm_type),
+      .csr_op_o       (cd_csr_op)
   );
 
   // COMMIT CONTROL UNIT
@@ -325,35 +331,35 @@ module commit_stage (
 
   // Control unit
   commit_cu u_commit_cu (
-    .clk_i             (clk_i),
-    .rst_ni            (rst_ni),
-    .comm_type_i       (cd_comm_type),
-    .mispredict_i      (inreg_cu_mispredicted),
-    .comm_reg_en_o     (comm_reg_en),
-    .comm_reg_clr_o    (comm_reg_clr),
-    .comm_rd_sel_o     (cu_rd_sel),
-    .comm_csr_sel_o    (cu_csr_sel),
-    .valid_i           (inreg_cu_valid),
-    .ready_o           (cu_inreg_ready),
-    .res_ready_i       (inreg_data_out.data.res_ready),
-    // Exception recovery continues after the input spill cell has been flushed.
-    .except_code_i     (comm_reg_data.data.except_code),
-    .int_rs_valid_o    (int_rs_valid_o),
-    .int_rf_valid_o    (int_rf_valid_o),
-    .fp_rs_valid_o     (fp_rs_valid_o),
-    .fp_rf_valid_o     (fp_rf_valid_o),
-    .csr_valid_o       (csr_valid_o),
-    .csr_override_o    (cu_csr_override),
-    .csr_trap_enter_o  (csr_trap_enter_o),
-    .csr_mret_commit_o (csr_mret_commit_o),
-    .csr_comm_insn_o   (csr_comm_insn_o),
-    .csr_addr_o        (cu_csr_addr),
-    .fe_ready_i        (fe_ready_i),
-    .fe_except_raised_o(fe_except_raised_o),
-    .fe_pc_sel_mepc_o  (cu_pc_sel_mepc),
-    .ex_mis_flush_o    (cu_mis_flush),
-    .except_flush_o    (cu_except_flush),
-    .issue_resume_o    (issue_resume_o)
+      .clk_i             (clk_i),
+      .rst_ni            (rst_ni),
+      .comm_type_i       (cd_comm_type),
+      .mispredict_i      (inreg_cu_mispredicted),
+      .comm_reg_en_o     (comm_reg_en),
+      .comm_reg_clr_o    (comm_reg_clr),
+      .comm_rd_sel_o     (cu_rd_sel),
+      .comm_csr_sel_o    (cu_csr_sel),
+      .valid_i           (inreg_cu_valid),
+      .ready_o           (cu_inreg_ready),
+      .res_ready_i       (inreg_data_out.data.res_ready),
+      // Exception recovery continues after the input spill cell has been flushed.
+      .except_code_i     (comm_reg_data.data.except_code),
+      .int_rs_valid_o    (int_rs_valid_o),
+      .int_rf_valid_o    (int_rf_valid_o),
+      .fp_rs_valid_o     (fp_rs_valid_o),
+      .fp_rf_valid_o     (fp_rf_valid_o),
+      .csr_valid_o       (csr_valid_o),
+      .csr_override_o    (cu_csr_override),
+      .csr_trap_enter_o  (csr_trap_enter_o),
+      .csr_mret_commit_o (csr_mret_commit_o),
+      .csr_comm_insn_o   (csr_comm_insn_o),
+      .csr_addr_o        (cu_csr_addr),
+      .fe_ready_i        (fe_ready_i),
+      .fe_except_raised_o(fe_except_raised_o),
+      .fe_pc_sel_mepc_o  (cu_pc_sel_mepc),
+      .ex_mis_flush_o    (cu_mis_flush),
+      .except_flush_o    (cu_except_flush),
+      .issue_resume_o    (issue_resume_o)
   );
 
   // Exception adder

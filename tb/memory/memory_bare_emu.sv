@@ -15,54 +15,55 @@
 `include "memory_class.svh"
 
 module memory_bare_emu #(
-  parameter int unsigned DUMP_PERIOD = 0,  // cycles, zero to disable
-  parameter int unsigned PIPE_NUM = 0,  // number of pipeline registers
-  parameter bit SKIP_INS_ANS_REG = 0,  // instruction from memory is directly passed to fetch
-  parameter bit SKIP_DATA_ANS_REG = 0  // data from memory is directly passed to LSU
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter int unsigned DUMP_PERIOD = 0,  // cycles, zero to disable
+    parameter int unsigned PIPE_NUM = 0,  // number of pipeline registers
+    parameter bit SKIP_INS_ANS_REG = 0,  // instruction from memory is directly passed to fetch
+    parameter bit SKIP_DATA_ANS_REG = 0  // data from memory is directly passed to LSU
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic instr_flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic instr_flush_i,
 
-  input string mem_file_i,
-  input string mem_dump_file_i,
+    input string mem_file_i,
+    input string mem_dump_file_i,
 
-  // Instruction  port (read-only)
-  input  logic                                        instr_valid_i,
-  output logic                                        instr_valid_o,
-  output logic                                        instr_ready_o,
-  input  logic                                        instr_ready_i,
-  input  logic                   [len5_pkg::XLEN-1:0] instr_addr_i,
-  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] [len5_pkg::ILEN-1:0] instr_rdata_o,
-  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_o,
-  output len5_pkg::except_code_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_o,
+    // Instruction  port (read-only)
+    input logic instr_valid_i,
+    output logic instr_valid_o,
+    output logic instr_ready_o,
+    input logic instr_ready_i,
+    input logic [len5_pkg::XLEN-1:0] instr_addr_i,
+    output logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] instr_rdata_o,
+    output logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr_except_raised_o,
+    output len5_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr_except_code_o,
 
-  // Load port interface
-  input  logic                                                data_load_valid_i,
-  output logic                                                data_load_valid_o,
-  output logic                                                data_load_ready_o,
-  input  logic                                                data_load_ready_i,
-  input  logic                   [        len5_pkg::XLEN-1:0] data_load_addr_i,
-  input  logic                   [                       7:0] data_load_be_i,
-  input  logic                   [len5_pkg::BUFF_IDX_LEN-1:0] data_load_tag_i,
-  output logic                   [        len5_pkg::XLEN-1:0] data_load_rdata_o,
-  output logic                   [len5_pkg::BUFF_IDX_LEN-1:0] data_load_tag_o,
-  output logic                                                data_load_except_raised_o,
-  output len5_pkg::except_code_t                              data_load_except_code_o,
+    // Load port interface
+    input  logic                                              data_load_valid_i,
+    output logic                                              data_load_valid_o,
+    output logic                                              data_load_ready_o,
+    input  logic                                              data_load_ready_i,
+    input  logic                   [      len5_pkg::XLEN-1:0] data_load_addr_i,
+    input  logic                   [                     7:0] data_load_be_i,
+    input  logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] data_load_tag_i,
+    output logic                   [      len5_pkg::XLEN-1:0] data_load_rdata_o,
+    output logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] data_load_tag_o,
+    output logic                                              data_load_except_raised_o,
+    output len5_pkg::except_code_t                            data_load_except_code_o,
 
-  // Store port interface
-  input  logic                                                data_store_valid_i,
-  output logic                                                data_store_valid_o,
-  output logic                                                data_store_ready_o,
-  input  logic                                                data_store_ready_i,
-  input  logic                                                data_store_we_i,
-  input  logic                   [        len5_pkg::XLEN-1:0] data_store_addr_i,
-  input  logic                   [len5_pkg::BUFF_IDX_LEN-1:0] data_store_tag_i,
-  input  logic                   [                       7:0] data_store_be_i,
-  input  logic                   [        len5_pkg::XLEN-1:0] data_store_wdata_i,
-  output logic                   [len5_pkg::BUFF_IDX_LEN-1:0] data_store_tag_o,
-  output logic                                                data_store_except_raised_o,
-  output len5_pkg::except_code_t                              data_store_except_code_o
+    // Store port interface
+    input  logic                                              data_store_valid_i,
+    output logic                                              data_store_valid_o,
+    output logic                                              data_store_ready_o,
+    input  logic                                              data_store_ready_i,
+    input  logic                                              data_store_we_i,
+    input  logic                   [      len5_pkg::XLEN-1:0] data_store_addr_i,
+    input  logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] data_store_tag_i,
+    input  logic                   [                     7:0] data_store_be_i,
+    input  logic                   [      len5_pkg::XLEN-1:0] data_store_wdata_i,
+    output logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] data_store_tag_o,
+    output logic                                              data_store_except_raised_o,
+    output len5_pkg::except_code_t                            data_store_except_code_o
 );
 
   import len5_config_pkg::*;
@@ -74,35 +75,35 @@ module memory_bare_emu #(
   // ----------------
   // Answer from the memory
   typedef struct packed {
-    logic [LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] read;           // instruction read
-    logic         [LEN5_MULTIPLE_ISSUES-1:0] except_raised;
-    len5_pkg::except_code_t  [LEN5_MULTIPLE_ISSUES-1:0] except_code;
+    logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] read;           // instruction read
+    logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0]                     except_raised;
+    len5_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0]   except_code;
   } instr_mem_ans_t;
 
   typedef struct packed {
-    logic [len5_pkg::BUFF_IDX_LEN-1:0] tag;            // instruction tag
-    logic [len5_pkg::XLEN-1:0]         read;           // data read
-    logic                              except_raised;
-    len5_pkg::except_code_t            except_code;
+    logic [Len5Cfg.BUFF_IDX_LEN-1:0] tag;  // instruction tag
+    logic [len5_pkg::XLEN-1:0] read;  // data read
+    logic except_raised;
+    len5_pkg::except_code_t except_code;
   } dload_mem_ans_t;
 
   typedef struct packed {
-    logic [len5_pkg::BUFF_IDX_LEN-1:0] tag;            // instruction tag
-    logic                              except_raised;
-    len5_pkg::except_code_t            except_code;
+    logic [Len5Cfg.BUFF_IDX_LEN-1:0] tag;  // instruction tag
+    logic except_raised;
+    len5_pkg::except_code_t except_code;
   } dstore_mem_ans_t;
 
   // Memory answer to the core
-  instr_mem_ans_t                       instr_rsp;
-  dload_mem_ans_t                       data_load_rsp;
-  dstore_mem_ans_t                      data_store_rsp;
-  logic            [len5_pkg::XLEN-1:0] instr_addr_q;
-  logic            [len5_pkg::XLEN-1:0] data_store_addr_q;
+  instr_mem_ans_t                              instr_rsp;
+  dload_mem_ans_t                              data_load_rsp;
+  dstore_mem_ans_t                             data_store_rsp;
+  logic                   [len5_pkg::XLEN-1:0] instr_addr_q;
+  logic                   [len5_pkg::XLEN-1:0] data_store_addr_q;
 
   // To load combinatorily the data from the memory
-  logic            [len5_pkg::XLEN-1:0] sampled_data;
+  logic                   [len5_pkg::XLEN-1:0] sampled_data;
   // Memory object
-  memory_class                          mem;
+  memory_class #(Len5Cfg)                      mem;
   int i_ret, dl_ret, ds_ret;  // memory emulator return value
 
   // Pipeline registers
@@ -146,13 +147,17 @@ module memory_bare_emu #(
 
   // INSTRUCTION REQUEST
   // -------------------
-  logic [LEN5_MULTIPLE_ISSUES-1:0][XLEN-1:0] address_read;
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][XLEN-1:0] address_read;
   generate
-    if (LEN5_MULTIPLE_ISSUES == 32'd1) begin : gen_single_isntr
+    if (Len5Cfg.LEN5_MULTIPLE_ISSUES == 32'd1) begin : gen_single_isntr
       assign address_read[0] = instr_addr_i;
     end else begin : gen_multiple_instr
-      for(genvar i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin : gen_multiple_instr_for
-        assign address_read[i] = {instr_addr_i[XLEN-1:LEN5_MULTIPLE_ISSUES_BITS+2], i[LEN5_MULTIPLE_ISSUES_BITS-1:0], {2'b0}};
+      for (genvar i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin : gen_multiple_instr_for
+        assign address_read[i] = {
+          instr_addr_i[XLEN-1:Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS+2],
+          i[Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:0],
+          {2'b0}
+        };
       end
     end
   endgenerate
@@ -160,12 +165,12 @@ module memory_bare_emu #(
   always_comb begin : p_ins_mem_req
     instr_pipe_reg[0].read          = 'h0;
     instr_pipe_reg[0].except_raised = 'b0;
-    instr_pipe_reg[0].except_code = {LEN5_MULTIPLE_ISSUES{E_UNKNOWN}};
-    
+    instr_pipe_reg[0].except_code   = {Len5Cfg.LEN5_MULTIPLE_ISSUES{E_UNKNOWN}};
+
     if (instr_valid_i) begin  // Memory always ready to answer (instr_ready_o = 1)
-    //read multiple instructions at a time
-      for (int i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
-        i_ret                  = mem.ReadW(address_read[i]);
+      //read multiple instructions at a time
+      for (int i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin
+        i_ret                     = mem.ReadW(address_read[i]);
         instr_pipe_reg[0].read[i] = mem.read_word;
 
         // Exception handling
@@ -174,7 +179,9 @@ module memory_bare_emu #(
           1: begin  // address_misaligned
             if (instr_addr_i != instr_addr_q)
               $display(
-                  "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h", $time, address_read
+                  "[%8t] MEM EMU > WARNING: misaligned INSTRUCTION access at %h",
+                  $time,
+                  address_read
               );
             instr_pipe_reg[0].except_raised[i] = 1'b1;
             instr_pipe_reg[0].except_code[i]   = E_I_ADDR_MISALIGNED;
@@ -192,7 +199,9 @@ module memory_bare_emu #(
           default: begin
             if (instr_addr_i != instr_addr_q)
               $display(
-                  "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h", $time, instr_addr_i
+                  "[%8t] MEM EMU > WARNING: unknown INSTRUCTION exception at %h",
+                  $time,
+                  instr_addr_i
               );
             instr_pipe_reg[0].except_raised[i] = 1'b1;
             instr_pipe_reg[0].except_code[i]   = E_UNKNOWN;
@@ -379,48 +388,48 @@ module memory_bare_emu #(
   // Output registers
   // ----------------
   spill_cell_flush #(
-    .DATA_T(instr_mem_ans_t),
-    .SKIP  (SKIP_INS_ANS_REG)
+      .DATA_T(instr_mem_ans_t),
+      .SKIP  (SKIP_INS_ANS_REG)
   ) u_ins_out_reg (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(instr_flush_i),
-    .valid_i(instr_pipe_valid[PIPE_NUM]),
-    .ready_i(instr_ready_i),
-    .valid_o(instr_valid_o),
-    .ready_o(instr_ready_o),
-    .data_i (instr_pipe_reg[PIPE_NUM]),
-    .data_o (instr_rsp)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(instr_flush_i),
+      .valid_i(instr_pipe_valid[PIPE_NUM]),
+      .ready_i(instr_ready_i),
+      .valid_o(instr_valid_o),
+      .ready_o(instr_ready_o),
+      .data_i (instr_pipe_reg[PIPE_NUM]),
+      .data_o (instr_rsp)
   );
 
   spill_cell_flush #(
-    .DATA_T(dload_mem_ans_t),
-    .SKIP  (SKIP_DATA_ANS_REG)
+      .DATA_T(dload_mem_ans_t),
+      .SKIP  (SKIP_DATA_ANS_REG)
   ) u_data_load_out_reg (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(1'b0),
-    .valid_i(data_load_pipe_valid[PIPE_NUM]),
-    .ready_i(data_load_ready_i),
-    .valid_o(data_load_valid_o),
-    .ready_o(data_load_ready_o),
-    .data_i (data_load_pipe_reg[PIPE_NUM]),
-    .data_o (data_load_rsp)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(1'b0),
+      .valid_i(data_load_pipe_valid[PIPE_NUM]),
+      .ready_i(data_load_ready_i),
+      .valid_o(data_load_valid_o),
+      .ready_o(data_load_ready_o),
+      .data_i (data_load_pipe_reg[PIPE_NUM]),
+      .data_o (data_load_rsp)
   );
 
   spill_cell_flush #(
-    .DATA_T(dstore_mem_ans_t),
-    .SKIP  (SKIP_DATA_ANS_REG)
+      .DATA_T(dstore_mem_ans_t),
+      .SKIP  (SKIP_DATA_ANS_REG)
   ) u_data_store_out_reg (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(1'b0),
-    .valid_i(data_store_pipe_valid[PIPE_NUM]),
-    .ready_i(data_store_ready_i),
-    .valid_o(data_store_valid_o),
-    .ready_o(data_store_ready_o),
-    .data_i (data_store_pipe_reg[PIPE_NUM]),
-    .data_o (data_store_rsp)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(1'b0),
+      .valid_i(data_store_pipe_valid[PIPE_NUM]),
+      .ready_i(data_store_ready_i),
+      .valid_o(data_store_valid_o),
+      .ready_o(data_store_ready_o),
+      .data_i (data_store_pipe_reg[PIPE_NUM]),
+      .data_o (data_store_rsp)
   );
 
   // From struct instr_ans_t to output ports

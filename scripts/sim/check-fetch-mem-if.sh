@@ -4,6 +4,9 @@
 set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo_root"
+config_output=$(bash scripts/sim/config-args.sh rtl fusesoc)
+config_args=()
+if [[ -n $config_output ]]; then mapfile -t config_args <<< "$config_output"; fi
 build_root=${BUILD_DIR:-"$repo_root/build"}/fetch-mem-if
 model_dir=$(python3 tb/frontend/fetch_mem_if/configuration.py --model-dir --build-dir "${BUILD_DIR:-$repo_root/build}")
 fingerprint=${model_dir##*-}
@@ -18,7 +21,7 @@ if [[ ${VERILATOR:-verilator} == */* ]]; then export PATH="$(dirname -- "$VERILA
 if [[ ! -x "$model_dir/sim-verilator/Vfetch_mem_tb" || ! -f "$model_dir/sim-verilator/fetch_mem_build.cfg" ]]; then
     echo '## Building fetch_mem_if with real FIFO/spills using Verilator...'
     if ! "${FUSESOC:-fusesoc}" run --target sim --tool verilator \
-        --build-root "$model_dir" --setup --build polito:len5:fetch-mem-if-tb --MEM_DEPTH="$metadata_depth" > "$model_dir/build.log" 2>&1; then
+        --build-root "$model_dir" --setup --build polito:len5:fetch-mem-if-tb "${config_args[@]}" --MEM_DEPTH="$metadata_depth" > "$model_dir/build.log" 2>&1; then
         tail -n 60 "$model_dir/build.log" >&2
         echo "Test failed: fetch_mem build; see $model_dir/build.log" >&2
         exit 2

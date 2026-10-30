@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2024 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -13,33 +14,35 @@
 // Date: 27/04/2024
 
 module fpu_wrapper #(
-  // EU-specific parameters
-  parameter int unsigned EU_CTL_LEN  = 32'd4,
-  parameter bit          SKIP_IN_REG = 1'b1,   // skip input register
-  parameter int unsigned PIPE_DEPTH  = 32'd1   // FPU pipeline registers
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    // EU-specific parameters
+    parameter int unsigned EU_CTL_LEN = 32'd4,
+    parameter bit SKIP_IN_REG = Len5Cfg.FPU_SPILL_SKIP,  // skip input register
+    parameter int unsigned PIPE_DEPTH = Len5Cfg.FPU_PIPE_DEPTH
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Handshake from/to the reservation station unit
-  input  logic valid_i,
-  output logic ready_o,
-  input  logic ready_i,
-  output logic valid_o,
+    // Handshake from/to the reservation station unit
+    input  logic valid_i,
+    output logic ready_o,
+    input  logic ready_i,
+    output logic valid_o,
 
-  // Data from/to the reservation station unit
-  input  logic                   [           EU_CTL_LEN-1:0] ctl_i,
-  input  logic                   [csr_pkg::FCSR_FRM_LEN-1:0] rm_i,
-  input  expipe_pkg::rob_idx_t                               rob_idx_i,
-  input  logic                   [       len5_pkg::XLEN-1:0] rs1_value_i,
-  input  logic                   [       len5_pkg::XLEN-1:0] rs2_value_i,
-  input  logic                   [       len5_pkg::XLEN-1:0] rs3_value_i,
-  output expipe_pkg::rob_idx_t                               rob_idx_o,
-  output logic                   [       len5_pkg::XLEN-1:0] result_o,
-  output logic                                               except_raised_o,
-  output len5_pkg::except_code_t                             except_code_o,
-  output csr_pkg::fcsr_fflags_t                              fflags_o
+    // Data from/to the reservation station unit
+    input  logic                   [           EU_CTL_LEN-1:0] ctl_i,
+    input  logic                   [csr_pkg::FCSR_FRM_LEN-1:0] rm_i,
+    input  rob_idx_t                                           rob_idx_i,
+    input  logic                   [       len5_pkg::XLEN-1:0] rs1_value_i,
+    input  logic                   [       len5_pkg::XLEN-1:0] rs2_value_i,
+    input  logic                   [       len5_pkg::XLEN-1:0] rs3_value_i,
+    output rob_idx_t                                           rob_idx_o,
+    output logic                   [       len5_pkg::XLEN-1:0] result_o,
+    output logic                                               except_raised_o,
+    output len5_pkg::except_code_t                             except_code_o,
+    output csr_pkg::fcsr_fflags_t                              fflags_o
 );
 
   import len5_pkg::*;
@@ -63,16 +66,16 @@ module fpu_wrapper #(
   localparam fpu_features_t FpuFeatures = '{
       Width: XLEN,
       EnableVectors: 1'b0,
-      EnableNanBox: len5_config_pkg::LEN5_D_EN,
-      FpFmtMask: len5_config_pkg::LEN5_D_EN ? RV64D.FpFmtMask : RV32F.FpFmtMask,
+      EnableNanBox: Len5Cfg.LEN5_D_EN,
+      FpFmtMask: Len5Cfg.LEN5_D_EN ? RV64D.FpFmtMask : RV32F.FpFmtMask,
       IntFmtMask: RV64D.IntFmtMask
   };
-  localparam fp_format_e DefaultFpFormat = len5_config_pkg::LEN5_D_EN ? FP64 : FP32;
+  localparam fp_format_e DefaultFpFormat = Len5Cfg.LEN5_D_EN ? FP64 : FP32;
   // Use T-HEAD Divsqrt unit for FP32-only instances
   // NOTE: the T-HEAD implementation is smaller but slower than the PULP one.
   // We primarily included it for fair comparison agains X-HEEP. The PULP unit
   // should be preferred when performance matters.
-  localparam logic FpuPulpDivsqrt = (len5_config_pkg::LEN5_D_EN) ? 1'b1 : 1'b0;
+  localparam logic FpuPulpDivsqrt = (Len5Cfg.LEN5_D_EN) ? 1'b1 : 1'b0;
 
   // Signals to the FPnew
   roundmode_e                              fpu_rm;
@@ -87,10 +90,10 @@ module fpu_wrapper #(
     rob_idx_t rob_idx;
     logic     is_int;
   } fpu_tag_t;
-  fpu_tag_t                                fpu_tag, fpu_result_tag;
+  fpu_tag_t fpu_tag, fpu_result_tag;
   // Output from FPU
-  status_t                                 fpu_status;
-  logic [XLEN-1:0]                         fpu_result;
+  status_t            fpu_status;
+  logic    [XLEN-1:0] fpu_result;
 
   // ----------------
   // INPUT SPILL CELL
@@ -119,23 +122,22 @@ module fpu_wrapper #(
 
   // Input reservation station
   spill_cell_flush #(
-    .DATA_T(in_reg_data_t),
-    .SKIP  (SKIP_IN_REG)
+      .DATA_T(in_reg_data_t),
+      .SKIP  (SKIP_IN_REG)
   ) u_out_reg (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(flush_i),
-    .valid_i(valid_i),         // valid from EU (downstream)
-    .ready_o(ready_o),         // ready to EU (downstream)
-    .ready_i(ready_fpu),       // ready from RS (upstream), CHECK if ready_i or ready_q
-    .valid_o(valid_fpu),       // valid to RS (upstream)
-    .data_i (in_reg_data_in),
-    .data_o (in_reg_data_out)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(flush_i),
+      .valid_i(valid_i),         // valid from EU (downstream)
+      .ready_o(ready_o),         // ready to EU (downstream)
+      .ready_i(ready_fpu),       // ready from RS (upstream), CHECK if ready_i or ready_q
+      .valid_o(valid_fpu),       // valid to RS (upstream)
+      .data_i (in_reg_data_in),
+      .data_o (in_reg_data_out)
   );
 
   assign fpu_tag.rob_idx = in_reg_data_out.rob_idx;
-  assign fpu_tag.is_int  = (fpu_op inside {F2I, CMP, CLASSIFY}) ||
-                          (fpu_op == SGNJ && fpu_op_mod);
+  assign fpu_tag.is_int  = (fpu_op inside {F2I, CMP, CLASSIFY}) || (fpu_op == SGNJ && fpu_op_mod);
   //assign fpu_op_mod = in_reg_data_out.clt[0];   //check whether always true
 
   always_comb begin : fpnew_operands
@@ -252,14 +254,14 @@ module fpu_wrapper #(
       FPU_MV_X_W: begin
         fpu_op      = SGNJ;
         fpu_rm      = RUP;
-        fpu_op_mod  = 1'b1;          
-		fpu_src_fmt = FP32;
+        fpu_op_mod  = 1'b1;
+        fpu_src_fmt = FP32;
         fpu_dst_fmt = FP32;
       end
       FPU_MV_W_X: begin
         fpu_op      = SGNJ;
         fpu_rm      = RUP;
-        fpu_op_mod  = 1'b0; 
+        fpu_op_mod  = 1'b0;
         fpu_src_fmt = FP32;
         fpu_dst_fmt = FP32;
       end
@@ -297,13 +299,13 @@ module fpu_wrapper #(
       end
       FPU_NMADD_S: begin
         fpu_op      = FNMSUB;
-        fpu_op_mod  = 1'b1;  
+        fpu_op_mod  = 1'b1;
         fpu_src_fmt = FP32;
         fpu_dst_fmt = FP32;  //todo: check, what should be the dest?
       end
       FPU_NMSUB_S: begin
         fpu_op      = FNMSUB;
-        fpu_op_mod  = 1'b0; 
+        fpu_op_mod  = 1'b0;
         fpu_src_fmt = FP32;
         fpu_dst_fmt = FP32;  //todo: check, what should be the dest?
       end
@@ -405,35 +407,35 @@ module fpu_wrapper #(
 
   // FPU instance
   fpnew_top #(
-    .Features      (FpuFeatures),
-    .Implementation(FpuImpl),
-    // PulpDivSqrt = 0 enables T-head-based DivSqrt unit. Supported only for FP32-only instances of Fpnew
-    .PulpDivsqrt   (FpuPulpDivsqrt),
-    .TagType       (fpu_tag_t),
-    .TrueSIMDClass (0),
-    .EnableSIMDMask(0)
+      .Features      (FpuFeatures),
+      .Implementation(FpuImpl),
+      // PulpDivSqrt = 0 enables T-head-based DivSqrt unit. Supported only for FP32-only instances of Fpnew
+      .PulpDivsqrt   (FpuPulpDivsqrt),
+      .TagType       (fpu_tag_t),
+      .TrueSIMDClass (0),
+      .EnableSIMDMask(0)
   ) u_fpu (
-    .clk_i         (clk_i),
-    .rst_ni        (rst_ni),
-    .operands_i    (fpu_operands),
-    .rnd_mode_i    (fpu_rm),
-    .op_i          (fpu_op),
-    .op_mod_i      (fpu_op_mod),
-    .src_fmt_i     (fpu_src_fmt),
-    .dst_fmt_i     (fpu_dst_fmt),
-    .int_fmt_i     (fpu_int_fmt),
-    .vectorial_op_i(0),             // no support for V
-    .tag_i         (fpu_tag),
-    .simd_mask_i   ('0),            // no support for V
-    .in_valid_i    (valid_fpu),     // from RS
-    .in_ready_o    (ready_fpu),     // to RS
-    .flush_i       (flush_i),
-    .result_o      (fpu_result),
-    .status_o      (fpu_status),
-    .tag_o         (fpu_result_tag),
-    .out_valid_o   (valid_o),       // to downstream
-    .out_ready_i   (ready_i),       // from downstream
-    .busy_o        ()
+      .clk_i         (clk_i),
+      .rst_ni        (rst_ni),
+      .operands_i    (fpu_operands),
+      .rnd_mode_i    (fpu_rm),
+      .op_i          (fpu_op),
+      .op_mod_i      (fpu_op_mod),
+      .src_fmt_i     (fpu_src_fmt),
+      .dst_fmt_i     (fpu_dst_fmt),
+      .int_fmt_i     (fpu_int_fmt),
+      .vectorial_op_i(0),               // no support for V
+      .tag_i         (fpu_tag),
+      .simd_mask_i   ('0),              // no support for V
+      .in_valid_i    (valid_fpu),       // from RS
+      .in_ready_o    (ready_fpu),       // to RS
+      .flush_i       (flush_i),
+      .result_o      (fpu_result),
+      .status_o      (fpu_status),
+      .tag_o         (fpu_result_tag),
+      .out_valid_o   (valid_o),         // to downstream
+      .out_ready_i   (ready_i),         // from downstream
+      .busy_o        ()
   );
 
   // --------------
@@ -444,10 +446,10 @@ module fpu_wrapper #(
   // RV64F has 32-bit FP registers, but integer destinations need all 64 bits.
   // Format the result here so direct forwarding and the CDB see the same value.
   always_comb begin
-    if (len5_config_pkg::LEN5_D_EN || fpu_result_tag.is_int) begin
+    if (Len5Cfg.LEN5_D_EN || fpu_result_tag.is_int) begin
       result_o = fpu_result;
     end else begin
-      result_o = {{XLEN - FLEN{1'b0}}, fpu_result[FLEN-1:0]};
+      result_o = {{XLEN - Len5Cfg.FLEN{1'b0}}, fpu_result[Len5Cfg.FLEN-1:0]};
     end
   end
 

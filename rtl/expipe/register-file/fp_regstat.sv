@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -13,31 +14,33 @@
 // Date: 12/11/2019
 
 module fp_regstat #(
-  parameter  int unsigned REG_NUM   = 32,              // power of 2
-  // Dependent parameters: do NOT override
-  localparam int unsigned RegIdxLen = $clog2(REG_NUM)  // not exposed
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int unsigned REG_NUM = 32,  // power of 2
+    // Dependent parameters: do NOT override
+    localparam int unsigned RegIdxLen = $clog2(REG_NUM)  // not exposed
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Issue Logic
-  input logic issue_valid_i,
-  input logic [RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
-  input expipe_pkg::rob_idx_t issue_rob_idx_i,  // allocated ROB index
-  input logic [RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
-  input logic [RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
-  input logic [RegIdxLen-1:0] issue_rs3_idx_i,  // third source register index
-  output logic issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
-  output expipe_pkg::rob_idx_t issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
-  output logic issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
-  output expipe_pkg::rob_idx_t issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
-  output logic issue_rs3_busy_o,  // rs3 value is in the ROB or has to be computed
-  output expipe_pkg::rob_idx_t issue_rs3_rob_idx_o,  // the index of the ROB where the result is found
+    // Issue Logic
+    input logic issue_valid_i,
+    input logic [RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
+    input rob_idx_t issue_rob_idx_i,  // allocated ROB index
+    input logic [RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
+    input logic [RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
+    input logic [RegIdxLen-1:0] issue_rs3_idx_i,  // third source register index
+    output logic issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
+    output rob_idx_t issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
+    output logic issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
+    output rob_idx_t issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
+    output logic issue_rs3_busy_o,  // rs3 value is in the ROB or has to be computed
+    output rob_idx_t issue_rs3_rob_idx_o,  // the index of the ROB where the result is found
 
-  // Commit Logic
-  input logic                 comm_valid_i,
-  input logic [RegIdxLen-1:0] comm_rd_idx_i  // destination register of the committing instr.
+    // Commit Logic
+    input logic                 comm_valid_i,
+    input logic [RegIdxLen-1:0] comm_rd_idx_i  // destination register of the committing instr.
 );
 
   import expipe_pkg::*;
@@ -48,9 +51,9 @@ module fp_regstat #(
   logic
       busy_cnt_en[REG_NUM],
       busy_cnt_dn[REG_NUM]; // TODO: check, unpacked dimension, starting from 0, declare only N instead of [0:N]
-  logic                     busy_cnt_clr;
-  logic [REGSTAT_CNT_W-1:0] busy_cnt     [REG_NUM];  // number of in-flight instructions writing rd
-  logic                     skip_cnt_upd;
+  logic busy_cnt_clr;
+  logic [Len5Cfg.REGSTAT_CNT_W-1:0] busy_cnt[REG_NUM];  // number of in-flight instructions writing rd
+  logic skip_cnt_upd;
 
   // -----------------------------
   // REGISTER STATUS CONTROL LOGIC
@@ -98,17 +101,17 @@ module fp_regstat #(
   generate
     for (genvar i = 0; i < REG_NUM; i++) begin : gen_busy_counters
       updown_counter #(
-        .WIDTH(REGSTAT_CNT_W)
+          .WIDTH(Len5Cfg.REGSTAT_CNT_W)
       ) u_rob_cnt (
-        .clk_i   (clk_i),
-        .rst_ni  (rst_ni),
-        .en_i    (busy_cnt_en[i]),
-        .clr_i   (busy_cnt_clr),
-        .dn_i    (busy_cnt_dn[i]),
-        .ld_i    (1'b0),            // not used
-        .ld_val_i('0),              // not used
-        .count_o (busy_cnt[i]),
-        .tc_o    ()                 // not needed
+          .clk_i   (clk_i),
+          .rst_ni  (rst_ni),
+          .en_i    (busy_cnt_en[i]),
+          .clr_i   (busy_cnt_clr),
+          .dn_i    (busy_cnt_dn[i]),
+          .ld_i    (1'b0),            // not used
+          .ld_val_i('0),              // not used
+          .count_o (busy_cnt[i]),
+          .tc_o    ()                 // not needed
       );
     end
   endgenerate

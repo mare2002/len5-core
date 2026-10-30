@@ -4,6 +4,14 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import importlib.util
+_spec = importlib.util.spec_from_file_location("memory_map", Path(__file__).resolve().parents[1] / "gen-memory-map.py")
+_config = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_config)
+build_arguments = _config.build_arguments
+elaborated_configuration = _config.elaborated_configuration
 
 root = Path(__file__).resolve().parents[2]
 os.chdir(root)
@@ -17,7 +25,7 @@ cases = [
     ("latency-eight", {"I_LATENCY": "8", "D_LATENCY": "8"}, "", ""),
     ("instruction-latency-above-frontend-depth", {"I_LATENCY": "17", "D_LATENCY": "1"}, "", ""),
     ("long-instruction-async-data", {"I_LATENCY": "12", "D_LATENCY": "0"}, "", ""),
-    ("nonbinary-words", {"I_SIZE": "48", "D_SIZE": "24"}, "", ""),
+    ("nonbinary-words", {"I_SIZE": str(3 * max(8, 4 * elaborated_configuration("rtl")["LEN5_MULTIPLE_ISSUES"])), "D_SIZE": "24"}, "", ""),
     ("memory-overlap", {"D_BASE": "64'h1000"}, "regions overlap", ""),
     ("unaligned-imem", {"I_BASE": "64'h1008"}, "Invalid IMEM", ""),
     ("unaligned-dmem", {"D_BASE": "64'h2001"}, "Invalid DMEM", ""),
@@ -42,16 +50,15 @@ for name, parameters, diagnostic, cpu_setting in cases:
     out.mkdir(exist_ok=True)
     config = root / "rtl/packages/len5_config_pkg.sv"
     if cpu_setting:
-        content = config.read_text().replace(f"{cpu_setting} = 1'b0", f"{cpu_setting} = 1'b1")
-        config = out / "len5_config_pkg.sv"
-        config.write_text(content)
+        parameters = dict(parameters, **{cpu_setting: '1'})
     sources = ["rtl/packages/util_pkg.sv", str(config), "rtl/packages/len5_pkg.sv",
                "tb/packages/tb_config_pkg.sv", "tb/memory/tc_sram/memory_backend_pkg.sv",
                "tb/memory/tc_sram/memory_access_check.sv", "tb/memory/tc_sram/memory_response_buffer.sv",
                "tb/memory/tc_sram/tc_sram_adapter.sv", "tb/memory/tc_sram/tc_sram_config_tb.sv"]
     cmd = [os.environ.get("VERILATOR", "verilator"), "--binary", "--timing", "--assert", "-j", "4",
            "-MAKEFLAGS", "OBJCACHE= CXX=/usr/bin/g++", "--Mdir", str(out), "--top-module", "tc_sram_config_tb"]
-    cmd += [f"-G{key}={value}" for key, value in parameters.items()] + sources
+    cmd += build_arguments("rtl", output="verilator")
+    cmd += [f"-G{key}={value}" for key, value in parameters.items()] + ["+incdir+tb/packages", "+incdir+rtl/packages", "+incdir+rtl/vendor/pulp-axi/include", "+incdir+tb/memory"] + sources
     with (out / "build.log").open("w") as log:
         subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True)
     run = subprocess.run([str(out / "Vtc_sram_config_tb")], capture_output=True, text=True)

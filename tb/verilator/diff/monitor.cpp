@@ -9,7 +9,7 @@
 #include <verilated_vpi.h>
 namespace len5::diff {
 namespace {
-const std::string top = "TOP.tb_bare.", backend = top + "u_datapath.u_backend.",
+const std::string top = "TOP.tb_bare.", backend = top + "i_len5_datapath.u_backend.",
                   issue = backend + "u_issue_stage.", comm = backend + "u_commit_stage.",
                   lsu = backend + "u_exec_stage.u_load_store_unit.", lb = lsu + "u_load_buffer.",
                   sb = lsu + "u_store_buffer.";
@@ -121,36 +121,36 @@ struct Monitor::Impl {
     bool injected = false;
     std::string isa() {
         std::string value = "RV64I";
-        if (constants.at("len5_config_pkg.LEN5_M_EN"))
+        if (constants.at("tb_bare.Len5Cfg.LEN5_M_EN"))
             value += 'M';
-        if (constants.at("len5_config_pkg.LEN5_F_EN"))
+        if (constants.at("tb_bare.Len5Cfg.LEN5_F_EN"))
             value += 'F';
-        if (constants.at("len5_config_pkg.LEN5_D_EN"))
+        if (constants.at("tb_bare.Len5Cfg.LEN5_D_EN"))
             value += 'D';
         return value;
     }
     std::map<uint32_t, uint64_t> csr_state() {
         std::map<uint32_t, uint64_t> values;
         for (const auto &[addr, sig] : csr_signals) {
-            if (addr == 3 && !constants.at("len5_config_pkg.LEN5_F_EN") &&
-                !constants.at("len5_config_pkg.LEN5_D_EN"))
+            if (addr == 3 && !constants.at("tb_bare.Len5Cfg.LEN5_F_EN") &&
+                !constants.at("tb_bare.Len5Cfg.LEN5_D_EN"))
                 continue;
             values[addr] = csr_signals_.get(sig);
         }
         return values;
     }
     Impl(const std::string &image, const std::string &output, Config cfg, const std::string &f)
-        : spike(image, constants.at("tb_bare.BOOT_PC"), isa(), csr_state(),
-                MemoryMap{constants.at("tb_bare.SERIAL_ADDR"), constants.at("tb_bare.EXIT_ADDR"),
-                          constants.at("tb_config_pkg.IMEM_BASE_ADDR"),
-                          constants.at("tb_config_pkg.MEMORY_BACKEND") != 0 ? constants.at("tb_config_pkg.IMEM_SIZE_BYTES") : 0,
-                          constants.at("tb_config_pkg.DMEM_BASE_ADDR"),
-                          constants.at("tb_config_pkg.MEMORY_BACKEND") != 0 ? constants.at("tb_config_pkg.DMEM_SIZE_BYTES") : 0,
-                          constants.at("len5_config_pkg.MMAP_MASK")} ),
+        : spike(image, constants.at("tb_bare.Len5Cfg.BOOT_PC"), isa(), csr_state(),
+                MemoryMap{constants.at("tb_bare.TbCfg.SERIAL_ADDR"), constants.at("tb_bare.TbCfg.EXIT_ADDR"),
+                          constants.at("tb_bare.TbCfg.IMEM_BASE_ADDR"),
+                          constants.at("tb_bare.TbCfg.MEMORY_BACKEND") != 0 ? constants.at("tb_bare.TbCfg.IMEM_SIZE_BYTES") : 0,
+                          constants.at("tb_bare.TbCfg.DMEM_BASE_ADDR"),
+                          constants.at("tb_bare.TbCfg.MEMORY_BACKEND") != 0 ? constants.at("tb_bare.TbCfg.DMEM_SIZE_BYTES") : 0,
+                          constants.at("tb_bare.Len5Cfg.MMAP_MASK")} ),
           checker(spike, output, cfg), fault(f) {
-        if (constants.at("len5_config_pkg.LEN5_C_EN") ||
-            constants.at("len5_config_pkg.LEN5_A_EN") ||
-            constants.at("len5_config_pkg.ONLY_DOUBLEWORD_MEM_ACCESSES"))
+        if (constants.at("tb_bare.Len5Cfg.LEN5_C_EN") ||
+            constants.at("tb_bare.Len5Cfg.LEN5_A_EN") ||
+            constants.at("tb_bare.Len5Cfg.ONLY_DOUBLEWORD_MEM_ACCESSES"))
             throw std::runtime_error(
                 "unsupported compressed/atomic/aligned-doubleword-memory configuration");
         if (!f.empty() && f != "operand" && f != "cdb" && f != "register" && f != "store")
@@ -160,10 +160,10 @@ struct Monitor::Impl {
                 l.fields.count("dest_rob_idx") &&
                 layouts.count(path.substr(0, path.size() - 4) + "cdb_valid_o"))
                 stations.push_back(std::make_unique<Signals>(path.substr(0, path.size() - 4)));
-        const auto count = 4 + constants.at("len5_config_pkg.LEN5_M_EN") +
-                           constants.at("len5_config_pkg.LEN5_DIV_EN") +
-                           bool(constants.at("len5_config_pkg.LEN5_F_EN") ||
-                                constants.at("len5_config_pkg.LEN5_D_EN"));
+        const auto count = 4 + constants.at("tb_bare.Len5Cfg.LEN5_M_EN") +
+                           constants.at("tb_bare.Len5Cfg.LEN5_DIV_EN") +
+                           bool(constants.at("tb_bare.Len5Cfg.LEN5_F_EN") ||
+                                constants.at("tb_bare.Len5Cfg.LEN5_D_EN"));
         if (stations.size() != count)
             throw std::runtime_error("execution-unit observation/configuration mismatch");
     }
@@ -305,7 +305,7 @@ struct Monitor::Impl {
                     checker.fetch(issue_signals.get("new_instr", "curr_pc", lane),
                                   issue_signals.get("new_instr", "instruction.raw", lane), t);
         }
-        if (constants.at("tb_config_pkg.MEMORY_BACKEND") != 0 &&
+        if (constants.at("tb_bare.TbCfg.MEMORY_BACKEND") != 0 &&
             top_signals.get("dp2mem_store_valid") && top_signals.get("mem2dp_store_ready") &&
             top_signals.get("dp2mem_store_we")) {
             auto tag = top_signals.get("dp2mem_store_tag");
@@ -336,7 +336,7 @@ void Monitor::after_rising(Stamp t) {
             regs[r] = impl_->int_rf_signals.get("rf_data", "", r);
         std::array<uint64_t, 32> fp_regs{};
         const bool has_fp =
-            constants.at("len5_config_pkg.LEN5_F_EN") || constants.at("len5_config_pkg.LEN5_D_EN");
+            constants.at("tb_bare.Len5Cfg.LEN5_F_EN") || constants.at("tb_bare.Len5Cfg.LEN5_D_EN");
         if (has_fp)
             for (unsigned r = 0; r < 32; ++r)
                 fp_regs[r] = impl_->fp_rf_signals.get("rf_data", "", r);
@@ -348,7 +348,7 @@ void Monitor::after_rising(Stamp t) {
 void Monitor::before_falling(Stamp t) {
     try {
         // memory_bare_emu writes on negedge(valid && we), independent of ready.
-        if (constants.at("tb_config_pkg.MEMORY_BACKEND") == 0 &&
+        if (constants.at("tb_bare.TbCfg.MEMORY_BACKEND") == 0 &&
             impl_->top_signals.get("dp2mem_store_valid") &&
             impl_->top_signals.get("dp2mem_store_we")) {
             auto tag = impl_->top_signals.get("dp2mem_store_tag");

@@ -59,7 +59,7 @@ older history, so deleting only newly pushed entries would not solve the problem
 
 Active source: [ras.sv](../../rtl/frontend/ras.sv), lines 63–117;
 [branch_unit.sv](../../rtl/expipe/exec-units/branch_unit.sv), lines 109–172,
-198–229 and 278–281; [datapath.sv](../../rtl/datapath.sv), lines 97–132.
+198–229 and 278–281; [datapath.sv](../../rtl/len5_datapath.sv), lines 97–132.
 The single EJU/RAS flush combines exception and branch recovery, although the BPU
 receives a separate exception-flush qualifier.
 
@@ -149,7 +149,7 @@ A flush by itself therefore does not prevent intervening requests/refills.
 
 Source: [commit_cu.sv](../../rtl/expipe/commit-unit/commit_cu.sv), lines 429–465;
 [pc_gen.sv](../../rtl/frontend/pc_gen.sv), lines 82–110;
-[datapath.sv](../../rtl/datapath.sv), lines 97–132.
+[datapath.sv](../../rtl/len5_datapath.sv), lines 97–132.
 
 The traces use NOPs writing x0 and did not run a complete ISA checker. They do
 **not** demonstrate a harmful wrong-path register update or establish the full

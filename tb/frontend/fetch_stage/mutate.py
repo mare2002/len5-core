@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import time
 import yaml
-from configuration import ROOT, configuration, fingerprint, write_manifest, sources
+from configuration import ROOT, configuration, fingerprint, write_manifest, sources, pc
 
 
 def main():
@@ -39,7 +39,7 @@ def main():
     # All edits are applied to private copies. Count guards prevent accidental edits at changed sites.
     mutations=[
         ('lost-training','09','FE05','fetch_stage.sv','.bu_res_valid_i(bu_bpu_valid_i)',".bu_res_valid_i(1'b0)",1),
-        ('wrong-integrated-initial','08','FE05','fetch_stage.sv','.INIT_C2B(INIT_C2B)','.INIT_C2B(fetch_pkg::WNT)',1),
+        ('wrong-integrated-initial','08','FE05','fetch_stage.sv',".INIT_C2B(fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B))",'.INIT_C2B(fetch_pkg::WNT)',1),
         ('invert-history','13','FE05','gshare.sv','history[HLEN-2:0], res_taken_i','history[HLEN-2:0], ~res_taken_i',1),
         ('wrong-btb-target','18','FE04','btb.sv','res_target_i[XLEN-1:OFFSET];',"res_target_i[XLEN-1:OFFSET] + 1'b1;",1),
         ('take-without-hit','08','FE03','gen_valid_instr.sv','pred_i[i].hit & pred_i[i].taken','pred_i[i].taken',1),
@@ -77,7 +77,8 @@ def main():
         # A compiler failure is never counted as a checked mutation detection.
         data['targets']['sim']['tools']['verilator']['verilator_options'].append('-Wno-fatal')
         core.write_text('CAPI=2:\n'+yaml.safe_dump({k:v for k,v in data.items() if k!='CAPI=2'},sort_keys=False))
-        command=[os.environ.get('FUSESOC','fusesoc'),'run','--target','sim','--tool','verilator','--build-root',str(d/'model'),'--setup','--build','polito:len5:fetch-stage-tb','--MEM_DEPTH='+str(config['metadata_depth']),'--BOOT_PC='+str(config['boot_pc'])]
+        command=[os.environ.get('FUSESOC','fusesoc'),'run','--target','sim','--tool','verilator','--build-root',str(d/'model'),'--setup','--build','polito:len5:fetch-stage-tb','--MEM_DEPTH='+str(config['metadata_depth']),'--BOOT_PC_HI='+str(config['boot_pc'] >> 32),'--BOOT_PC_LO='+str(config['boot_pc'] & 0xffffffff)]
+        command += pc.build_arguments('rtl')
         with (d/'build.log').open('w') as log:built=subprocess.run(command,cwd=staging,stdout=log,stderr=subprocess.STDOUT)
         result=dict(mutation=label,behavior=f'{old} -> {new}',requirement=req,scenario='FE-T'+scenario,build_status=built.returncode,artifacts=str(d))
         if built.returncode:

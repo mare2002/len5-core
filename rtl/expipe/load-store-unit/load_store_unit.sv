@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2022 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -20,69 +21,72 @@
  *          It is meant to be directly attached to a memory
  */
 module load_store_unit #(
-  parameter int unsigned LB_DEPTH = 4,
-  parameter int unsigned SB_DEPTH = 4
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+    localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
+    localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
+    localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
+    parameter int unsigned LB_DEPTH = Len5Cfg.LDBUFF_DEPTH,
+    parameter int unsigned SB_DEPTH = Len5Cfg.STBUFF_DEPTH
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic mis_flush_i,
-  input logic except_flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic mis_flush_i,
+    input logic except_flush_i,
 
-  /* Issue stage */
-  input  logic                                         issue_lb_valid_i,
-  input  logic                                         issue_sb_valid_i,
-  output logic                                         issue_lb_ready_o,
-  output logic                                         issue_sb_ready_o,
-  input  expipe_pkg::ldst_width_t                      issue_type_i,         // byte, halfword, ...
-  input  expipe_pkg::op_data_t                         issue_rs1_i,          // base address
-  input  expipe_pkg::op_data_t                         issue_rs2_i,          // data to store
-  input  logic                    [len5_pkg::XLEN-1:0] issue_imm_i,          // offset
-  input  expipe_pkg::rob_idx_t                         issue_dest_rob_idx_i,
+    /* Issue stage */
+    input logic issue_lb_valid_i,
+    input logic issue_sb_valid_i,
+    output logic issue_lb_ready_o,
+    output logic issue_sb_ready_o,
+    input expipe_pkg::ldst_width_t issue_type_i,  // byte, halfword, ...
+    input op_data_t issue_rs1_i,  // base address
+    input op_data_t issue_rs2_i,  // data to store
+    input logic [len5_pkg::XLEN-1:0] issue_imm_i,  // offset
+    input rob_idx_t issue_dest_rob_idx_i,
 
-  /* Commit stage */
-  input  logic                 comm_sb_mem_clear_i,
-  output expipe_pkg::rob_idx_t comm_sb_mem_idx_o,
+    /* Commit stage */
+    input  logic     comm_sb_mem_clear_i,
+    output rob_idx_t comm_sb_mem_idx_o,
 
-  /* Common data bus (CDB) */
-  input  logic                  cdb_valid_i,
-  input  logic                  cdb_lb_ready_i,
-  input  logic                  cdb_sb_ready_i,
-  output logic                  cdb_lb_valid_o,
-  output logic                  cdb_sb_valid_o,
-  input  expipe_pkg::cdb_data_t cdb_data_i,
-  output expipe_pkg::cdb_data_t cdb_lb_data_o,
-  output expipe_pkg::cdb_data_t cdb_sb_data_o,
+    /* Common data bus (CDB) */
+    input  logic      cdb_valid_i,
+    input  logic      cdb_lb_ready_i,
+    input  logic      cdb_sb_ready_i,
+    output logic      cdb_lb_valid_o,
+    output logic      cdb_sb_valid_o,
+    input  cdb_data_t cdb_data_i,
+    output cdb_data_t cdb_lb_data_o,
+    output cdb_data_t cdb_sb_data_o,
 
-  /* Memory system */
-  output logic                                                mem_load_valid_o,
-  input  logic                                                mem_load_ready_i,
-  input  logic                                                mem_load_valid_i,
-  output logic                                                mem_load_ready_o,
-  output logic                                                mem_load_we_o,
-  output logic                   [        len5_pkg::XLEN-1:0] mem_load_addr_o,
-  output logic                   [                       7:0] mem_load_be_o,
-  output logic                   [len5_pkg::BUFF_IDX_LEN-1:0] mem_load_tag_o,
-  input  logic                   [        len5_pkg::XLEN-1:0] mem_load_rdata_i,
-  input  logic                   [len5_pkg::BUFF_IDX_LEN-1:0] mem_load_tag_i,
-  input  logic                                                mem_load_except_raised_i,
-  input  len5_pkg::except_code_t                              mem_load_except_code_i,
+    /* Memory system */
+    output logic                                              mem_load_valid_o,
+    input  logic                                              mem_load_ready_i,
+    input  logic                                              mem_load_valid_i,
+    output logic                                              mem_load_ready_o,
+    output logic                                              mem_load_we_o,
+    output logic                   [      len5_pkg::XLEN-1:0] mem_load_addr_o,
+    output logic                   [                     7:0] mem_load_be_o,
+    output logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_load_tag_o,
+    input  logic                   [      len5_pkg::XLEN-1:0] mem_load_rdata_i,
+    input  logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_load_tag_i,
+    input  logic                                              mem_load_except_raised_i,
+    input  len5_pkg::except_code_t                            mem_load_except_code_i,
 
-  output logic                                                mem_store_valid_o,
-  input  logic                                                mem_store_ready_i,
-  input  logic                                                mem_store_valid_i,
-  output logic                                                mem_store_ready_o,
-  output logic                                                mem_store_we_o,
-  output logic                   [        len5_pkg::XLEN-1:0] mem_store_addr_o,
-  output logic                   [                       7:0] mem_store_be_o,
-  output logic                   [        len5_pkg::XLEN-1:0] mem_store_wdata_o,
-  output logic                   [len5_pkg::BUFF_IDX_LEN-1:0] mem_store_tag_o,
-  input  logic                   [len5_pkg::BUFF_IDX_LEN-1:0] mem_store_tag_i,
-  input  logic                                                mem_store_except_raised_i,
-  input  len5_pkg::except_code_t                              mem_store_except_code_i
+    output logic                                              mem_store_valid_o,
+    input  logic                                              mem_store_ready_i,
+    input  logic                                              mem_store_valid_i,
+    output logic                                              mem_store_ready_o,
+    output logic                                              mem_store_we_o,
+    output logic                   [      len5_pkg::XLEN-1:0] mem_store_addr_o,
+    output logic                   [                     7:0] mem_store_be_o,
+    output logic                   [      len5_pkg::XLEN-1:0] mem_store_wdata_o,
+    output logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_store_tag_o,
+    input  logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_store_tag_i,
+    input  logic                                              mem_store_except_raised_i,
+    input  len5_pkg::except_code_t                            mem_store_except_code_i
 );
-
-	//%TODO when the time is right check the load store unit(near the end when
-	//the commit unit is at work)
 
   import len5_config_pkg::*;
   import expipe_pkg::*;
@@ -96,13 +100,13 @@ module load_store_unit #(
   // ----------------
 
   // Load buffer <--> store buffer
-  logic                    sb_lb_latest_valid;
-  logic [STBUFF_TAG_W-1:0] sb_lb_latest_idx;
-  logic                    sb_lb_oldest_completed;
-  logic [STBUFF_TAG_W-1:0] sb_lb_oldest_idx;
+  logic                            sb_lb_latest_valid;
+  logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_lb_latest_idx;
+  logic                            sb_lb_oldest_completed;
+  logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_lb_oldest_idx;
   logic [LB_DEPTH-1:0] lb_sb_pending, sb_lb_older_loads;
   ldst_width_t sb_lb_mem_type;
-  logic lb_sb_mem_blocked;
+  logic        lb_sb_mem_blocked;
 
   // Load/store buffer  <--> address adder
   logic lb_adder_valid, sb_adder_valid;
@@ -133,167 +137,173 @@ module load_store_unit #(
   // LOAD BUFFER
   // -----------
   load_buffer #(
-    .DEPTH(LB_DEPTH),
-    .TAG_W(BUFF_IDX_LEN)
+      .Len5Cfg(Len5Cfg),
+      .DEPTH  (LB_DEPTH),
+      .TAG_W  (Len5Cfg.BUFF_IDX_LEN)
   ) u_load_buffer (
-    .clk_i                (clk_i),
-    .rst_ni               (rst_ni),
-    .flush_i              (mis_flush_i),
-    .issue_valid_i        (issue_lb_valid_i),
-    .issue_ready_o        (issue_lb_ready_o),
-    .issue_type_i         (issue_type_i),
-    .issue_rs1_i          (issue_rs1_i),
-    .issue_imm_i          (issue_imm_i),
-    .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
-    .cdb_valid_i          (cdb_valid_i),
-    .cdb_ready_i          (cdb_lb_ready_i),
-    .cdb_valid_o          (cdb_lb_valid_o),
-    .cdb_data_i           (cdb_data_i),
-    .cdb_data_o           (cdb_lb_data_o),
-    .sb_latest_valid_i    (sb_lb_latest_valid),
-    .sb_latest_idx_i      (sb_lb_latest_idx),
-    .sb_oldest_completed_i(sb_lb_oldest_completed),
-    .sb_oldest_idx_i      (sb_lb_oldest_idx),
-    .sb_pending_loads_o   (lb_sb_pending),
-    .sb_older_loads_i     (sb_lb_older_loads),
-    .sb_mem_addr_i        (mem_store_addr_o),
-    .sb_mem_type_i        (sb_lb_mem_type),
-    .sb_mem_blocked_o     (lb_sb_mem_blocked),
-    .adder_valid_i        (adder_lb_valid),
-    .adder_ready_i        (adder_lb_ready),
-    .adder_valid_o        (lb_adder_valid),
-    .adder_ready_o        (lb_adder_ready),
-    .adder_ans_i          (adder_lb_ans),
-    .adder_req_o          (lb_adder_req),
-    .l0_valid_i           (l0_lb_valid),
-    .l0_value_i           (l0_lb_value),
-    .l0_width_o           (lb_l0_width),
-    .mem_valid_o          (mem_load_valid_o),
-    .mem_ready_i          (mem_load_ready_i),
-    .mem_valid_i          (mem_load_valid_i),
-    .mem_ready_o          (mem_load_ready_o),
-    .mem_we_o             (mem_load_we_o),
-    .mem_addr_o           (mem_load_addr_o),
-    .mem_be_o             (mem_load_be_o),
-    .mem_tag_o            (mem_load_tag_o),
-    .mem_rdata_i          (mem_load_rdata_i),
-    .mem_tag_i            (mem_load_tag_i),
-    .mem_except_raised_i  (mem_load_except_raised_i),
-    .mem_except_code_i    (mem_load_except_code_i)
+      .clk_i                (clk_i),
+      .rst_ni               (rst_ni),
+      .flush_i              (mis_flush_i),
+      .issue_valid_i        (issue_lb_valid_i),
+      .issue_ready_o        (issue_lb_ready_o),
+      .issue_type_i         (issue_type_i),
+      .issue_rs1_i          (issue_rs1_i),
+      .issue_imm_i          (issue_imm_i),
+      .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
+      .cdb_valid_i          (cdb_valid_i),
+      .cdb_ready_i          (cdb_lb_ready_i),
+      .cdb_valid_o          (cdb_lb_valid_o),
+      .cdb_data_i           (cdb_data_i),
+      .cdb_data_o           (cdb_lb_data_o),
+      .sb_latest_valid_i    (sb_lb_latest_valid),
+      .sb_latest_idx_i      (sb_lb_latest_idx),
+      .sb_oldest_completed_i(sb_lb_oldest_completed),
+      .sb_oldest_idx_i      (sb_lb_oldest_idx),
+      .sb_pending_loads_o   (lb_sb_pending),
+      .sb_older_loads_i     (sb_lb_older_loads),
+      .sb_mem_addr_i        (mem_store_addr_o),
+      .sb_mem_type_i        (sb_lb_mem_type),
+      .sb_mem_blocked_o     (lb_sb_mem_blocked),
+      .adder_valid_i        (adder_lb_valid),
+      .adder_ready_i        (adder_lb_ready),
+      .adder_valid_o        (lb_adder_valid),
+      .adder_ready_o        (lb_adder_ready),
+      .adder_ans_i          (adder_lb_ans),
+      .adder_req_o          (lb_adder_req),
+      .l0_valid_i           (l0_lb_valid),
+      .l0_value_i           (l0_lb_value),
+      .l0_width_o           (lb_l0_width),
+      .mem_valid_o          (mem_load_valid_o),
+      .mem_ready_i          (mem_load_ready_i),
+      .mem_valid_i          (mem_load_valid_i),
+      .mem_ready_o          (mem_load_ready_o),
+      .mem_we_o             (mem_load_we_o),
+      .mem_addr_o           (mem_load_addr_o),
+      .mem_be_o             (mem_load_be_o),
+      .mem_tag_o            (mem_load_tag_o),
+      .mem_rdata_i          (mem_load_rdata_i),
+      .mem_tag_i            (mem_load_tag_i),
+      .mem_except_raised_i  (mem_load_except_raised_i),
+      .mem_except_code_i    (mem_load_except_code_i)
   );
 
   // STORE BUFFER
   // ------------
   store_buffer #(
-    .DEPTH(SB_DEPTH),
-    .LB_DEPTH(LB_DEPTH)
+      .Len5Cfg (Len5Cfg),
+      .DEPTH   (SB_DEPTH),
+      .LB_DEPTH(LB_DEPTH)
   ) u_store_buffer (
-    .clk_i                (clk_i),
-    .rst_ni               (rst_ni),
-    .flush_i              (mis_flush_i),
-    .issue_valid_i        (issue_sb_valid_i),
-    .issue_ready_o        (issue_sb_ready_o),
-    .issue_type_i         (issue_type_i),
-    .issue_rs1_i          (issue_rs1_i),
-    .issue_rs2_i          (issue_rs2_i),
-    .issue_imm_i          (issue_imm_i),
-    .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
-    .comm_mem_clear_i     (comm_sb_mem_clear_i),
-    .comm_mem_idx_o       (comm_sb_mem_idx_o),
-    .cdb_valid_i          (cdb_valid_i),
-    .cdb_ready_i          (cdb_sb_ready_i),
-    .cdb_valid_o          (cdb_sb_valid_o),
-    .cdb_data_i           (cdb_data_i),
-    .cdb_data_o           (cdb_sb_data_o),
-    .lb_latest_valid_o    (sb_lb_latest_valid),
-    .lb_latest_idx_o      (sb_lb_latest_idx),
-    .lb_oldest_completed_o(sb_lb_oldest_completed),
-    .lb_oldest_idx_o      (sb_lb_oldest_idx),
-    .lb_pending_i         (lb_sb_pending),
-    .lb_older_loads_o     (sb_lb_older_loads),
-    .lb_mem_type_o        (sb_lb_mem_type),
-    .lb_mem_blocked_i     (lb_sb_mem_blocked),
-    .adder_valid_i        (adder_sb_valid),
-    .adder_ready_i        (adder_sb_ready),
-    .adder_valid_o        (sb_adder_valid),
-    .adder_ready_o        (sb_adder_ready),
-    .adder_ans_i          (adder_sb_ans),
-    .adder_req_o          (sb_adder_req),
-    .l0_idx_i             (l0_sb_idx),
-    .l0_cached_o          (sb_l0_cached),
-    .l0_cached_addr_o     (sb_l0_cached_addr),
-    .l0_cached_width_o    (sb_l0_cached_width),
-    .l0_cached_value_o    (sb_l0_cached_value),
-    .mem_valid_o          (mem_store_valid_o),
-    .mem_ready_i          (mem_store_ready_i),
-    .mem_valid_i          (mem_store_valid_i),
-    .mem_ready_o          (mem_store_ready_o),
-    .mem_we_o             (mem_store_we_o),
-    .mem_addr_o           (mem_store_addr_o),
-    .mem_be_o             (mem_store_be_o),
-    .mem_wdata_o          (mem_store_wdata_o),
-    .mem_tag_o            (mem_store_tag_o),
-    .mem_tag_i            (mem_store_tag_i),
-    .mem_except_raised_i  (mem_store_except_raised_i),
-    .mem_except_code_i    (mem_store_except_code_i)
+      .clk_i                (clk_i),
+      .rst_ni               (rst_ni),
+      .flush_i              (mis_flush_i),
+      .issue_valid_i        (issue_sb_valid_i),
+      .issue_ready_o        (issue_sb_ready_o),
+      .issue_type_i         (issue_type_i),
+      .issue_rs1_i          (issue_rs1_i),
+      .issue_rs2_i          (issue_rs2_i),
+      .issue_imm_i          (issue_imm_i),
+      .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
+      .comm_mem_clear_i     (comm_sb_mem_clear_i),
+      .comm_mem_idx_o       (comm_sb_mem_idx_o),
+      .cdb_valid_i          (cdb_valid_i),
+      .cdb_ready_i          (cdb_sb_ready_i),
+      .cdb_valid_o          (cdb_sb_valid_o),
+      .cdb_data_i           (cdb_data_i),
+      .cdb_data_o           (cdb_sb_data_o),
+      .lb_latest_valid_o    (sb_lb_latest_valid),
+      .lb_latest_idx_o      (sb_lb_latest_idx),
+      .lb_oldest_completed_o(sb_lb_oldest_completed),
+      .lb_oldest_idx_o      (sb_lb_oldest_idx),
+      .lb_pending_i         (lb_sb_pending),
+      .lb_older_loads_o     (sb_lb_older_loads),
+      .lb_mem_type_o        (sb_lb_mem_type),
+      .lb_mem_blocked_i     (lb_sb_mem_blocked),
+      .adder_valid_i        (adder_sb_valid),
+      .adder_ready_i        (adder_sb_ready),
+      .adder_valid_o        (sb_adder_valid),
+      .adder_ready_o        (sb_adder_ready),
+      .adder_ans_i          (adder_sb_ans),
+      .adder_req_o          (sb_adder_req),
+      .l0_idx_i             (l0_sb_idx),
+      .l0_cached_o          (sb_l0_cached),
+      .l0_cached_addr_o     (sb_l0_cached_addr),
+      .l0_cached_width_o    (sb_l0_cached_width),
+      .l0_cached_value_o    (sb_l0_cached_value),
+      .mem_valid_o          (mem_store_valid_o),
+      .mem_ready_i          (mem_store_ready_i),
+      .mem_valid_i          (mem_store_valid_i),
+      .mem_ready_o          (mem_store_ready_o),
+      .mem_we_o             (mem_store_we_o),
+      .mem_addr_o           (mem_store_addr_o),
+      .mem_be_o             (mem_store_be_o),
+      .mem_wdata_o          (mem_store_wdata_o),
+      .mem_tag_o            (mem_store_tag_o),
+      .mem_tag_i            (mem_store_tag_i),
+      .mem_except_raised_i  (mem_store_except_raised_i),
+      .mem_except_code_i    (mem_store_except_code_i)
   );
 
   // LOAD ADDRESS ADDER
   // -------------
   address_adder #(
-    .IS_STORE(1'b0)
+      .Len5Cfg (Len5Cfg),
+      .IS_STORE(1'b0)
   ) u_address_adder_load (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(mis_flush_i),
-    .valid_i(lb_adder_valid),
-    .ready_i(lb_adder_ready),
-    .valid_o(adder_lb_valid),
-    .ready_o(adder_lb_ready),
-    .req_i  (lb_adder_req),
-    .ans_o  (adder_lb_ans)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(mis_flush_i),
+      .valid_i(lb_adder_valid),
+      .ready_i(lb_adder_ready),
+      .valid_o(adder_lb_valid),
+      .ready_o(adder_lb_ready),
+      .req_i  (lb_adder_req),
+      .ans_o  (adder_lb_ans)
   );
 
   // STORE ADDRESS ADDER
   // -------------
   address_adder #(
-    .IS_STORE(1'b1)
+      .Len5Cfg (Len5Cfg),
+      .IS_STORE(1'b1)
   ) u_address_adder_store (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(mis_flush_i),
-    .valid_i(sb_adder_valid),
-    .ready_i(sb_adder_ready),
-    .valid_o(adder_sb_valid),
-    .ready_o(adder_sb_ready),
-    .req_i  (sb_adder_req),
-    .ans_o  (adder_sb_ans)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(mis_flush_i),
+      .valid_i(sb_adder_valid),
+      .ready_i(sb_adder_ready),
+      .valid_o(adder_sb_valid),
+      .ready_o(adder_sb_ready),
+      .req_i  (sb_adder_req),
+      .ans_o  (adder_sb_ans)
   );
 
   // LEVEL-ZERO CACHE CONTROL
   // ------------------------
   generate
-    if (LEN5_STORE_LOAD_FWD_EN) begin : gen_store_load_fwd
+    if (Len5Cfg.LEN5_STORE_LOAD_FWD_EN) begin : gen_store_load_fwd
       assign sb_l0_valid = mem_store_valid_o & mem_store_ready_i;
       assign sb_l0_addr  = mem_store_addr_o;
       assign sb_l0_idx   = mem_store_tag_o[StIdxW-1:0];
       assign lb_l0_addr  = mem_load_addr_o;
-      l0_cache u_l0_cache (
-        .clk_i            (clk_i),
-        .rst_ni           (rst_ni),
-        .flush_i          (except_flush_i),
-        .st_valid_i       (sb_l0_valid),
-        .st_addr_i        (sb_l0_addr),
-        .st_idx_i         (sb_l0_idx),
-        .st_cached_i      (sb_l0_cached),
-        .st_cached_addr_i (sb_l0_cached_addr),
-        .st_cached_width_i(sb_l0_cached_width),
-        .st_cached_value_i(sb_l0_cached_value),
-        .st_idx_o         (l0_sb_idx),
-        .ld_addr_i        (lb_l0_addr),
-        .ld_width_i       (lb_l0_width),
-        .ld_valid_o       (l0_lb_valid),
-        .ld_value_o       (l0_lb_value)
+      l0_cache #(
+          .Len5Cfg(Len5Cfg)
+      ) u_l0_cache (
+          .clk_i            (clk_i),
+          .rst_ni           (rst_ni),
+          .flush_i          (except_flush_i),
+          .st_valid_i       (sb_l0_valid),
+          .st_addr_i        (sb_l0_addr),
+          .st_idx_i         (sb_l0_idx),
+          .st_cached_i      (sb_l0_cached),
+          .st_cached_addr_i (sb_l0_cached_addr),
+          .st_cached_width_i(sb_l0_cached_width),
+          .st_cached_value_i(sb_l0_cached_value),
+          .st_idx_o         (l0_sb_idx),
+          .ld_addr_i        (lb_l0_addr),
+          .ld_width_i       (lb_l0_width),
+          .ld_valid_o       (l0_lb_valid),
+          .ld_value_o       (l0_lb_value)
       );
     end else begin : gen_no_store_load_fwd
       assign sb_l0_valid = '0;

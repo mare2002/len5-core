@@ -12,42 +12,43 @@
 // Author: Michele Caon
 // Date: 11/11/2019
 
-module cdb_arbiter (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+module cdb_arbiter #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+) (
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
 
-  // Handshake from/to the maximum priority unit
-  input  logic max_prio_valid_i,
-  output logic max_prio_ready_o,
+    // Handshake from/to the maximum priority unit
+    input  logic max_prio_valid_i,
+    output logic max_prio_ready_o,
 
-  // Handshake from/to the units
-  input  logic [len5_config_pkg::MAX_EU_N-2:0] valid_i,
-  output logic [len5_config_pkg::MAX_EU_N-2:0] ready_o,
+    // Handshake from/to the units
+    input  logic [Len5Cfg.MAX_EU_N-2:0] valid_i,
+    output logic [Len5Cfg.MAX_EU_N-2:0] ready_o,
 
-  // Handshake from/to the ROB
-  input  logic rob_ready_i,
-  output logic rob_valid_o,
+    // Handshake from/to the ROB
+    input  logic rob_ready_i,
+    output logic rob_valid_o,
 
-  // To the CDB MUX
-  output logic                                         served_max_prio_o,
-  output logic [$clog2(len5_config_pkg::MAX_EU_N)-1:0] served_o
+    // To the CDB MUX
+    output logic                                served_max_prio_o,
+    output logic [$clog2(Len5Cfg.MAX_EU_N)-1:0] served_o
 );
 
-  import len5_config_pkg::MAX_EU_N;
   import expipe_pkg::*;
 
   // DEFINITIONS
-  logic [MAX_EU_N-2:0] rem_valid_q, msk_valid_d;
+  logic [Len5Cfg.MAX_EU_N-2:0] rem_valid_q, msk_valid_d;
 
   // Valid MUX
-  logic [          MAX_EU_N-2:0] mux_valid;
+  logic [          Len5Cfg.MAX_EU_N-2:0] mux_valid;
 
   // Valid priority encoder + decoder
-  logic [$clog2(MAX_EU_N-1)-1:0] enc_out;
-  logic                          enc_valid;
-  logic [          MAX_EU_N-2:0] dec_valid_d;
+  logic [$clog2(Len5Cfg.MAX_EU_N-1)-1:0] enc_out;
+  logic                                  enc_valid;
+  logic [          Len5Cfg.MAX_EU_N-2:0] dec_valid_d;
 
   // ---------
   // VALID MUX
@@ -59,12 +60,12 @@ module cdb_arbiter (
   // VALID PRIORITY ENCODER
   // ----------------------
   prio_enc #(
-    .N  (MAX_EU_N - 1),
-    .INV(1'b1)
+      .N  (Len5Cfg.MAX_EU_N - 1),
+      .INV(1'b1)
   ) vaild_prio_enc (
-    .lines_i(mux_valid),
-    .enc_o  (enc_out),
-    .valid_o(enc_valid)
+      .lines_i(mux_valid),
+      .enc_o  (enc_out),
+      .valid_o(enc_valid)
   );
 
   // Decoder:

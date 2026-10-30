@@ -1,3 +1,4 @@
+`include "len5_memory_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -15,31 +16,35 @@
 
 import memory_pkg::*;
 
-module dcache_L1_full (
-    // Main
-    input logic clk_i,
-    input logic rst_ni,
-    input logic clr_i,   // Clear MSHR and other regs (synch clear)
+module dcache_L1_full #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type l1dc_lsq_ans_t = `LEN5_VM_L1DC_LSQ_ANS_T(Len5Cfg),
+  localparam type lsq_l1dc_req_t = `LEN5_VM_LSQ_L1DC_REQ_T(Len5Cfg)
+) (
+  // Main
+  input logic clk_i,
+  input logic rst_ni,
+  input logic clr_i,   // Clear MSHR and other regs (synch clear)
 
-    // LSQ -> D-Cache
-    input  lsq_l1dc_req_t lsq_l1dc_req_i,     // LSQ request to the D-Cache
-    output logic          l1dc_lsq_req_rdy_o,
+  // LSQ -> D-Cache
+  input  lsq_l1dc_req_t lsq_l1dc_req_i,     // LSQ request to the D-Cache
+  output logic          l1dc_lsq_req_rdy_o,
 
-    // D-Cache -> LSQ
-    output l1dc_lsq_ans_t l1dc_lsq_ans_o,  // D-Cache answer to LSQ
-    output l1dc_lsq_wup_t l1dc_lsq_wup_o,  // D-Cache wake-up signal to LSQ
+  // D-Cache -> LSQ
+  output l1dc_lsq_ans_t l1dc_lsq_ans_o,  // D-Cache answer to LSQ
+  output l1dc_lsq_wup_t l1dc_lsq_wup_o,  // D-Cache wake-up signal to LSQ
 
-    // D-Cache -> L2-Cache
-    output l1dc_l2c_req_t l1dc_l2c_req_o,     // D-Cache request to L2-Cache
-    input  logic          l2c_l1dc_req_rdy_i,
+  // D-Cache -> L2-Cache
+  output l1dc_l2c_req_t l1dc_l2c_req_o,     // D-Cache request to L2-Cache
+  input  logic          l2c_l1dc_req_rdy_i,
 
-    // L2-Cache -> D-Cache
-    input  l2c_l1dc_ans_t l2c_l1dc_ans_i,     // L2-Cache answer to D-Cache
-    output logic          l1dc_l2c_ans_rdy_o,
+  // L2-Cache -> D-Cache
+  input  l2c_l1dc_ans_t l2c_l1dc_ans_i,     // L2-Cache answer to D-Cache
+  output logic          l1dc_l2c_ans_rdy_o,
 
-    // From the main system
-    input  logic synch_l1dc_l2c_i,
-    output logic l2c_update_done_o  // L2-Cache synch done
+  // From the main system
+  input  logic synch_l1dc_l2c_i,
+  output logic l2c_update_done_o  // L2-Cache synch done
 );
 
   // Definations
@@ -49,42 +54,44 @@ module dcache_L1_full (
   logic          wbb_empty_o;
 
 
-  dcache_L1_system_with_ssram u_dcache_L1_system_with_ssram (
-      .clk_i(clk_i),
-      .rst_ni(rst_ni),
-      .clr_i(clr_i),
-      .rst_l1dc_req_i(rst_l1dc_req_i),
-      .upd_l1dc_req_i(upd_l1dc_req_i),
-      .en_cnt_o(en_cnt_o),
-      .wbb_empty_o(wbb_empty_o),
-      .lsq_l1dc_req_i(lsq_l1dc_req_i),
-      .l1dc_lsq_req_rdy_o(l1dc_lsq_req_rdy_o),
-      .l1dc_lsq_ans_o(l1dc_lsq_ans_o),
-      .l1dc_lsq_wup_o(l1dc_lsq_wup_o),
-      .l1dc_l2c_req_o(l1dc_l2c_req_o),
-      .l2c_l1dc_req_rdy_i(l2c_l1dc_req_rdy_i),
-      .l2c_l1dc_ans_i(l2c_l1dc_ans_i),
-      .l1dc_l2c_ans_rdy_o(l1dc_l2c_ans_rdy_o)
+  dcache_L1_system_with_ssram #(
+    .Len5Cfg(Len5Cfg)
+  ) u_dcache_L1_system_with_ssram (
+    .clk_i             (clk_i),
+    .rst_ni            (rst_ni),
+    .clr_i             (clr_i),
+    .rst_l1dc_req_i    (rst_l1dc_req_i),
+    .upd_l1dc_req_i    (upd_l1dc_req_i),
+    .en_cnt_o          (en_cnt_o),
+    .wbb_empty_o       (wbb_empty_o),
+    .lsq_l1dc_req_i    (lsq_l1dc_req_i),
+    .l1dc_lsq_req_rdy_o(l1dc_lsq_req_rdy_o),
+    .l1dc_lsq_ans_o    (l1dc_lsq_ans_o),
+    .l1dc_lsq_wup_o    (l1dc_lsq_wup_o),
+    .l1dc_l2c_req_o    (l1dc_l2c_req_o),
+    .l2c_l1dc_req_rdy_i(l2c_l1dc_req_rdy_i),
+    .l2c_l1dc_ans_i    (l2c_l1dc_ans_i),
+    .l1dc_l2c_ans_rdy_o(l1dc_l2c_ans_rdy_o)
   );
 
   dcache_rst_block #(
-      .IDX_LEN(DCACHE_L1_IDX_A_LEN)
+    .IDX_LEN(DCACHE_L1_IDX_A_LEN)
   ) u_dcache_rst_block (
-      .clk_i(clk_i),
-      .rst_ni(rst_ni),
-      .rst_l1dc_req_o(rst_l1dc_req_i)
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .rst_l1dc_req_o(rst_l1dc_req_i)
   );
 
   updateL2_block #(
-      .IDX_LEN(DCACHE_L1_IDX_A_LEN)
+    .IDX_LEN(DCACHE_L1_IDX_A_LEN)
   ) u_updateL2_block (
-      .clk_i(clk_i),
-      .rst_ni(rst_ni),
-      .synch_l1dc_l2c_i(synch_l1dc_l2c_i),
-      .en_cnt_i(en_cnt_o),
-      .wbb_empty_i(wbb_empty_o),
-      .upd_l1dc_req_o(upd_l1dc_req_i),
-      .l2c_update_done_o(l2c_update_done_o)
+    .clk_i            (clk_i),
+    .rst_ni           (rst_ni),
+    .synch_l1dc_l2c_i (synch_l1dc_l2c_i),
+    .en_cnt_i         (en_cnt_o),
+    .wbb_empty_i      (wbb_empty_o),
+    .upd_l1dc_req_o   (upd_l1dc_req_i),
+    .l2c_update_done_o(l2c_update_done_o)
   );
 
 endmodule

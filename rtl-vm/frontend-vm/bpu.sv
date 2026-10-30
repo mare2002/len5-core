@@ -15,49 +15,53 @@
 import len5_pkg::*;
 
 module bpu #(
-    parameter HLEN = 4,
-    parameter BTB_BITS = 4
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  parameter HLEN = 4,
+  parameter BTB_BITS = 4
 ) (
-    input logic                   clk_i,
-    input logic                   rst_ni,
-    input logic                   flush_i,
-    input logic        [len5_pkg::XLEN-1:0] pc_i,
-    input resolution_t            res_i,
+  input logic                             clk_i,
+  input logic                             rst_ni,
+  input logic                             flush_i,
+  input logic        [len5_pkg::XLEN-1:0] pc_i,
+  input resolution_t                      res_i,
 
-    output prediction_t pred_o
+  output prediction_t pred_o
 );
 
   // Signal definitions
   logic btb_res_valid, btb_hit, btb_update, btb_del_entry;
-  logic gshare_taken;
+  logic                             gshare_taken;
   logic [len5_pkg::XLEN-OFFSET-1:0] btb_target;
 
   // Module instantiations
   gshare #(
-      .HLEN(HLEN)
+    .Len5Cfg(Len5Cfg),
+    .HLEN   (HLEN)
   ) u_gshare (
-      .clk_i  (clk_i),
-      .rst_ni(rst_ni),
-      .flush_i(flush_i),
-      .pc_i   (pc_i),
-      .res_i  (res_i),
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .flush_i(flush_i),
+    .pc_i   (pc_i),
+    .res_i  (res_i),
 
-      .taken_o(gshare_taken)
+    .taken_o(gshare_taken)
   );
 
   btb #(
-      .BTB_BITS(BTB_BITS)
-  ) u_btb (
-      .clk_i      (clk_i),
-      .rst_ni    (rst_ni),
-      .flush_i    (flush_i),
-      .pc_i       (pc_i),
-      .valid_i    (btb_update),
-      .del_entry_i(btb_del_entry),
-      .res_i      (res_i),
 
-      .hit_o   (btb_hit),
-      .target_o(btb_target)
+    .Len5Cfg (Len5Cfg),
+    .BTB_BITS(BTB_BITS)
+  ) u_btb (
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .flush_i    (flush_i),
+    .pc_i       (pc_i),
+    .valid_i    (btb_update),
+    .del_entry_i(btb_del_entry),
+    .res_i      (res_i),
+
+    .hit_o   (btb_hit),
+    .target_o(btb_target)
   );
 
   // Assignments

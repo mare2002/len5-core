@@ -10,9 +10,9 @@
 `verilator_config
 
 // Signals not driven, will be implemented in future versions
-lint_off -rule UNUSED -file "*/datapath.sv" -match "Signal is not used: 'irq_i'"
-lint_off -rule UNUSED -file "*/datapath.sv" -match "Signal is not used: 'fetch_enable_i'"
-lint_off -rule UNDRIVEN -file "*/datapath.sv" -match "Signal is not driven: 'irq_ack_o'"
-lint_off -rule UNDRIVEN -file "*/datapath.sv" -match "Signal is not driven: 'irq_id_o'"
-lint_off -rule UNDRIVEN -file "*/datapath.sv" -match "Signal is not driven: 'core_sleep_o'"
-lint_off -rule UNOPTFLAT -file "*/datapath.sv" -match "Signal unoptimizable: Circular combinational logic: 'tb_bare.u_datapath.early_jump_mem_flush'"
+lint_off -rule UNUSED -file "*/len5_datapath.sv" -match "Signal is not used: 'irq_i'"
+lint_off -rule UNUSED -file "*/len5_datapath.sv" -match "Signal is not used: 'fetch_enable_i'"
+lint_off -rule UNDRIVEN -file "*/len5_datapath.sv" -match "Signal is not driven: 'irq_ack_o'"
+lint_off -rule UNDRIVEN -file "*/len5_datapath.sv" -match "Signal is not driven: 'irq_id_o'"
+lint_off -rule UNDRIVEN -file "*/len5_datapath.sv" -match "Signal is not driven: 'core_sleep_o'"
+lint_off -rule UNOPTFLAT -file "*/len5_datapath.sv" -match "Signal unoptimizable: Circular combinational logic: 'tb_bare.i_len5_datapath.early_jump_mem_flush'"

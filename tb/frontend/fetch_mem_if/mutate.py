@@ -11,7 +11,7 @@ import subprocess
 import shutil
 import tempfile
 import time
-from configuration import ROOT, configuration, fingerprint, write_manifest, sources
+from configuration import ROOT, configuration, fingerprint, write_manifest, sources, pc_config
 
 
 def main():
@@ -41,11 +41,11 @@ def main():
         ('current-mask','14','FM05','fetch_mem_if.sv','response_metadata.valid_instr;','valid_instr_i;',1),
         ('pop-on-offer','11','FM08','completion_fifo.sv','valid_o && ready_i;','valid_o && (ready_i || result_valid_i);',1),
         ('drop-error','15','FM11','fetch_mem_if.sv','ans_reg_in.except_raised = response_result.except_raised;',"ans_reg_in.except_raised = '0;",1),
-        ('wrong-cause-zero','16','FM11','fetch_mem_if.sv','ans_reg_in.except_code = response_result.except_code;',"ans_reg_in.except_code = {LEN5_MULTIPLE_ISSUES{len5_pkg::E_UNKNOWN}};",1),
+        ('wrong-cause-zero','16','FM11','fetch_mem_if.sv','ans_reg_in.except_code = response_result.except_code;',"ans_reg_in.except_code = {Len5Cfg.LEN5_MULTIPLE_ISSUES{len5_pkg::E_UNKNOWN}};",1),
         ('delayed-error','18','FM12','fetch_mem_if.sv','assign ans_reg_in.except_raised = response_result.except_raised;',
-         "logic [LEN5_MULTIPLE_ISSUES-1:0] delayed_errors; always_ff @(posedge clk_i or negedge rst_ni) if (!rst_ni) delayed_errors <= '0; else delayed_errors <= instr_except_raised_i; assign ans_reg_in.except_raised = delayed_errors;",1),
+         "logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] delayed_errors; always_ff @(posedge clk_i or negedge rst_ni) if (!rst_ni) delayed_errors <= '0; else delayed_errors <= instr_except_raised_i; assign ans_reg_in.except_raised = delayed_errors;",1),
         ('wrong-saved-fault-pc','15','FM05','fetch_mem_if.sv','issue_pred_o[i]          = ans_reg_out.pred_data[i];',"issue_pred_o[i]          = ans_reg_out.pred_data[i]; issue_pred_o[i].pc = ans_reg_out.pred_data[i].pc + 64'd4;",1),
-        ('lane-word-swap','03','FM06','fetch_mem_if.sv','issue_instr_o[i].raw     = ans_reg_out.instr[i];','issue_instr_o[i].raw     = ans_reg_out.instr[(i+1)%LEN5_MULTIPLE_ISSUES];',1),
+        ('lane-word-swap','03','FM06','fetch_mem_if.sv','issue_instr_o[i].raw     = ans_reg_out.instr[i];','issue_instr_o[i].raw     = ans_reg_out.instr[(i+1)%Len5Cfg.LEN5_MULTIPLE_ISSUES];',1),
         ('lost-error-response','15','FM07','fetch_mem_if.sv','.result_valid_i(instr_valid_i),','.result_valid_i(instr_valid_i && !instr_except_raised_i[0]),',1),
         ('missing-answer-flush','26','FM14','fetch_mem_if.sv','.flush_i,\n      .valid_i(response_valid)',".flush_i(1'b0),\n      .valid_i(response_valid)",1),
         ('missing-metadata-flush','25','FM14','completion_fifo.sv','.clr_i  (clear_pointers),\n    .en_i   (allocate_entry),', ".clr_i  (1'b0),\n    .en_i   (allocate_entry),",1),
@@ -77,6 +77,7 @@ def main():
         for name,path in files.items():(staging/path.relative_to(ROOT)).write_bytes((d/name).read_bytes())
         (staging/'fusesoc.conf').write_text('[library.len5]\nlocation = .\nsync-type = local\n')
         command=[os.environ.get('FUSESOC','fusesoc'),'run','--target','sim','--tool','verilator','--build-root',str(d/'model'),'--setup','--build','polito:len5:fetch-mem-if-tb','--MEM_DEPTH='+str(config['metadata_depth'])]
+        command += pc_config.build_arguments('rtl')
         with (d/'build.log').open('w') as log:built=subprocess.run(command,cwd=staging,stdout=log,stderr=subprocess.STDOUT)
         result=dict(mutation=label,behavior=f'{old} -> {new}',requirement=req,scenario='FM-T'+scenario,build_status=built.returncode,artifacts=str(d))
         if built.returncode:

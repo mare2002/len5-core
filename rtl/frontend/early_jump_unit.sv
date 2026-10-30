@@ -13,26 +13,28 @@
 //         Michele Caon
 // Date: 28/02/2024
 
-module early_jump_unit (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+module early_jump_unit #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+) (
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  input  len5_pkg::instr_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] instr_i,
-  input  logic                                        instr_valid_i,
-  input  logic                                        issue_ready_i,
-  input  fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred_i,
-  input  logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr_i,
-  output logic [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] valid_instr_o,
-  input  logic                   [len5_pkg::XLEN-1:0] early_jump_target_i,
-  input  logic                                        call_confirm_i,
-  input  logic                                        ret_confirm_i,
-  input  logic [len5_pkg::ALEN-1:0]                   res_link_addr_i,
-  output fetch_pkg::prediction_t [len5_config_pkg::LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
-  output logic                                        early_jump_valid_o,
-  output logic                                        mem_flush_o,
-  output logic                   [len5_pkg::XLEN-1:0] early_jump_base_o,
-  output logic                   [len5_pkg::XLEN-1:0] early_jump_offs_o
+    input  len5_pkg::instr_t       [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr_i,
+    input  logic                                                      instr_valid_i,
+    input  logic                                                      issue_ready_i,
+    input  fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred_i,
+    input  logic                   [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr_i,
+    output logic                   [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr_o,
+    input  logic                   [              len5_pkg::XLEN-1:0] early_jump_target_i,
+    input  logic                                                      call_confirm_i,
+    input  logic                                                      ret_confirm_i,
+    input  logic                   [              len5_pkg::ALEN-1:0] res_link_addr_i,
+    output fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
+    output logic                                                      early_jump_valid_o,
+    output logic                                                      mem_flush_o,
+    output logic                   [              len5_pkg::XLEN-1:0] early_jump_base_o,
+    output logic                   [              len5_pkg::XLEN-1:0] early_jump_offs_o
 );
 
   import len5_pkg::*;
@@ -42,11 +44,11 @@ module early_jump_unit (
 
   //TODO Check with Michele, here we need to check every instruction and it's prediction
   //One question is we don't need to propagate the all of the predictions in the memory fetch unit, because only one can happen in one isntruction bundle
-  //this might lower the number of bits that we are transfering  
+  //this might lower the number of bits that we are transfering
 
   // PARAMETERS
   localparam logic [ILEN-1:0] RET = {12'b0, 5'b00001, 3'b000, 5'b00000, JALR[OPCODE_LEN-1:0]};
-  localparam int unsigned JUMP_LOCATION_WIDTH = (LEN5_MULTIPLE_ISSUES > 1) ? $clog2(LEN5_MULTIPLE_ISSUES) : 1;
+  localparam int unsigned JumpLocationWidth = Len5Cfg.LEN5_MULTIPLE_ISSUES > 1 ? Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS : 1;
 
   // INTERNAL SIGNALS
   // ----------------
@@ -76,50 +78,52 @@ module early_jump_unit (
 
   // RAS control
   logic ras_push, ras_pop;
-  logic ras_addr_valid;
+  logic                                    ras_addr_valid;
 
   // --------------------
   // FINITE STATE MACHINE
   // --------------------
-  
+
   // Jump instruction decoder and locator of jump instruction
   // Separated in two parts, one when the issue is 1 and the other where it's for more than one issue
-  
-  logic [LEN5_MULTIPLE_ISSUES-1:0] jump_valid;
-  logic [JUMP_LOCATION_WIDTH-1:0] jump_location;
-  
+
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] jump_valid;
+  logic [           JumpLocationWidth-1:0] jump_location;
+
   generate
-    if (LEN5_MULTIPLE_ISSUES == 32'd1) begin : gen_single_issue
+    if (Len5Cfg.LEN5_MULTIPLE_ISSUES == 32'd1) begin : gen_single_issue
       assign jump_location = '0;
-      assign jump_valid = 1'b1;
+      assign jump_valid    = 1'b1;
 
       always_comb begin : jump_dec
         jump_type = JUMP_TYPE_NONE;
 
         if (valid_instr_i[0]) begin
           if (instr_i[0].raw == RET) jump_type = JUMP_TYPE_RET;
-          else if (instr_i[0].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[0].j.rd == 5'b00001) jump_type = JUMP_TYPE_CALL;
+          else if (instr_i[0].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[0].j.rd == 5'b00001)
+            jump_type = JUMP_TYPE_CALL;
           else if (instr_i[0].j.opcode == JAL[OPCODE_LEN-1:0]) jump_type = JUMP_TYPE_JAL;
         end
       end
     end else begin : gen_multiple_issues
       always_comb begin : jump_dec
-        jump_type = JUMP_TYPE_NONE;
+        jump_type     = JUMP_TYPE_NONE;
         jump_location = '1;
 
-        for(int i = LEN5_MULTIPLE_ISSUES-1; i >= 0; i--) begin : jump_type_of_oldest_instr
+        for (
+            int i = Len5Cfg.LEN5_MULTIPLE_ISSUES - 1; i >= 0; i--
+        ) begin : jump_type_of_oldest_instr
           if (valid_instr_i[i]) begin
             if (instr_i[i].raw == RET) begin
-              jump_type = JUMP_TYPE_RET;
-              jump_location = JUMP_LOCATION_WIDTH'(i);
+              jump_type     = JUMP_TYPE_RET;
+              jump_location = JumpLocationWidth'(i);
             end
             else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0] && instr_i[i].j.rd == 5'b00001) begin
-              jump_type = JUMP_TYPE_CALL;
-              jump_location = JUMP_LOCATION_WIDTH'(i);
-            end
-            else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) begin
-              jump_type = JUMP_TYPE_JAL;
-              jump_location = JUMP_LOCATION_WIDTH'(i);
+              jump_type     = JUMP_TYPE_CALL;
+              jump_location = JumpLocationWidth'(i);
+            end else if (instr_i[i].j.opcode == JAL[OPCODE_LEN-1:0]) begin
+              jump_type     = JUMP_TYPE_JAL;
+              jump_location = JumpLocationWidth'(i);
             end
           end
         end
@@ -128,27 +132,32 @@ module early_jump_unit (
       always_comb begin : gen_jump_valid
         logic n_jump_found;
         n_jump_found = 1'b1;
-        jump_valid = '0;
-        for(int unsigned i = 0; i < LEN5_MULTIPLE_ISSUES; i++) begin
+        jump_valid   = '0;
+        for (int unsigned i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin
           jump_valid[i] = n_jump_found;
-          if (jump_location == JUMP_LOCATION_WIDTH'(i)) begin
+          if (jump_location == JumpLocationWidth'(i)) begin
             n_jump_found = 1'b0;
           end
         end
       end
     end
   endgenerate
-  
+
+  logic return_pred_correct;
+  assign return_pred_correct = mem_if_pred_i[jump_location].hit &&
+      mem_if_pred_i[jump_location].taken && mem_if_pred_i[jump_location].target == ras_addr;
+
   // jal instruction decoder
   always_comb begin : is_jump_dec
     unique case (jump_type)
-//	%TODO check with Michele, this should be a different way of doing things,
-//	so which one is better, almost no change in IPC and cycles for the
-//	testbenches
-      JUMP_TYPE_RET:  target_valid = ras_addr_valid && !(mem_if_pred_i[jump_location].hit && mem_if_pred_i[jump_location].taken && (mem_if_pred_i[jump_location].target == ras_addr));
-//	  JUMP_TYPE_RET:  target_valid = ras_addr_valid;
-	  JUMP_TYPE_NONE: target_valid = 1'b0;
-      default:        target_valid = ~(mem_if_pred_i[jump_location].hit && mem_if_pred_i[jump_location].taken);  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
+      //  %TODO check with Michele, this should be a different way of doing things,
+      //  so which one is better, almost no change in IPC and cycles for the
+      //  testbenches
+      JUMP_TYPE_RET: target_valid = ras_addr_valid && !return_pred_correct;
+      //    JUMP_TYPE_RET:  target_valid = ras_addr_valid;
+      JUMP_TYPE_NONE: target_valid = 1'b0;
+      default:
+      target_valid = ~(mem_if_pred_i[jump_location].hit && mem_if_pred_i[jump_location].taken);  // JUMP_TYPE_JAL, JUMP_TYPE_CALL
     endcase
   end
 
@@ -223,19 +232,20 @@ module early_jump_unit (
 
   // RAS LIFO buffer
   ras #(
-    .DEPTH(RAS_DEPTH)
+      .Len5Cfg(Len5Cfg),
+      .DEPTH  (Len5Cfg.RAS_DEPTH)
   ) u_ras (
-    .clk_i         (clk_i),
-    .rst_ni        (rst_ni),
-    .flush_i       (flush_i),
-    .push_i        (ras_push),
-    .pop_i         (ras_pop),
-    .link_addr_i    (link_addr),
-    .valid_o       (ras_addr_valid),
-    .ret_addr_o    (ras_addr),
-    .call_confirm_i(call_confirm_i),
-    .ret_confirm_i (ret_confirm_i),
-    .res_link_addr_i   (res_link_addr_i)
+      .clk_i          (clk_i),
+      .rst_ni         (rst_ni),
+      .flush_i        (flush_i),
+      .push_i         (ras_push),
+      .pop_i          (ras_pop),
+      .link_addr_i    (link_addr),
+      .valid_o        (ras_addr_valid),
+      .ret_addr_o     (ras_addr),
+      .call_confirm_i (call_confirm_i),
+      .ret_confirm_i  (ret_confirm_i),
+      .res_link_addr_i(res_link_addr_i)
   );
 
   // Output network
@@ -250,23 +260,27 @@ module early_jump_unit (
       default: begin
         early_jump_base = mem_if_pred_i[jump_location].pc;
         early_jump_offs = XLEN'(signed'({
-          instr_i[jump_location].j.imm20, instr_i[jump_location].j.imm19, instr_i[jump_location].j.imm11, instr_i[jump_location].j.imm10, 1'b0
+          instr_i[jump_location].j.imm20,
+          instr_i[jump_location].j.imm19,
+          instr_i[jump_location].j.imm11,
+          instr_i[jump_location].j.imm10,
+          1'b0
         }));
       end
     endcase
   end
 
   // Target address for the PC generation unit
-  assign early_jump_base_o   = early_jump_base;
-  assign early_jump_offs_o   = early_jump_offs;
+  assign early_jump_base_o = early_jump_base;
+  assign early_jump_offs_o = early_jump_offs;
 
   // Prediction for the execution stage
   always_comb begin : gen_out
     issue_pred_o = mem_if_pred_i;
-    issue_pred_o[jump_location].pc     = mem_if_pred_i[jump_location].pc;
-    issue_pred_o[jump_location].hit    = target_valid | mem_if_pred_i[jump_location].hit;
+    issue_pred_o[jump_location].pc = mem_if_pred_i[jump_location].pc;
+    issue_pred_o[jump_location].hit = target_valid | mem_if_pred_i[jump_location].hit;
     issue_pred_o[jump_location].target = (target_valid) ? early_jump_target_i : mem_if_pred_i[jump_location].target;
-    issue_pred_o[jump_location].taken  = target_valid | mem_if_pred_i[jump_location].taken;
+    issue_pred_o[jump_location].taken = target_valid | mem_if_pred_i[jump_location].taken;
   end
   assign valid_instr_o = valid_instr_i & jump_valid;
 endmodule

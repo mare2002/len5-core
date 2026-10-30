@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -13,28 +14,30 @@
 // Date: 12/11/2019
 
 module int_regstat #(
-  parameter  int unsigned REG_NUM   = 32,              // power of 2
-  // Dependent parameters: do NOT override
-  localparam int unsigned RegIdxLen = $clog2(REG_NUM)  // not exposed
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int unsigned REG_NUM = 32,  // power of 2
+    // Dependent parameters: do NOT override
+    localparam int unsigned RegIdxLen = $clog2(REG_NUM)  // not exposed
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Issue Logic
-  input logic issue_valid_i,
-  input logic [RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
-  input expipe_pkg::rob_idx_t issue_rob_idx_i,  // allocated ROB index
-  input logic [RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
-  input logic [RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
-  output logic issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
-  output expipe_pkg::rob_idx_t issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
-  output logic issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
-  output expipe_pkg::rob_idx_t issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
+    // Issue Logic
+    input logic issue_valid_i,
+    input logic [RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
+    input rob_idx_t issue_rob_idx_i,  // allocated ROB index
+    input logic [RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
+    input logic [RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
+    output logic issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
+    output rob_idx_t issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
+    output logic issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
+    output rob_idx_t issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
 
-  // Commit Logic
-  input logic                 comm_valid_i,
-  input logic [RegIdxLen-1:0] comm_rd_idx_i  // destination register of the committing instr.
+    // Commit Logic
+    input logic                 comm_valid_i,
+    input logic [RegIdxLen-1:0] comm_rd_idx_i  // destination register of the committing instr.
 );
 
   import expipe_pkg::*;
@@ -44,7 +47,7 @@ module int_regstat #(
   rob_idx_t busy_rob_idx     [1:REG_NUM-1];  // newest ROB entry that is going to write rd
   logic busy_cnt_en[1:REG_NUM-1], busy_cnt_dn[1:REG_NUM-1];
   logic busy_cnt_clr;
-  logic [REGSTAT_CNT_W-1:0] busy_cnt[1:REG_NUM-1];  // number of in-flight instructions writing rd
+  logic [Len5Cfg.REGSTAT_CNT_W-1:0] busy_cnt[1:REG_NUM-1];  // number of in-flight instructions writing rd
   logic skip_cnt_upd;
 
   // -----------------------------
@@ -93,17 +96,17 @@ module int_regstat #(
   generate
     for (genvar i = 1; i < REG_NUM; i++) begin : gen_busy_counters
       updown_counter #(
-        .WIDTH(REGSTAT_CNT_W)
+          .WIDTH(Len5Cfg.REGSTAT_CNT_W)
       ) u_rob_cnt (
-        .clk_i   (clk_i),
-        .rst_ni  (rst_ni),
-        .en_i    (busy_cnt_en[i]),
-        .clr_i   (busy_cnt_clr),
-        .dn_i    (busy_cnt_dn[i]),
-        .ld_i    (1'b0),            // not used
-        .ld_val_i('0),              // not used
-        .count_o (busy_cnt[i]),
-        .tc_o    ()                 // not needed
+          .clk_i   (clk_i),
+          .rst_ni  (rst_ni),
+          .en_i    (busy_cnt_en[i]),
+          .clr_i   (busy_cnt_clr),
+          .dn_i    (busy_cnt_dn[i]),
+          .ld_i    (1'b0),            // not used
+          .ld_val_i('0),              // not used
+          .count_o (busy_cnt[i]),
+          .tc_o    ()                 // not needed
       );
     end
   endgenerate

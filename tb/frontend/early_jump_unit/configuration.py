@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
-"""pc_gen source-parser/cache policy adapted for the real early-jump/RAS DUT."""
+"""SV elaboration/cache policy adapted for the real early-jump/RAS DUT."""
 import argparse
 import hashlib
 import importlib.util
@@ -13,13 +13,12 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('pc_gen_source_configuration', HERE.parent/'pc_gen/configuration.py')
 pc_config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pc_config)
-literal = pc_config.literal  # Reuse the existing production-literal parser unchanged.
 
 
 def configuration():
     config = pc_config.configuration(0)
     config.pop('boot_pc')
-    config['ras_depth'] = literal((ROOT/'rtl/packages/len5_config_pkg.sv').read_text(), 'RAS_DEPTH')
+    config['ras_depth'] = pc_config.rtl_configuration()['RAS_DEPTH']
     if config['ras_depth'] != 4:
         raise ValueError('initial RAS verification supports source-selected RAS_DEPTH=4 only (EQ09)')
     return config
@@ -27,7 +26,9 @@ def configuration():
 
 def sources():
     paths = set((ROOT/'rtl/packages').glob('*.sv'))
+    paths.update((ROOT/'rtl/packages').glob('*.svh'))
     paths.update([ROOT/'rtl/packages.core', ROOT/'rtl/misc/packages-waivers.vlt',
+                  ROOT/'scripts/gen-memory-map.py', ROOT/'scripts/sim/config-args.sh', ROOT/'tb/config/len5_config_probe.sv', ROOT/'tb/tb_bare.sv', ROOT/'tb/packages/tb_config_pkg.sv',
                   ROOT/'rtl/frontend/early_jump_unit.sv', ROOT/'rtl/frontend/ras.sv',
                   ROOT/'rtl/common/prio_enc.sv', ROOT/'tb/verilator/verilator-common.core', ROOT/'rtl/frontend.core', ROOT/'rtl/common.core',
                   ROOT/'tb/verilator/tb_macros.cpp', ROOT/'tb/verilator/tb_macros.hh',
@@ -40,6 +41,7 @@ def sources():
 
 def fingerprint(config):
     digest = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
+    digest.update(json.dumps(pc_config.rtl_configuration(), sort_keys=True).encode())
     for path in sources():
         digest.update(str(path.relative_to(ROOT)).encode()+b'\0'+path.read_bytes()+b'\0')
     return digest.hexdigest()

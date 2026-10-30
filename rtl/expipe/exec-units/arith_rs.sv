@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2022 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -13,45 +14,49 @@
 // Date: 19/08/2022
 
 module arith_rs #(
-  parameter  int unsigned DEPTH      = 4,             // must be a power of 2
-  parameter  int unsigned EU_CTL_LEN = 4,
-  parameter  bit          RR_ARBITER = 1'b0,
-  // Dependent parameters: do NOT override
-  localparam int unsigned RsIdxLen   = $clog2(DEPTH)
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+    localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int unsigned DEPTH = 4,  // must be a power of 2
+    parameter int unsigned EU_CTL_LEN = 4,
+    parameter bit RR_ARBITER = 1'b0,
+    // Dependent parameters: do NOT override
+    localparam int unsigned RsIdxLen = $clog2(DEPTH)
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
 
-  // Issue Stage
-  input  logic                                  issue_valid_i,
-  output logic                                  issue_ready_o,
-  input  logic                 [EU_CTL_LEN-1:0] issue_eu_ctl_i,
-  input  expipe_pkg::op_data_t                  issue_rs1_i,
-  input  expipe_pkg::op_data_t                  issue_rs2_i,
-  input  expipe_pkg::rob_idx_t                  issue_dest_rob_idx_i,
+    // Issue Stage
+    input  logic                      issue_valid_i,
+    output logic                      issue_ready_o,
+    input  logic     [EU_CTL_LEN-1:0] issue_eu_ctl_i,
+    input  op_data_t                  issue_rs1_i,
+    input  op_data_t                  issue_rs2_i,
+    input  rob_idx_t                  issue_dest_rob_idx_i,
 
-  // CDB
-  input  logic                  cdb_ready_i,
-  input  logic                  cdb_valid_i,  // to know if the CDB is carrying valid data
-  output logic                  cdb_valid_o,
-  input  expipe_pkg::cdb_data_t cdb_data_i,
-  output expipe_pkg::cdb_data_t cdb_data_o,
+    // CDB
+    input  logic      cdb_ready_i,
+    input  logic      cdb_valid_i,  // to know if the CDB is carrying valid data
+    output logic      cdb_valid_o,
+    input  cdb_data_t cdb_data_i,
+    output cdb_data_t cdb_data_o,
 
-  // Execution unit
-  input  logic                                        eu_ready_i,
-  input  logic                                        eu_valid_i,
-  output logic                                        eu_valid_o,
-  output logic                                        eu_ready_o,
-  input  expipe_pkg::rob_idx_t                        eu_rob_idx_i,
-  input  logic                   [len5_pkg::XLEN-1:0] eu_result_i,
-  input  logic                                        eu_except_raised_i,
-  input  len5_pkg::except_code_t                      eu_except_code_i,
-  output logic                   [    EU_CTL_LEN-1:0] eu_ctl_o,
-  output logic                   [len5_pkg::XLEN-1:0] eu_rs1_o,
-  output logic                   [len5_pkg::XLEN-1:0] eu_rs2_o,
-  output expipe_pkg::rob_idx_t                        eu_rob_idx_o
+    // Execution unit
+    input  logic                                        eu_ready_i,
+    input  logic                                        eu_valid_i,
+    output logic                                        eu_valid_o,
+    output logic                                        eu_ready_o,
+    input  rob_idx_t                                    eu_rob_idx_i,
+    input  logic                   [len5_pkg::XLEN-1:0] eu_result_i,
+    input  logic                                        eu_except_raised_i,
+    input  len5_pkg::except_code_t                      eu_except_code_i,
+    output logic                   [    EU_CTL_LEN-1:0] eu_ctl_o,
+    output logic                   [len5_pkg::XLEN-1:0] eu_rs1_o,
+    output logic                   [len5_pkg::XLEN-1:0] eu_rs2_o,
+    output rob_idx_t                                    eu_rob_idx_o
 );
 
   import len5_config_pkg::*;
@@ -351,14 +356,14 @@ module arith_rs #(
 
   // New entry
   modn_counter #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) new_sel (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (insert),
-    .clr_i  (flush_i),
-    .count_o(new_idx),
-    .tc_o   ()          // not needed
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .en_i   (insert),
+      .clr_i  (flush_i),
+      .count_o(new_idx),
+      .tc_o   ()          // not needed
   );
 
   // prio_enc #(
@@ -373,49 +378,49 @@ module arith_rs #(
     if (RR_ARBITER) begin : gen_rr_arbiters
       // Execution
       rr_arbiter #(
-        .N(DEPTH)
+          .N(DEPTH)
       ) u_ex_sel (
-        .clk_i   (clk_i),
-        .rst_ni  (rst_ni),
-        .flush_i (flush_i),
-        .valid_i (ready_ex),
-        .ready_o (),            // eu_ready_i used instead
-        .valid_o (eu_valid_o),
-        .ready_i (eu_ready_i),
-        .served_o(ex_idx)
+          .clk_i   (clk_i),
+          .rst_ni  (rst_ni),
+          .flush_i (flush_i),
+          .valid_i (ready_ex),
+          .ready_o (),            // eu_ready_i used instead
+          .valid_o (eu_valid_o),
+          .ready_i (eu_ready_i),
+          .served_o(ex_idx)
       );
 
       // CDB access
       rr_arbiter #(
-        .N(DEPTH)
+          .N(DEPTH)
       ) u_cdb_sel (
-        .clk_i   (clk_i),
-        .rst_ni  (rst_ni),
-        .flush_i (flush_i),
-        .valid_i (ready_cdb),
-        .ready_o (),             // cdb_ready_i used instead
-        .valid_o (cdb_valid_o),
-        .ready_i (cdb_ready_i),
-        .served_o(cdb_idx)
+          .clk_i   (clk_i),
+          .rst_ni  (rst_ni),
+          .flush_i (flush_i),
+          .valid_i (ready_cdb),
+          .ready_o (),             // cdb_ready_i used instead
+          .valid_o (cdb_valid_o),
+          .ready_i (cdb_ready_i),
+          .served_o(cdb_idx)
       );
     end else begin : gen_prio_arbiters
       // Execution
       prio_enc #(
-        .N(DEPTH)
+          .N(DEPTH)
       ) u_ex_sel (
-        .lines_i(ready_ex),
-        .enc_o  (ex_idx),
-        .valid_o()
+          .lines_i(ready_ex),
+          .enc_o  (ex_idx),
+          .valid_o()
       );
       assign eu_valid_o = curr_state[ex_idx] == ARITH_S_EX_REQ;
 
       // CDB access
       prio_enc #(
-        .N(DEPTH)
+          .N(DEPTH)
       ) u_cdb_sel (
-        .lines_i(ready_cdb),
-        .enc_o  (cdb_idx),
-        .valid_o()
+          .lines_i(ready_cdb),
+          .enc_o  (cdb_idx),
+          .valid_o()
       );
       assign cdb_valid_o = curr_state[cdb_idx] == ARITH_S_COMPLETED;
     end

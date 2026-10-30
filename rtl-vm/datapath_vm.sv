@@ -1,3 +1,4 @@
+`include "len5_memory_typedef.svh"
 // Copyright 2021 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -17,18 +18,23 @@ import memory_pkg::*;
 import csr_pkg::csr_priv_t;
 
 module datapath_vm #(
-    parameter [len5_pkg::XLEN-1:0] BOOT_PC = 'h0
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type dtlb_lsq_ans_t = `LEN5_VM_DTLB_LSQ_ANS_T(Len5Cfg),
+  localparam type l1dc_lsq_ans_t = `LEN5_VM_L1DC_LSQ_ANS_T(Len5Cfg),
+  localparam type lsq_dtlb_req_t = `LEN5_VM_LSQ_DTLB_REQ_T(Len5Cfg),
+  localparam type lsq_l1dc_req_t = `LEN5_VM_LSQ_L1DC_REQ_T(Len5Cfg),
+  parameter [len5_pkg::XLEN-1:0] BOOT_PC = 'h0
 ) (
-    // Clock and reset
-    input logic clk_i,
-    input logic rst_ni,
+  // Clock and reset
+  input logic clk_i,
+  input logic rst_ni,
 
-    // Datapath <--> L2$ emulator
-    input  logic           l2c_l2arb_req_rdy_i,
-    input  l2c_l2arb_ans_t l2c_l2arb_ans_i,
-    output l2arb_l2c_req_t l2arb_l2c_req_o,
-    output logic           l2arb_l2c_ans_rdy_o,
-    output logic           l2c_flush_o
+  // Datapath <--> L2$ emulator
+  input  logic           l2c_l2arb_req_rdy_i,
+  input  l2c_l2arb_ans_t l2c_l2arb_ans_i,
+  output l2arb_l2c_req_t l2arb_l2c_req_o,
+  output logic           l2arb_l2c_ans_rdy_o,
+  output logic           l2c_flush_o
 );
 
   // ----------------
@@ -119,27 +125,27 @@ module datapath_vm #(
   assign fe_cu_except_raised = fe_be_except;
 
   main_cu u_main_cu (
-      .clk_i             (clk_i),
-      .rst_ni           (rst_ni),
-      .fe_ins_i          (fe_cu_instr),
-      .fe_except_raised_i(fe_cu_except_raised),
-      .be_stall_i        (be_cu_stall),
-      .be_resume_i       (be_cu_resume),
-      .be_flush_i        (be_cu_flush),
-      .stall_o           (cu_others_stall),
-      .flush_o           (cu_others_flush),
+    .clk_i             (clk_i),
+    .rst_ni            (rst_ni),
+    .fe_ins_i          (fe_cu_instr),
+    .fe_except_raised_i(fe_cu_except_raised),
+    .be_stall_i        (be_cu_stall),
+    .be_resume_i       (be_cu_resume),
+    .be_flush_i        (be_cu_flush),
+    .stall_o           (cu_others_stall),
+    .flush_o           (cu_others_flush),
 
-      .mem_flush_o          (cu_mem_flush),
-      .mem_abort_o          (cu_mem_abort),
-      .mem_l2c_update_done  (mem_cu_l2c_update_done),
-      .mem_clr_l1tlb_mshr   (cu_mem_clr_l1tlb_mshr),
-      .mem_clr_l2tlb_mshr   (cu_mem_clr_l2tlb_mshr),
-      .mem_clear_dmshr_dregs(cu_mem_clear_dmshr_dregs),
-      .mem_synch_l1dc_l2c   (cu_mem_synch_l1dc_l2c),
-      .mem_L1TLB_flush_type (cu_mem_L1TLB_flush_type),
-      .mem_L2TLB_flush_type (cu_mem_L2TLB_flush_type),
-      .mem_flush_asid       (cu_mem_flush_asid),
-      .mem_flush_page       (cu_mem_flush_page)
+    .mem_flush_o          (cu_mem_flush),
+    .mem_abort_o          (cu_mem_abort),
+    .mem_l2c_update_done  (mem_cu_l2c_update_done),
+    .mem_clr_l1tlb_mshr   (cu_mem_clr_l1tlb_mshr),
+    .mem_clr_l2tlb_mshr   (cu_mem_clr_l2tlb_mshr),
+    .mem_clear_dmshr_dregs(cu_mem_clear_dmshr_dregs),
+    .mem_synch_l1dc_l2c   (cu_mem_synch_l1dc_l2c),
+    .mem_L1TLB_flush_type (cu_mem_L1TLB_flush_type),
+    .mem_L2TLB_flush_type (cu_mem_L2TLB_flush_type),
+    .mem_flush_asid       (cu_mem_flush_asid),
+    .mem_flush_page       (cu_mem_flush_page)
   );
 
   // ---------
@@ -147,28 +153,29 @@ module datapath_vm #(
   // ---------
 
   frontend #(
-      .HLEN(HLEN),
-      .BTB_BITS(BTB_BITS),
-      .BOOT_PC(BOOT_PC)
+    .Len5Cfg (Len5Cfg),
+    .HLEN    (Len5Cfg.BPU_HLEN),
+    .BTB_BITS(Len5Cfg.BPU_BTB_BITS),
+    .BOOT_PC (BOOT_PC)
   ) u_frontend (
-      .clk_i                (clk_i),
-      .rst_ni              (rst_ni),
-      .flush_i              (cu_others_flush),
-      .addr_o               (fe_icache_req.vaddr),
-      .addr_valid_o         (fe_icache_req.valid),
-      .addr_ready_i         (icache_fe_addr_ready),
-      .data_ready_o         (fe_icache_data_ready),
-      .icache_frontend_ans_i(icache_fe_ans),
-      .issue_ready_i        (be_fe_ready),
-      .issue_valid_o        (fe_be_valid),
-      .instruction_o        (fe_be_instr),
-      .curr_pc_o            (fe_be_curr_pc),
-      .pred_o               (fe_be_pred),
-      .res_i                (be_fe_res),
-      .except_o             (fe_be_except),
-      .except_code_o        (fe_be_except_code),
-      .except_i             (be_fe_except),
-      .except_pc_i          (be_fe_except_pc)
+    .clk_i                (clk_i),
+    .rst_ni               (rst_ni),
+    .flush_i              (cu_others_flush),
+    .addr_o               (fe_icache_req.vaddr),
+    .addr_valid_o         (fe_icache_req.valid),
+    .addr_ready_i         (icache_fe_addr_ready),
+    .data_ready_o         (fe_icache_data_ready),
+    .icache_frontend_ans_i(icache_fe_ans),
+    .issue_ready_i        (be_fe_ready),
+    .issue_valid_o        (fe_be_valid),
+    .instruction_o        (fe_be_instr),
+    .curr_pc_o            (fe_be_curr_pc),
+    .pred_o               (fe_be_pred),
+    .res_i                (be_fe_res),
+    .except_o             (fe_be_except),
+    .except_code_o        (fe_be_except_code),
+    .except_i             (be_fe_except),
+    .except_pc_i          (be_fe_except_pc)
   );
 
   // --------
@@ -177,93 +184,97 @@ module datapath_vm #(
 
   // TODO: what is fe_be_pred.pc?
 
-  backend_vm u_backend (
-      .clk_i                 (clk_i),
-      .rst_ni               (rst_ni),
-      .flush_i               (cu_others_flush),
-      .main_cu_stall_o       (be_cu_stall),
-      .main_cu_resume_o      (be_cu_resume),
-      .main_cu_flush_o       (be_cu_flush),
-      .fetch_valid_i         (fe_be_valid),
-      .fetch_ready_o         (be_fe_ready),
-      .fetch_curr_pc_i       (fe_be_curr_pc),
-      .fetch_instr_i         (fe_be_instr),
-      .fetch_pred_target_i   (fe_be_pred.target),
-      .fetch_pred_taken_i    (fe_be_pred.taken),
-      .fetch_except_raised_i (fe_be_except),
-      .fetch_except_code_i   (fe_be_except_code),
-      .fetch_res_pc_o        (be_fe_res.pc),
-      .fetch_res_target_o    (be_fe_res.target),
-      .fetch_res_taken_o     (be_fe_res.taken),
-      .fetch_res_valid_o     (be_fe_res.valid),
-      .fetch_res_mispredict_o(be_fe_res.mispredict),
-      .fetch_except_raised_o (be_fe_except),
-      .fetch_except_pc_o     (be_fe_except_pc),
-      .dtlb_ans_i            (dtlb_be_ans),
-      .dtlb_wup_i            (dtlb_be_wup),
-      .dtlb_ready_i          (dtlb_be_ready),
-      .dtlb_req_o            (be_dtlb_req),
-      .dcache_ans_i          (dcache_be_ans),
-      .dcache_wup_i          (dcache_be_wup),
-      .dcache_ready_i        (dcache_be_ready),
-      .dcache_req_o          (be_dcache_req),
-      .mem_vmem_on_o         (csr_mem_vmem_on),
-      .mem_sum_bit_o         (csr_mem_sum_bit),
-      .mem_mxr_bit_o         (csr_mem_mxr_bit),
-      .mem_priv_mode_o       (csr_mem_priv_mode),
-      .mem_priv_mode_ls_o    (csr_mem_priv_mode_ls),
-      .mem_base_asid_o       (csr_mem_base_asid),
-      .mem_csr_root_ppn_o    (csr_mem_csr_root_ppn)
+  backend_vm #(
+    .Len5Cfg(Len5Cfg)
+  ) u_backend (
+    .clk_i                 (clk_i),
+    .rst_ni                (rst_ni),
+    .flush_i               (cu_others_flush),
+    .main_cu_stall_o       (be_cu_stall),
+    .main_cu_resume_o      (be_cu_resume),
+    .main_cu_flush_o       (be_cu_flush),
+    .fetch_valid_i         (fe_be_valid),
+    .fetch_ready_o         (be_fe_ready),
+    .fetch_curr_pc_i       (fe_be_curr_pc),
+    .fetch_instr_i         (fe_be_instr),
+    .fetch_pred_target_i   (fe_be_pred.target),
+    .fetch_pred_taken_i    (fe_be_pred.taken),
+    .fetch_except_raised_i (fe_be_except),
+    .fetch_except_code_i   (fe_be_except_code),
+    .fetch_res_pc_o        (be_fe_res.pc),
+    .fetch_res_target_o    (be_fe_res.target),
+    .fetch_res_taken_o     (be_fe_res.taken),
+    .fetch_res_valid_o     (be_fe_res.valid),
+    .fetch_res_mispredict_o(be_fe_res.mispredict),
+    .fetch_except_raised_o (be_fe_except),
+    .fetch_except_pc_o     (be_fe_except_pc),
+    .dtlb_ans_i            (dtlb_be_ans),
+    .dtlb_wup_i            (dtlb_be_wup),
+    .dtlb_ready_i          (dtlb_be_ready),
+    .dtlb_req_o            (be_dtlb_req),
+    .dcache_ans_i          (dcache_be_ans),
+    .dcache_wup_i          (dcache_be_wup),
+    .dcache_ready_i        (dcache_be_ready),
+    .dcache_req_o          (be_dcache_req),
+    .mem_vmem_on_o         (csr_mem_vmem_on),
+    .mem_sum_bit_o         (csr_mem_sum_bit),
+    .mem_mxr_bit_o         (csr_mem_mxr_bit),
+    .mem_priv_mode_o       (csr_mem_priv_mode),
+    .mem_priv_mode_ls_o    (csr_mem_priv_mode_ls),
+    .mem_base_asid_o       (csr_mem_base_asid),
+    .mem_csr_root_ppn_o    (csr_mem_csr_root_ppn)
   );
 
   // -------------
   // MEMORY-SYSTEM
   // -------------
 
-  memory_system_with_ssram u_memory_system (
-      .clk_i (clk_i),
-      .rst_ni(rst_ni),
+  memory_system_with_ssram #(
+    .Len5Cfg(Len5Cfg)
+  ) u_memory_system (
+    .clk_i (clk_i),
+    .rst_ni(rst_ni),
 
-      .flush_i            (cu_mem_flush),
-      .abort_i            (cu_mem_abort),
-      .clr_l1tlb_mshr_i   (cu_mem_clr_l1tlb_mshr),
-      .clr_l2tlb_mshr_i   (cu_mem_clr_l2tlb_mshr),
-      .clear_dmshr_dregs_i(cu_mem_clear_dmshr_dregs),
+    .flush_i            (cu_mem_flush),
+    .abort_i            (cu_mem_abort),
+    .clr_l1tlb_mshr_i   (cu_mem_clr_l1tlb_mshr),
+    .clr_l2tlb_mshr_i   (cu_mem_clr_l2tlb_mshr),
+    .clear_dmshr_dregs_i(cu_mem_clear_dmshr_dregs),
 
-      .synch_l1dc_l2c_i (cu_mem_synch_l1dc_l2c),
-      .l2c_update_done_o(mem_cu_l2c_update_done),
+    .synch_l1dc_l2c_i (cu_mem_synch_l1dc_l2c),
+    .l2c_update_done_o(mem_cu_l2c_update_done),
 
-      .vmem_on_i     (csr_mem_vmem_on),
-      .sum_bit_i     (csr_mem_sum_bit),
-      .mxr_bit_i     (csr_mem_mxr_bit),
-      .priv_mode_i   (csr_mem_priv_mode),
-      .priv_mode_ls_i(csr_mem_priv_mode_ls),
-      .base_asid_i   (csr_mem_base_asid),
-      .csr_root_ppn_i(csr_mem_csr_root_ppn),
+    .vmem_on_i     (csr_mem_vmem_on),
+    .sum_bit_i     (csr_mem_sum_bit),
+    .mxr_bit_i     (csr_mem_mxr_bit),
+    .priv_mode_i   (csr_mem_priv_mode),
+    .priv_mode_ls_i(csr_mem_priv_mode_ls),
+    .base_asid_i   (csr_mem_base_asid),
+    .csr_root_ppn_i(csr_mem_csr_root_ppn),
 
-      .L1TLB_flush_type_i(cu_mem_L1TLB_flush_type),
-      .L2TLB_flush_type_i(cu_mem_L2TLB_flush_type),
-      .flush_asid_i      (cu_mem_flush_asid),
-      .flush_page_i      (cu_mem_flush_page),
+    .L1TLB_flush_type_i(cu_mem_L1TLB_flush_type),
+    .L2TLB_flush_type_i(cu_mem_L2TLB_flush_type),
+    .flush_asid_i      (cu_mem_flush_asid),
+    .flush_page_i      (cu_mem_flush_page),
 
-      .frontend_icache_req_i(fe_icache_req),
-      .icache_frontend_rdy_o(icache_fe_addr_ready),
-      .icache_frontend_ans_o(icache_fe_ans),
+    .frontend_icache_req_i(fe_icache_req),
+    .icache_frontend_rdy_o(icache_fe_addr_ready),
+    .icache_frontend_ans_o(icache_fe_ans),
 
-      .lsq_dtlb_req_i    (be_dtlb_req),
-      .dtlb_lsq_req_rdy_o(dtlb_be_ready),
-      .dtlb_lsq_ans_o    (dtlb_be_ans),
-      .dtlb_lsq_wup_o    (dtlb_be_wup),
+    .lsq_dtlb_req_i    (be_dtlb_req),
+    .dtlb_lsq_req_rdy_o(dtlb_be_ready),
+    .dtlb_lsq_ans_o    (dtlb_be_ans),
+    .dtlb_lsq_wup_o    (dtlb_be_wup),
 
-      .lsq_l1dc_req_i    (be_dcache_req),
-      .l1dc_lsq_req_rdy_o(dcache_be_ready),
-      .l1dc_lsq_ans_o    (dcache_be_ans),
-      .l1dc_lsq_wup_o    (dcache_be_wup),
+    .lsq_l1dc_req_i    (be_dcache_req),
+    .l1dc_lsq_req_rdy_o(dcache_be_ready),
+    .l1dc_lsq_ans_o    (dcache_be_ans),
+    .l1dc_lsq_wup_o    (dcache_be_wup),
 
-      .l2arb_l2c_req_o    (l2arb_l2c_req_o),
-      .l2c_l2arb_req_rdy_i(l2c_l2arb_req_rdy_i),
-      .l2c_l2arb_ans_i    (l2c_l2arb_ans_i),
-      .l2arb_l2c_ans_rdy_o(l2arb_l2c_ans_rdy_o)
+    .l2arb_l2c_req_o    (l2arb_l2c_req_o),
+    .l2c_l2arb_req_rdy_i(l2c_l2arb_req_rdy_i),
+    .l2c_l2arb_ans_i    (l2c_l2arb_ans_i),
+    .l2arb_l2c_ans_rdy_o(l2arb_l2c_ans_rdy_o)
   );
 
   // -----------------

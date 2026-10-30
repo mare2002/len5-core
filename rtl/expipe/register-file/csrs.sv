@@ -12,36 +12,38 @@
 // Author: Michele Caon
 // Date: 03/11/2021
 
-module csrs (
-  // Clock and reset
-  input logic clk_i,
-  input logic rst_ni,
+module csrs #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+) (
+    // Clock and reset
+    input logic clk_i,
+    input logic rst_ni,
 
-  // Handshaking with commit logic
-  input logic valid_i,
-  input logic trap_enter_i,  // one-cycle trap-entry event from commit
-  input logic mret_commit_i, // one-cycle accepted return event from commit
+    // Handshaking with commit logic
+    input logic valid_i,
+    input logic trap_enter_i,  // one-cycle trap-entry event from commit
+    input logic mret_commit_i, // one-cycle accepted return event from commit
 
-  // Control from commit logic
-  input expipe_pkg::comm_csr_instr_t comm_insn_i,  // committing instruction type
-  input csr_pkg::csr_op_t            comm_op_i,
+    // Control from commit logic
+    input expipe_pkg::comm_csr_instr_t comm_insn_i,  // committing instruction type
+    input csr_pkg::csr_op_t            comm_op_i,
 
-  // CSR address and data to/from commit logic
-  input logic [csr_pkg::CSR_ADDR_LEN-1:0] addr_i,
-  input logic [len5_pkg::REG_IDX_LEN-1:0] rs1_idx_i,  // source register or unsigned immediate
-  input logic [len5_pkg::XLEN-1:0] data_i,  // data to write to the CSR
-  input logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_i,  // destination register
-  output csr_pkg::csr_t data_o,
-  output csr_pkg::csr_mtvec_t mtvec_o,  // exception base address and mode
-  output csr_pkg::csr_mepc_t mepc_o,  // return address, independent of CSR accesses
-  output logic csr_exc_o,  // exception raised
+    // CSR address and data to/from commit logic
+    input logic [csr_pkg::CSR_ADDR_LEN-1:0] addr_i,
+    input logic [len5_pkg::REG_IDX_LEN-1:0] rs1_idx_i,  // source register or unsigned immediate
+    input logic [len5_pkg::XLEN-1:0] data_i,  // data to write to the CSR
+    input logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_i,  // destination register
+    output csr_pkg::csr_t data_o,
+    output csr_pkg::csr_mtvec_t mtvec_o,  // exception base address and mode
+    output csr_pkg::csr_mepc_t mepc_o,  // return address, independent of CSR accesses
+    output logic csr_exc_o,  // exception raised
 
-  // Data to the FPU
-  output logic [csr_pkg::FCSR_FRM_LEN-1:0] fpu_frm_o,  // dynamic rounding mode
-  output logic fp_enabled_o,  // FS after any CSR write accepted on this edge
+    // Data to the FPU
+    output logic [csr_pkg::FCSR_FRM_LEN-1:0] fpu_frm_o,  // dynamic rounding mode
+    output logic fp_enabled_o,  // FS after any CSR write accepted on this edge
 
-  // Data to the load/store unit
-  output csr_pkg::csr_priv_t priv_mode_o  // current privilege mode
+    // Data to the load/store unit
+    output csr_pkg::csr_priv_t priv_mode_o  // current privilege mode
 );
 
   import len5_config_pkg::*;
@@ -173,7 +175,7 @@ module csrs (
   // MISA
   assign misa.mxl           = 2'b10;  // 64-bit base ISA
   assign misa.not_used      = 'h0;
-  assign misa.extensions    = MISA_EXT;
+  assign misa.extensions    = csr_pkg::misa_extensions(Len5Cfg.LEN5_M_EN);
 
   // Implementation IDs
   assign mvendorid          = CSR_MVENDORID_VALUE;
@@ -215,7 +217,7 @@ module csrs (
   // MCOUNTINHIBIT
   // NOTE: only mcycle, minstret, and hpmcounter3/4 are enabled
   generate
-    if (LEN5_CSR_HPMCOUNTERS_EN != 0) begin : gen_inhib_hpm
+    if (Len5Cfg.LEN5_CSR_HPMCOUNTERS_EN != 0) begin : gen_inhib_hpm
       assign mcountinhibit = {{25{1'b1}}, 7'b0000000};
     end else begin : gen_inhib_no_hpm
       assign mcountinhibit = {{29{1'b1}}, 3'b000};
@@ -353,20 +355,20 @@ module csrs (
       // CSR DEFAULT VALUES
       // ------------------
       // fcsr
-      fcsr         <= '0;
+      fcsr             <= '0;
       // mstatus
       mstatus_fs_dirty <= 1'b0;
       // mtvec
-      mtvec.base   <= CSR_MTVEC_BASE;
-      mtvec.mode   <= CSR_MTVEC_MODE;
+      mtvec.base       <= CSR_MTVEC_BASE;
+      mtvec.mode       <= CSR_MTVEC_MODE;
       // mscratch
-      mscratch     <= 'h0;
+      mscratch         <= 'h0;
       // mepc
-      mepc         <= 'h0;
+      mepc             <= 'h0;
       // mcause
-      mcause       <= 'h0;
+      mcause           <= 'h0;
       // mtval
-      mtval        <= 'h0;
+      mtval            <= 'h0;
 
     end else if (csr_wr_en) begin
       // CSR EXPLICIT WRITE
@@ -377,7 +379,7 @@ module csrs (
         // mstatus
         CSR_MSTATUS: begin
           if (priv_mode >= PRIV_MODE_M) begin
-            mstatus_fs_dirty <= (LEN5_F_EN || LEN5_D_EN) && (|csr_wr_val[14:13]);
+            mstatus_fs_dirty <= (Len5Cfg.LEN5_F_EN || Len5Cfg.LEN5_D_EN) && (|csr_wr_val[14:13]);
           end
         end
         // mtvec
@@ -429,10 +431,10 @@ module csrs (
       unique case (addr_i)
         CSR_MCYCLE:      mcycle_load = 1'b1;
         CSR_MINSTRET:    minstret_load = 1'b1;
-        CSR_HPMCOUNTER3: hpmcounter3_load = LEN5_CSR_HPMCOUNTERS_EN != 0;
-        CSR_HPMCOUNTER4: hpmcounter4_load = LEN5_CSR_HPMCOUNTERS_EN != 0;
-        CSR_HPMCOUNTER5: hpmcounter5_load = LEN5_CSR_HPMCOUNTERS_EN != 0;
-        CSR_HPMCOUNTER6: hpmcounter6_load = LEN5_CSR_HPMCOUNTERS_EN != 0;
+        CSR_HPMCOUNTER3: hpmcounter3_load = Len5Cfg.LEN5_CSR_HPMCOUNTERS_EN != 0;
+        CSR_HPMCOUNTER4: hpmcounter4_load = Len5Cfg.LEN5_CSR_HPMCOUNTERS_EN != 0;
+        CSR_HPMCOUNTER5: hpmcounter5_load = Len5Cfg.LEN5_CSR_HPMCOUNTERS_EN != 0;
+        CSR_HPMCOUNTER6: hpmcounter6_load = Len5Cfg.LEN5_CSR_HPMCOUNTERS_EN != 0;
         default:         ;
       endcase
     end
@@ -454,7 +456,7 @@ module csrs (
       if (minstret_load) minstret <= csr_wr_val;
       else if (comm_insn_i != COMM_CSR_INSTR_TYPE_NONE && !mcountinhibit[2])
         minstret <= minstret + 1;
-      if (LEN5_CSR_HPMCOUNTERS_EN != 0) begin
+      if (Len5Cfg.LEN5_CSR_HPMCOUNTERS_EN != 0) begin
         // hpmcounter3 (retired jumps)
         if (hpmcounter3_load) hpmcounter3 <= csr_wr_val;
         else if (comm_insn_i == COMM_CSR_INSTR_TYPE_JUMP && !mcountinhibit[3])
@@ -480,18 +482,18 @@ module csrs (
   // -----------
 
   // Data to FPU
-  assign fpu_frm_o   = fcsr.frm;
+  assign fpu_frm_o = fcsr.frm;
   // Issue resumes on the CSR commit edge, so decode must see the new FS then.
   assign fp_enabled_o = (csr_wr_en && addr_i == CSR_MSTATUS && priv_mode >= PRIV_MODE_M) ?
-      ((LEN5_F_EN || LEN5_D_EN) && (|csr_wr_val[14:13])) : mstatus_fs_dirty;
+      ((Len5Cfg.LEN5_F_EN || Len5Cfg.LEN5_D_EN) && (|csr_wr_val[14:13])) : mstatus_fs_dirty;
   assign priv_mode_o = priv_mode;
 
   // CSR access exception
-  assign csr_exc_o   = inv_acc_exc;
+  assign csr_exc_o = inv_acc_exc;
 
   // Data to commit logic
-  assign data_o      = csr_rd_val;
-  assign mtvec_o     = mtvec;
-  assign mepc_o      = mepc;
+  assign data_o = csr_rd_val;
+  assign mtvec_o = mtvec;
+  assign mepc_o = mepc;
 
 endmodule

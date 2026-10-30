@@ -20,8 +20,6 @@ import len5_pkg::AWIDTH;
 import len5_pkg::BWIDTH;
 import len5_pkg::HWWIDTH;
 import len5_pkg::DWWIDTH;
-import len5_pkg::LWIDTH;
-import len5_pkg::LEN5_MULTIPLE_ISSUES_BITS;
 
 typedef enum int unsigned {
   FILE_MODE_READ,
@@ -29,18 +27,20 @@ typedef enum int unsigned {
   FILE_MODE_WRITE
 } file_mode_t;
 
-class memory_class;
+class memory_class #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+);
   // File info
-  const local string               memory_file_path;
-  local int                        fd;
-  local string                     file_line;
+  const local string memory_file_path;
+  local int fd;
+  local string file_line;
 
   // File data
-  logic              [ BWIDTH-1:0] read_byte;
-  logic              [HWWIDTH-1:0] read_halfword;
-  logic              [ WWIDTH-1:0] read_word;
-  logic              [DWWIDTH-1:0] read_doubleword;
-  logic              [ LWIDTH-1:0] read_line;
+  logic [BWIDTH-1:0] read_byte;
+  logic [HWWIDTH-1:0] read_halfword;
+  logic [WWIDTH-1:0] read_word;
+  logic [DWWIDTH-1:0] read_doubleword;
+  logic [Len5Cfg.LWIDTH-1:0] read_line;
 
   // Memory data
   // NOTE: delared as static so it's shared by all instances
@@ -61,9 +61,9 @@ class memory_class;
   local function void OpenMemFile(string path, file_mode_t mode);
     // NOTE: prevent Verilator error about mode width in $fopen()
     case (mode)
-      FILE_MODE_READ: this.fd = $fopen(path, "r");
+      FILE_MODE_READ:        this.fd = $fopen(path, "r");
       FILE_MODE_READ_BINARY: this.fd = $fopen(path, "rb");
-      FILE_MODE_WRITE: this.fd = $fopen(path, "w");
+      FILE_MODE_WRITE:       this.fd = $fopen(path, "w");
       default: begin
         $display("ERROR: $fopen() mode '%d' not supported", mode);
       end
@@ -94,10 +94,10 @@ class memory_class;
 
   // Load the memory content from a memory dump file (e.g., the output of 'objcopy -O binary')
   local function int LoadMemBin(logic [AWIDTH-1:0] offs = 0);
-    string             path = this.memory_file_path;
-    int                ret_code = 0;
-    logic [AWIDTH-1:0] addr = offs;
-    logic [       7:0] frame_buff   [512];  // read 512 bytes at a time
+    string              path = this.memory_file_path;
+    int                 ret_code = 0;
+    logic  [AWIDTH-1:0] addr = offs;
+    logic  [       7:0] frame_buff                   [512];  // read 512 bytes at a time
 
     // Open the memory file as binary
     this.OpenMemFile(path, FILE_MODE_READ_BINARY);
@@ -164,7 +164,7 @@ class memory_class;
     $display(" - Loaded %0d bytes (%0d words)", this.mem.num(), this.mem.num() >> 2);
     return this.mem.num();
   endfunction : LoadMemTxt
-  
+
   // Load the memory content from a text file ('address data' pairs)
   local function int LoadMemHex();
     string path = this.memory_file_path;
@@ -237,7 +237,7 @@ class memory_class;
 
     // Read bytes from memory
     for (int i = 0; i < (WWIDTH >> 3); i++) begin
-      baddr                     = addr + {32'b0,i};
+      baddr                     = addr + {32'b0, i};
 
       // Read current byte
       ret                       = this.ReadB(baddr);
@@ -263,7 +263,7 @@ class memory_class;
 
     // Read bytes from memory
     for (int i = 0; i < (DWWIDTH >> 3); i++) begin
-      baddr                      = addr + {32'b0,i};
+      baddr                      = addr + {32'b0, i};
 
       // Read current byte
       ret                        = this.ReadB(baddr);
@@ -277,18 +277,18 @@ class memory_class;
 
   // Read a line
   function int ReadLine(logic [AWIDTH-1:0] addr);
-    logic [AWIDTH-1:0] baddr;  // word address
-    logic [LWIDTH-1:0] l;
-    int                ret;
+    logic [        AWIDTH-1:0] baddr;  // word address
+    logic [Len5Cfg.LWIDTH-1:0] l;
+    int                        ret;
 
     // Check address alignment
-    if (addr[LEN5_MULTIPLE_ISSUES_BITS+1:0] != {(LEN5_MULTIPLE_ISSUES_BITS+2){1'b0}}) begin
+    if (addr[Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS+1:0] != {(Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS + 2) {1'b0}}) begin
       $display("ERROR: Line address 0x%h is NOT aligned on 512 bits", addr);
       return 1;  // exit
     end
 
     // Read bytes from memory
-    for (int i = 0; i < (LWIDTH >> 3); i++) begin
+    for (int i = 0; i < (Len5Cfg.LWIDTH >> 3); i++) begin
       baddr                     = addr + {32'b0, i};
 
       // Read current byte
@@ -370,7 +370,7 @@ class memory_class;
   endfunction : WriteDW
 
   // Store entire line
-  function int WriteLine(logic [AWIDTH-1:0] addr, logic [LWIDTH-1:0] data);
+  function int WriteLine(logic [AWIDTH-1:0] addr, logic [Len5Cfg.LWIDTH-1:0] data);
     logic [AWIDTH-1:0] baddr;  // word address
 
     // Check address alignment
@@ -380,7 +380,7 @@ class memory_class;
     end
 
     // Store the bytes
-    for (int i = 0; i < (LWIDTH >> 3); i++) begin
+    for (int i = 0; i < (Len5Cfg.LWIDTH >> 3); i++) begin
       baddr = addr + {32'b0, i};
       if (0 != WriteB(baddr, data[BWIDTH*(i+1)-1-:BWIDTH])) return 2;
     end
@@ -407,7 +407,7 @@ class memory_class;
     // Iterate over the memory
     w = 'x;
     do begin
-      w[BWIDTH*({30'b0, baddr[1:0]} + 1)-1-:BWIDTH] = this.mem[baddr];
+      w[BWIDTH*({30'b0, baddr[1:0]}+1)-1-:BWIDTH] = this.mem[baddr];
       // $display("cnt: %0d | buff: %h | baddr: %h | data: %h", baddr[1:0], w, baddr, this.mem[baddr]);
       // Print the word and reset the word buffer
       if (baddr[1:0] == 2'b11) begin
@@ -415,7 +415,9 @@ class memory_class;
         $fdisplay(this.fd, "%016h %08h", waddr, w);
         w = 'x;
       end
-    end while (this.mem.next(baddr) == 1);
+    end while (this.mem.next(
+        baddr
+    ) == 1);
 
     // Close the file
     CloseMemFile();

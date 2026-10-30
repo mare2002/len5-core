@@ -18,7 +18,9 @@ import expipe_pkg::*;
 import memory_pkg::*;
 import csr_pkg::*;
 
-module tb_with_l2cemu;
+module tb_with_l2cemu #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+);
 
   // ----------------
   // TB CONFIGURATION
@@ -68,7 +70,7 @@ module tb_with_l2cemu;
     end
 
     /* Print boot program counter */
-    $display("Boot program counter: 0x%x", BOOT_PC);
+    $display("Boot program counter: 0x%x", Len5Cfg.BOOT_PC);
 
     /* Print the number of simulation cycles */
     $display("Number of simulation cycles: %0d", num_cycles);
@@ -78,7 +80,7 @@ module tb_with_l2cemu;
 
     /* Print M extension information */
     $display("M extension: %s",
-                       `ifdef LEN5_M_EN "YES"
+                       `ifdef Len5Cfg.LEN5_M_EN "YES"
                        `else
                        "NO"
                        `endif
@@ -138,7 +140,7 @@ module tb_with_l2cemu;
   // LEN5 Datapath
   // --------------
 
-  datapath u_datapath (
+  len5_datapath #(.Len5Cfg(Len5Cfg)) i_len5_datapath (
     .clk_i              (clk),
     .rst_ni            (rst_n),
     .l2c_l2arb_req_rdy_i(l2c_l2arb_req_rdy),

@@ -17,6 +17,9 @@ filesets:
     - polito:len5:packages
     - polito:len5:common
     - polito:len5:expipe
+    files:
+    - alu_tb.sv
+    file_type: systemVerilogSource
 
   verilator-tb:
     depend:
@@ -49,7 +52,7 @@ targets:
     filesets:
     - rtl-alu
     - verilator-tb
-    toplevel: alu
+    toplevel: alu_tb
 
   # RTL simulation
   sim:
@@ -61,6 +64,52 @@ targets:
       post_run:
       - copy_waves
     parameters:
+    - BOOT_VM_MODE
+    - BOOT_PC_HI
+    - BOOT_PC_LO
+    - LEN5_MULTIPLE_ISSUES
+    - LEN5_M_EN
+    - LEN5_DIV_EN
+    - LEN5_F_EN
+    - LEN5_D_EN
+    - LEN5_C_EN
+    - LEN5_A_EN
+    - LEN5_STORE_LOAD_FWD_EN
+    - MAX_EU_N
+    - ONLY_DOUBLEWORD_MEM_ACCESSES
+    - LEN5_CSR_HPMCOUNTERS_EN
+    - MMAP_MASK_HI
+    - MMAP_MASK_LO
+    - BPU_HLEN
+    - BPU_BTB_BITS
+    - RAS_DEPTH
+    - FETCH_MEMIF_FIFO_DEPTH
+    - FETCH_MEM_DRAIN_ON_FLUSH
+    - LOAD_BUFFER_DRAIN_ON_FLUSH
+    - FETCH_REQ_SPILL_SKIP
+    - FETCH_ANS_SPILL_SKIP
+    - IQ_DEPTH
+    - LDBUFF_DEPTH
+    - STBUFF_DEPTH
+    - LSU_SPILL_SKIP
+    - ALU_RS_DEPTH
+    - ALU_SPILL_SKIP
+    - ALU_RR_ARBITER
+    - MULT_RS_DEPTH
+    - LEN5_MULT_SERIAL
+    - MULT_PIPE_DEPTH
+    - MULT_RR_ARBITER
+    - DIV_RS_DEPTH
+    - DIV_RR_ARBITER
+    - FPU_RS_DEPTH
+    - FPU_RR_ARBITER
+    - FPU_PIPE_DEPTH
+    - FPU_SPILL_SKIP
+    - BU_RS_DEPTH
+    - BU_SPILL_SKIP
+    - ROB_DEPTH
+    - COMMIT_SPILL_SKIP
+    - BPU_INIT_C2B
     - tool_verilator ? (max_cycles)
     - tool_verilator ? (dump_waves)
     - tool_verilator ? (log_level)
@@ -98,3 +147,165 @@ parameters:
     datatype: int
     description: Maximum number of simulation cycles (halt the simulation when reached).
     paramtype: cmdlinearg
+  BOOT_VM_MODE:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_MULTIPLE_ISSUES:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_M_EN:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_DIV_EN:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_F_EN:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_D_EN:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_C_EN:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_A_EN:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_STORE_LOAD_FWD_EN:
+    datatype: int
+    paramtype: vlogparam
+  MAX_EU_N:
+    datatype: int
+    paramtype: vlogparam
+  ONLY_DOUBLEWORD_MEM_ACCESSES:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_CSR_HPMCOUNTERS_EN:
+    datatype: int
+    paramtype: vlogparam
+  BPU_HLEN:
+    datatype: int
+    paramtype: vlogparam
+  BPU_BTB_BITS:
+    datatype: int
+    paramtype: vlogparam
+  RAS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  FETCH_MEMIF_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  FETCH_MEM_DRAIN_ON_FLUSH:
+    datatype: int
+    paramtype: vlogparam
+  LOAD_BUFFER_DRAIN_ON_FLUSH:
+    datatype: int
+    paramtype: vlogparam
+  FETCH_REQ_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  FETCH_ANS_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  IQ_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  LDBUFF_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  STBUFF_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  LSU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  ALU_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  ALU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  ALU_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+  MULT_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  LEN5_MULT_SERIAL:
+    datatype: int
+    paramtype: vlogparam
+  MULT_PIPE_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  MULT_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+  DIV_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  DIV_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+  FPU_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  FPU_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+  FPU_PIPE_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  FPU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  BU_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  BU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  ROB_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+  COMMIT_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  BPU_INIT_C2B:
+    datatype: int
+    paramtype: vlogparam
+  BOOT_PC_HI:
+    datatype: int
+    paramtype: vlogparam
+  BOOT_PC_LO:
+    datatype: int
+    paramtype: vlogparam
+  MMAP_MASK_HI:
+    datatype: int
+    paramtype: vlogparam
+  MMAP_MASK_LO:
+    datatype: int
+    paramtype: vlogparam
+  IMEM_BASE_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  IMEM_BASE_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam
+  DMEM_BASE_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  DMEM_BASE_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam
+  SERIAL_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  SERIAL_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam
+  EXIT_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  EXIT_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam

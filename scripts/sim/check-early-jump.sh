@@ -4,6 +4,9 @@
 set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo_root"
+config_output=$(bash scripts/sim/config-args.sh rtl fusesoc)
+config_args=()
+if [[ -n $config_output ]]; then mapfile -t config_args <<< "$config_output"; fi
 build_root=${BUILD_DIR:-"$repo_root/build"}/early-jump
 model_dir=$(python3 tb/frontend/early_jump_unit/configuration.py --model-dir --build-dir "${BUILD_DIR:-$repo_root/build}")
 fingerprint=${model_dir##*-}
@@ -17,7 +20,7 @@ if [[ ${VERILATOR:-verilator} == */* ]]; then export PATH="$(dirname -- "$VERILA
 if [[ ! -x "$model_dir/sim-verilator/Vearly_jump_tb" || ! -f "$model_dir/sim-verilator/early_jump_build.cfg" ]]; then
     echo '## Building early_jump_unit with real RAS using Verilator...'
     if ! "${FUSESOC:-fusesoc}" run --no-export --target sim --tool verilator \
-        --build-root "$model_dir" --setup --build polito:len5:early-jump-tb > "$model_dir/build.log" 2>&1; then
+        --build-root "$model_dir" --setup --build polito:len5:early-jump-tb "${config_args[@]}" > "$model_dir/build.log" 2>&1; then
         tail -n 60 "$model_dir/build.log" >&2
         echo "Test failed: early_jump build; see $model_dir/build.log" >&2
         exit 2

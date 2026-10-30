@@ -12,7 +12,7 @@ import subprocess
 import shutil
 import tempfile
 import time
-from configuration import ROOT, configuration, fingerprint, write_manifest, sources
+from configuration import ROOT, configuration, fingerprint, write_manifest, sources, build_arguments
 
 
 def main():
@@ -44,12 +44,12 @@ def main():
                     confirmed=report['confirmed_mismatches'], provisional=report['provisional_mismatches'],
                     stimulus_digest=report['stimulus_digest'], artifacts=str(directory))
     original_before = original_run('original-before-mutations')
-    increment = "pc_increase = -{1'b1, pc_o[ILEN_BIT_SUFF+LEN5_MULTIPLE_ISSUES_BITS-1:ILEN_BIT_SUFF]};"
-    one = "pc_increase = {{LEN5_MULTIPLE_ISSUES_BITS{1'b0}}, 1'b1};"
+    increment = "pc_increase = -{1'b1, pc_o[ILEN_BIT_SUFF+Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:ILEN_BIT_SUFF]};"
+    one = "pc_increase = {{Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS{1'b0}}, 1'b1};"
     mutations = [
         ('sequential_step', 'T02', 'C3', 'ordinary PC+4 instead of bundle successor', increment, one),
         ('bundle_boundary', 'T02', 'C3', 'PC+B instead of interval successor from a partial bundle', increment,
-         "pc_increase = {1'b1, {LEN5_MULTIPLE_ISSUES_BITS{1'b0}}};"),
+         "pc_increase = {1'b1, {Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS{1'b0}}};"),
         ('prediction_priority', 'T09', 'C9', 'current prediction overrides older early correction',
          'pred_taken_i && !early_jump_valid_i', 'pred_taken_i'),
         ('stall_hold', 'T03', 'C2', 'ordinary progression even when memory is stalled',
@@ -96,6 +96,7 @@ def main():
                    '--target', 'sim', '--tool', 'verilator', '--build-root', str(model),
                    '--setup', '--build', 'polito:len5:pc-gen-tb',
                    '--BOOT_PC_HI='+str(config['boot_pc']>>32), '--BOOT_PC_LO='+str(config['boot_pc'] & 0xffffffff)]
+        command += build_arguments('rtl', exclude=('BOOT_PC',))
         with (directory/'build.log').open('w') as log:
             built = subprocess.run(command, cwd=staging, stdout=log, stderr=subprocess.STDOUT)
         result = dict(mutation=label, behavior=behavior, scenario=scenario, requirement=requirement,

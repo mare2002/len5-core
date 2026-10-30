@@ -5,7 +5,11 @@ axi_build_dir=${AXI_BUILD_DIR:-"$PWD/build/axi-sim/adapter"}
 axi_config=${AXI_CONFIG:-rtl/packages/len5_config_pkg.sv}
 axi_tb_config=${AXI_TB_CONFIG:-tb/packages/tb_config_pkg.sv}
 mkdir -p "$axi_build_dir"
+config_output=$(bash scripts/sim/config-args.sh all verilator)
+config_args=()
+if [[ -n $config_output ]]; then mapfile -t config_args <<< "$config_output"; fi
 "${VERILATOR:-verilator}" --binary --timing --timescale 1ps/1ps --assert -j "${JOBS:-4}" \
+  "${config_args[@]}" +incdir+tb/packages +incdir+rtl/packages +incdir+rtl/vendor/pulp-axi/include +incdir+tb/memory \
   -MAKEFLAGS "OBJCACHE= CXX=${CXX:-/usr/bin/g++} OPT_FAST=-O2 OPT_GLOBAL=-O2" --Mdir "$axi_build_dir" --top-module axi_sim_adapter_tb \
   -GNATIVE="${AXI_NATIVE:-0}" -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-PINCONNECTEMPTY \
   tb/memory/axi_sim/waivers.vlt rtl/misc/packages-waivers.vlt rtl/misc/common-waivers.vlt \

@@ -107,7 +107,7 @@ relative to this document; explicit line ranges identify the inspected evidence.
 | S09 | [issue_stage.sv](../../../rtl/expipe/issue-unit/issue_stage.sv), 206–225, 309–338, 544–550; [issue_decoder.sv](../../../rtl/expipe/issue-unit/issue_decoder.sv), 46, 93, 334–345 | Metadata carried with each instruction; hit-and-taken qualification; BU_CALL/BU_RET classification. |
 | S10 | [branch_unit.sv](../../../rtl/expipe/exec-units/branch_unit.sv), 109–173, 198–229, 278–281; [branch_cu.sv](../../../rtl/expipe/exec-units/branch_cu.sv), 53–121 | Executed direction/target, faults, registered confirmation payload, correct/mispredicted notification timing. |
 | S11 | [branch_rs.sv](../../../rtl/expipe/exec-units/branch_rs.sv), 129–141, 200–226, 286–345 | Ordered branch execution positions, execution versus CDB acceptance and misprediction result. |
-| S12 | [datapath.sv](../../../rtl/datapath.sv), 97–159, 197; [backend.sv](../../../rtl/expipe/backend.sv), 233–246, 422–434, 510–519, 590; [exec_stage.sv](../../../rtl/expipe/exec-units/exec_stage.sv), 154–177 | Confirmation/resolution routing and distinct frontend/backend recovery paths. |
+| S12 | [datapath.sv](../../../rtl/len5_datapath.sv), 97–159, 197; [backend.sv](../../../rtl/expipe/backend.sv), 233–246, 422–434, 510–519, 590; [exec_stage.sv](../../../rtl/expipe/exec-units/exec_stage.sv), 154–177 | Confirmation/resolution routing and distinct frontend/backend recovery paths. |
 | S13 | [issue_cu.sv](../../../rtl/expipe/issue-unit/issue_cu.sv), 169–173, 256–272; [commit_cu.sv](../../../rtl/expipe/commit-unit/commit_cu.sv), 353–370, 404–465; [commit_stage.sv](../../../rtl/expipe/commit-unit/commit_stage.sv), 156–184, 319–357, 409–424; [rob.sv](../../../rtl/expipe/commit-unit/rob.sv), 124–130, 181–199 | Frontend misprediction flush, later commit/backend flush, exceptions/MRET, ROB resolution bookkeeping. |
 | S14 | [len5_config_pkg.sv](../../../rtl/packages/len5_config_pkg.sv), 37, 49–57, 119–126; [len5_pkg.sv](../../../rtl/packages/len5_pkg.sv), 21–49, 55–134; [fetch_pkg.sv](../../../rtl/packages/fetch_pkg.sv), 49–73; [instr_pkg.sv](../../../rtl/packages/instr_pkg.sv), 100–101; [expipe_pkg.sv](../../../rtl/packages/expipe_pkg.sv), 227–238 | N/depth, ISA switches, instruction representation and packed prediction/resolution types. |
 | S15 | [prio_enc.sv](../../../rtl/common/prio_enc.sv), 17–55; [frontend.core](../../../rtl/frontend.core), [common.core](../../../rtl/common.core), [packages.core](../../../rtl/packages.core) | RAS dependency and supported source/fileset ordering. |
@@ -115,7 +115,7 @@ relative to this document; explicit line ranges identify the inspected evidence.
 
 The active module name is lowercase `ras`, in `rtl/frontend/ras.sv`, despite the
 task's `RAS.sv` spelling. The active hierarchy is
-`u_datapath.u_fetch_stage.u_early_jump_unit.u_ras`. Searches found one active EJU
+`i_len5_datapath.u_fetch_stage.u_early_jump_unit.u_ras`. Searches found one active EJU
 instance and one active RAS instance. Unsupported [rtl-vm](../../../rtl-vm/README.md)
 and old frontend testbenches are not behavioral authorities. No separate complete
 early-jump contract or active standalone early-jump testbench was found.

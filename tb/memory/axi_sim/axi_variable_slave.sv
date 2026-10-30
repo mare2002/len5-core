@@ -1,19 +1,41 @@
+`include "tb_typedef.svh"
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Verification-only AXI slave: independent channel stalls and cross-ID reordering.
 // Requests are sampled on rising edges; responses are driven between edges.
 // Inject DECERR here; native-model tests separately exercise SLVERR.
 module axi_variable_slave #(
-  parameter logic [63:0] I_BASE = tb_config_pkg::IMEM_BASE_ADDR,
-  parameter logic [63:0] D_BASE = tb_config_pkg::DMEM_BASE_ADDR,
-  parameter int unsigned SIZE = 256
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type dmem_axi_aw_chan_t = `LEN5_DMEM_AXI_AW_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_w_chan_t = `LEN5_DMEM_AXI_W_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_ar_chan_t = `LEN5_DMEM_AXI_AR_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_b_chan_t = `LEN5_DMEM_AXI_B_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_r_chan_t = `LEN5_DMEM_AXI_R_CHAN_T(Len5Cfg),
+    localparam type imem_axi_aw_chan_t = `LEN5_IMEM_AXI_AW_CHAN_T(Len5Cfg),
+    localparam type imem_axi_w_chan_t = `LEN5_IMEM_AXI_W_CHAN_T(Len5Cfg),
+    localparam type imem_axi_ar_chan_t = `LEN5_IMEM_AXI_AR_CHAN_T(Len5Cfg),
+    localparam type imem_axi_b_chan_t = `LEN5_IMEM_AXI_B_CHAN_T(Len5Cfg),
+    localparam type imem_axi_r_chan_t = `LEN5_IMEM_AXI_R_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_req_t =
+    `AXI_DECL_REQ_T(dmem_axi_aw_chan_t, dmem_axi_w_chan_t, dmem_axi_ar_chan_t),
+    localparam type dmem_axi_resp_t = `AXI_DECL_RESP_T(dmem_axi_b_chan_t, dmem_axi_r_chan_t),
+    localparam type id_t = `LEN5_AXI_ID_T(Len5Cfg),
+    localparam type imem_axi_req_t =
+    `AXI_DECL_REQ_T(imem_axi_aw_chan_t, imem_axi_w_chan_t, imem_axi_ar_chan_t),
+    localparam type imem_axi_resp_t = `AXI_DECL_RESP_T(imem_axi_b_chan_t, imem_axi_r_chan_t),
+    parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
+        tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
+    ),
+    parameter logic [63:0] I_BASE = TbCfg.IMEM_BASE_ADDR,
+    parameter logic [63:0] D_BASE = TbCfg.DMEM_BASE_ADDR,
+    parameter int unsigned SIZE = 256
 ) (
-  input logic clk_i,
-  rst_ni,
-  input logic [6:0] block_i,  // instruction AR/R, load AR/R, store AW/W/B
-  input axi_memory_pkg::imem_axi_req_t imem_req_i,
-  output axi_memory_pkg::imem_axi_resp_t imem_rsp_o,
-  input axi_memory_pkg::dmem_axi_req_t [1:0] dmem_req_i,
-  output axi_memory_pkg::dmem_axi_resp_t [1:0] dmem_rsp_o
+    input  logic                 clk_i,
+    rst_ni,
+    input  logic           [6:0] block_i,     // instruction AR/R, load AR/R, store AW/W/B
+    input  imem_axi_req_t        imem_req_i,
+    output imem_axi_resp_t       imem_rsp_o,
+    input  dmem_axi_req_t  [1:0] dmem_req_i,
+    output dmem_axi_resp_t [1:0] dmem_rsp_o
 );
   /* verilator lint_off BLKSEQ */
   timeunit 1ps; timeprecision 1ps;
@@ -136,7 +158,7 @@ module axi_variable_slave #(
         instr_result      = '0;
         instr_result.id   = request.id;
         instr_result.last = 1;
-        for (int b = 0; b < InstrDataWidth / 8; b++) begin
+        for (int b = 0; b < Len5Cfg.IMEM_DATA_WIDTH / 8; b++) begin
           index                     = int'(request.addr - I_BASE) + b;
           instr_result.data[b*8+:8] = 8'((index * 37) ^ ((index / 4) * 13) ^ 8'h5a);
         end

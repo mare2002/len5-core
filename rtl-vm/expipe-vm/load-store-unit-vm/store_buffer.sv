@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -14,7 +15,7 @@
 
 import len5_config_pkg::*;
 import len5_pkg::XLEN;
-import len5_pkg::STBUFF_DEPTH;
+
 
 import expipe_pkg::*;
 import memory_pkg::*;
@@ -25,7 +26,11 @@ import csr_pkg::BARE;
 import csr_pkg::SV39;
 import csr_pkg::SV48;
 
-module store_buffer (
+module store_buffer #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg)
+) (
     input logic clk_i,
     input logic rst_ni,
     input logic flush_i,
@@ -56,12 +61,12 @@ module store_buffer (
 
     // Data from/to the virtual address adder
     input logic [len5_pkg::XLEN-1:0] vadder_vaddr_i,
-    input logic [STBUFF_TAG_W-1:0] vadder_idx_i,
+    input logic [Len5Cfg.STBUFF_TAG_W-1:0] vadder_idx_i,
     input vadder_except_t vadder_except_i,  // LD_ADDR_MISALIGNED or LD_PAGE_FAULT exceptions
     output logic vadder_isstore_o,
     output logic [len5_pkg::XLEN-1:0] rs1_value_o,
     output logic [len5_pkg::XLEN-1:0] imm_value_o,
-    output logic [STBUFF_TAG_W-1:0] vadder_idx_o,
+    output logic [Len5Cfg.STBUFF_TAG_W-1:0] vadder_idx_o,
     output logic [LDST_TYPE_LEN-1:0] vadder_sttype_o,
 
     // Handshake from/to the TLB
@@ -75,10 +80,10 @@ module store_buffer (
     input  logic       [     VPN_LEN-1:0] dtlb_vaddr_i,
     input  logic       [     PPN_LEN-1:0] dtlb_ppn_i,
     input  exception_e                    dtlb_except_i,
-    input  logic       [STBUFF_TAG_W-1:0] dtlb_idx_i,
+    input  logic       [Len5Cfg.STBUFF_TAG_W-1:0] dtlb_idx_i,
     output logic                          dtlb_isstore_o,
     output logic       [     VPN_LEN-1:0] dtlb_vaddr_o,
-    output logic       [STBUFF_TAG_W-1:0] dtlb_idx_o,
+    output logic       [Len5Cfg.STBUFF_TAG_W-1:0] dtlb_idx_o,
 
     // Handshake from/to the D$
     input  logic dcache_wu_valid_i,
@@ -89,11 +94,11 @@ module store_buffer (
 
     // Data from/to the D$
     input  logic [DCACHE_L1_LINE_A_LEN-1:0] dcache_lineaddr_i,
-    input  logic [        STBUFF_TAG_W-1:0] dcache_idx_i,
+    input  logic [        Len5Cfg.STBUFF_TAG_W-1:0] dcache_idx_i,
     output logic                            dcache_isstore_o,
     output logic [                len5_pkg::XLEN-1:0] dcache_paddr_o,
     output logic [                len5_pkg::XLEN-1:0] dcache_value_o,
-    output logic [        STBUFF_TAG_W-1:0] dcache_idx_o,
+    output logic [        Len5Cfg.STBUFF_TAG_W-1:0] dcache_idx_o,
     output logic [       LDST_TYPE_LEN-1:0] dcache_sttype_o,
 
     // Data from/to the load buffer
@@ -101,9 +106,9 @@ module store_buffer (
     input logic [len5_pkg::XLEN-1:0] pfwd_paddr_i,
     input logic [LDST_TYPE_LEN-1:0] vfwd_ldtype_i,
     input logic [LDST_TYPE_LEN-1:0] pfwd_ldtype_i,
-    input logic [STBUFF_TAG_W:0] vfwd_older_stores_i,
-    input logic [STBUFF_TAG_W:0] pfwd_older_stores_i,
-    output  logic [STBUFF_TAG_W:0]    inflight_store_cnt_o, // number of uncommitted store instructions in the store buffer
+    input logic [Len5Cfg.STBUFF_TAG_W:0] vfwd_older_stores_i,
+    input logic [Len5Cfg.STBUFF_TAG_W:0] pfwd_older_stores_i,
+    output  logic [Len5Cfg.STBUFF_TAG_W:0]    inflight_store_cnt_o, // number of uncommitted store instructions in the store buffer
     output logic lb_store_committing_o,  // A store is committing in the store buffer
     output logic vfwd_hit_o,
     output logic vfwd_depfree_o,
@@ -129,18 +134,15 @@ module store_buffer (
     output cdb_data_t            cdb_data_o
 );
 
-  // DEFINITIONS
-
-  // Store buffer pointers
-  logic [STBUFF_TAG_W-1:0] sb_head_idx, sb_tail_idx;  // head and tail pointers
-  logic [STBUFF_TAG_W-1:0] vadder_req_idx, dtlb_req_idx, cdb_req_idx;  // request indexes
+  logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_head_idx, sb_tail_idx;  // head and tail pointers
+  logic [Len5Cfg.STBUFF_TAG_W-1:0] vadder_req_idx, dtlb_req_idx, cdb_req_idx;  // request indexes
   logic vadder_idx_valid, dtlb_idx_valid, cdb_idx_valid;
 
   // head and tail counters control
   logic head_cnt_en, head_cnt_clr, tail_cnt_en, tail_cnt_clr;
 
   // In-flight stores counter
-  logic [STBUFF_TAG_W:0] inflight_count;
+  logic [Len5Cfg.STBUFF_TAG_W:0] inflight_count;
 
   // Operation control
   logic sb_push, sb_pop, sb_vadder_req, sb_vadder_ans, sb_dtlb_req, sb_dtlb_wu, sb_dtlb_ans, sb_dcache_req, sb_dcache_wu, sb_dcache_ans, sb_cdb_req;
@@ -149,7 +151,7 @@ module store_buffer (
   sb_entry_t sb_data[0:STBUFF_DEPTH-1];
 
   // Status signals
-  logic [STBUFF_DEPTH-1:0] valid_a, busy_a, rs1_ready_a, vaddr_ready_a, paddr_ready_a, except_raised_a, completed_a;
+  logic [Len5Cfg.STBUFF_DEPTH-1:0] valid_a, busy_a, rs1_ready_a, vaddr_ready_a, paddr_ready_a, except_raised_a, completed_a;
 `ifdef ENABLE_AGE_BASED_SELECTOR
   rob_idx_t entry_age_a[0:STBUFF_DEPTH-1];
 `endif
@@ -160,7 +162,7 @@ module store_buffer (
   // -------------------------
   // These are required because name selection after indexing is not supported
   always_comb begin : status_signals_gen
-    for (int i = 0; i < STBUFF_DEPTH; i++) begin
+    for (int i = 0; i < Len5Cfg.STBUFF_DEPTH; i++) begin
       valid_a[i]         = sb_data[i].valid;
       busy_a[i]          = sb_data[i].busy;
       rs1_ready_a[i]     = sb_data[i].rs1_ready;
@@ -178,7 +180,7 @@ module store_buffer (
   // COMPLETE PHYSICAL ADDRESS
   // -------------------------
   always_comb begin : paddr_gen
-    for (int i = 0; i < STBUFF_DEPTH; i++) begin
+    for (int i = 0; i < Len5Cfg.STBUFF_DEPTH; i++) begin
       paddr_a[i] = {{(XLEN - PADDR_LEN) {1'b0}}, sb_data[i].ppn, sb_data[i].vaddr[PAGE_OFFSET_LEN-1:0]};
     end
   end
@@ -409,7 +411,7 @@ module store_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
         // Update the age of all valid entries
         foreach (sb_data[i]) begin
-          if (sb_tail_idx != i[STBUFF_TAG_W-1:0] && sb_data[i].valid) sb_data[i].entry_age <= sb_data[i].entry_age + 1;
+          if (sb_tail_idx != i[Len5Cfg.STBUFF_TAG_W-1:0] && sb_data[i].valid) sb_data[i].entry_age <= sb_data[i].entry_age + 1;
         end
 `endif
       end
@@ -535,7 +537,7 @@ module store_buffer (
 
   // VIRTUAL ADDRESS FORWARDING (PARALLEL ACCES 1: very complex due to RAW hazard check)
   logic vfwd_allowed, vfwd_hit, vfwd_depfree;
-  logic [STBUFF_TAG_W-1:0] vfwd_idx;
+  logic [Len5Cfg.STBUFF_TAG_W-1:0] vfwd_idx;
 
   always_comb begin : virtual_fwd_logic
 
@@ -544,16 +546,16 @@ module store_buffer (
     vfwd_depfree = 1'b1;
     vfwd_idx     = 0;
 
-    for (int i = 0; i < STBUFF_DEPTH; i++) begin
-      if ((i[STBUFF_TAG_W-1:0] - sb_tail_idx) < (sb_head_idx + vfwd_older_stores_i - sb_tail_idx)) begin
+    for (int i = 0; i < Len5Cfg.STBUFF_DEPTH; i++) begin
+      if ((i[Len5Cfg.STBUFF_TAG_W-1:0] - sb_tail_idx) < (sb_head_idx + vfwd_older_stores_i - sb_tail_idx)) begin
         if (!sb_data[i].vaddr_ready) vfwd_allowed = 1'b0;
-        else if ((i[STBUFF_TAG_W-1:0] - sb_tail_idx) >= vfwd_idx - sb_tail_idx) begin
+        else if ((i[Len5Cfg.STBUFF_TAG_W-1:0] - sb_tail_idx) >= vfwd_idx - sb_tail_idx) begin
           case (sb_data[i].store_type)
 
             LS_DOUBLEWORD: begin
               if (vfwd_vaddr_i[XLEN-1 : 3] == sb_data[i].vaddr[XLEN-1 : 3]) begin
                 vfwd_depfree = 1'b0;
-                vfwd_idx     = i[STBUFF_TAG_W-1:0];
+                vfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
               end
             end
 
@@ -566,7 +568,7 @@ module store_buffer (
                 LS_WORD, LS_WORD_U, LS_HALFWORD, LS_HALFWORD_U, LS_BYTE, LS_BYTE_U: begin
                   if (vfwd_vaddr_i[XLEN-1 : 2] == sb_data[i].vaddr[XLEN-1 : 2]) begin
                     vfwd_depfree = 1'b0;
-                    vfwd_idx     = i[STBUFF_TAG_W-1:0];
+                    vfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
                   end else begin
                     vfwd_allowed = 1'b0;  // can't load the other word
                     vfwd_depfree = 1'b0;
@@ -585,7 +587,7 @@ module store_buffer (
                 LS_HALFWORD, LS_HALFWORD_U, LS_BYTE, LS_BYTE_U: begin
                   if (vfwd_vaddr_i[XLEN-1 : 1] == sb_data[i].vaddr[XLEN-1 : 1]) begin
                     vfwd_depfree = 1'b0;
-                    vfwd_idx     = i[STBUFF_TAG_W-1:0];
+                    vfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
                   end else begin
                     vfwd_allowed = 1'b0;  // can't load the other halfwords
                     vfwd_depfree = 1'b0;
@@ -604,7 +606,7 @@ module store_buffer (
                 LS_BYTE, LS_BYTE_U: begin
                   if (vfwd_vaddr_i == sb_data[i].vaddr) begin
                     vfwd_depfree = 1'b0;
-                    vfwd_idx     = i[STBUFF_TAG_W-1:0];
+                    vfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
                   end else begin
                     vfwd_allowed = 1'b0;  // can't load the other bytes
                     vfwd_depfree = 1'b0;
@@ -626,7 +628,7 @@ module store_buffer (
 
   // PHYSICAL ADDRESS FORWARDING (PARALLEL ACCES 2: very complex due to RAW hazard check)
   logic pfwd_allowed, pfwd_hit, pfwd_depfree;
-  logic [STBUFF_TAG_W-1:0] pfwd_idx;
+  logic [Len5Cfg.STBUFF_TAG_W-1:0] pfwd_idx;
 
   always_comb begin : physical_fwd_logic
 
@@ -635,16 +637,16 @@ module store_buffer (
     pfwd_depfree = 1'b1;
     pfwd_idx     = 0;
 
-    for (int i = 0; i < STBUFF_DEPTH; i++) begin
-      if ((i[STBUFF_TAG_W-1:0] - sb_tail_idx) < (sb_head_idx + pfwd_older_stores_i - sb_tail_idx)) begin
+    for (int i = 0; i < Len5Cfg.STBUFF_DEPTH; i++) begin
+      if ((i[Len5Cfg.STBUFF_TAG_W-1:0] - sb_tail_idx) < (sb_head_idx + pfwd_older_stores_i - sb_tail_idx)) begin
         if (!sb_data[i].paddr_ready) pfwd_allowed = 1'b0;
-        else if ((i[STBUFF_TAG_W-1:0] - sb_tail_idx) >= pfwd_idx - sb_tail_idx) begin
+        else if ((i[Len5Cfg.STBUFF_TAG_W-1:0] - sb_tail_idx) >= pfwd_idx - sb_tail_idx) begin
           case (sb_data[i].store_type)
 
             LS_DOUBLEWORD: begin
               if (pfwd_paddr_i[XLEN-1 : 3] == paddr_a[i][XLEN-1 : 3]) begin
                 pfwd_depfree = 1'b0;
-                pfwd_idx     = i[STBUFF_TAG_W-1:0];
+                pfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
               end
             end
 
@@ -657,7 +659,7 @@ module store_buffer (
                 LS_WORD, LS_WORD_U, LS_HALFWORD, LS_HALFWORD_U, LS_BYTE, LS_BYTE_U: begin
                   if (pfwd_paddr_i[XLEN-1 : 2] == paddr_a[i][XLEN-1 : 2]) begin
                     pfwd_depfree = 1'b0;
-                    pfwd_idx     = i[STBUFF_TAG_W-1:0];
+                    pfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
                   end else begin
                     pfwd_allowed = 1'b0;  // can't load the other word
                     pfwd_depfree = 1'b0;
@@ -676,7 +678,7 @@ module store_buffer (
                 LS_HALFWORD, LS_HALFWORD_U, LS_BYTE, LS_BYTE_U: begin
                   if (pfwd_paddr_i[XLEN-1 : 1] == paddr_a[i][XLEN-1 : 1]) begin
                     pfwd_depfree = 1'b0;
-                    pfwd_idx     = i[STBUFF_TAG_W-1:0];
+                    pfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
                   end else begin
                     pfwd_allowed = 1'b0;  // can't load the other halfwords
                     pfwd_depfree = 1'b0;
@@ -695,7 +697,7 @@ module store_buffer (
                 LS_BYTE, LS_BYTE_U: begin
                   if (pfwd_paddr_i == paddr_a[i]) begin
                     pfwd_depfree = 1'b0;
-                    pfwd_idx     = i[STBUFF_TAG_W-1:0];
+                    pfwd_idx     = i[Len5Cfg.STBUFF_TAG_W-1:0];
                   end else begin
                     pfwd_allowed = 1'b0;  // can't load the other bytes
                     pfwd_depfree = 1'b0;
@@ -720,14 +722,14 @@ module store_buffer (
   // IN-FLIGHT STORES COUNTER
   // ------------------------
   // It is the difference between the tail and head pointers. However, when the store buffer is full of uncommitted stores, this difference is 0, like when the buffer is empty. So, the MSB is set accordingly.
-  assign inflight_count[STBUFF_TAG_W]     = &valid_a;  // MSB is 1 if all are valid
-  assign inflight_count[STBUFF_TAG_W-1:0] = sb_tail_idx - sb_head_idx;
+  assign inflight_count[Len5Cfg.STBUFF_TAG_W]     = &valid_a;  // MSB is 1 if all are valid
+  assign inflight_count[Len5Cfg.STBUFF_TAG_W-1:0] = sb_tail_idx - sb_head_idx;
 
   // ----------------------
   // HEAD AND TAIL COUNTERS
   // ----------------------
   modn_counter #(
-      .N(STBUFF_DEPTH)
+      .N(Len5Cfg.STBUFF_DEPTH)
   ) head_counter (
       .clk_i  (clk_i),
       .rst_ni(rst_ni),
@@ -738,7 +740,7 @@ module store_buffer (
   );
 
   modn_counter #(
-      .N(STBUFF_DEPTH)
+      .N(Len5Cfg.STBUFF_DEPTH)
   ) tail_counter (
       .clk_i  (clk_i),
       .rst_ni(rst_ni),
@@ -754,8 +756,8 @@ module store_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // The selector follows a "first come first served" scheduling policy. The oldest valid entry whose base address from rs1 is available and whose virtual address hasn't been computed yet (vaddr_ready = 0) is selected to be sent to the virtual address adder
   age_based_sel #(
-      .N(STBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.STBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) vaddr_req_selector (
       .lines_i(valid_a & ~busy_a & rs1_ready_a & ~vaddr_ready_a & ~completed_a),
       .ages_i (entry_age_a),
@@ -765,7 +767,7 @@ module store_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(STBUFF_DEPTH)
+      .N(Len5Cfg.STBUFF_DEPTH)
   ) vaddr_req_selector (
       .lines_i(valid_a & ~busy_a & rs1_ready_a & ~vaddr_ready_a & ~completed_a),
       .enc_o  (vadder_req_idx),
@@ -779,8 +781,8 @@ module store_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // The selector follows a "first come first served" scheduling policy. The oldest valid entry whose virtual address has already be computed and that's not busy or completed is selected for the address translation
   age_based_sel #(
-      .N(STBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.STBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) dtlb_req_selector (
       .lines_i(valid_a & ~busy_a & vaddr_ready_a & ~paddr_ready_a & ~except_raised_a & ~completed_a),
       .ages_i (entry_age_a),
@@ -790,7 +792,7 @@ module store_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(STBUFF_DEPTH)
+      .N(Len5Cfg.STBUFF_DEPTH)
   ) dtlb_req_selector (
       .lines_i(valid_a & ~busy_a & vaddr_ready_a & ~paddr_ready_a & ~except_raised_a & ~completed_a),
       .enc_o  (dtlb_req_idx),
@@ -804,8 +806,8 @@ module store_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // Stores access the CDB only to signal occurred exceptions to the ROB. Exceptions can be raised during the address translation or during the TLB access.
   age_based_sel #(
-      .N(STBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.STBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) cdb_req_selector (
       .lines_i(valid_a & completed_a),
       .ages_i (entry_age_a),
@@ -815,7 +817,7 @@ module store_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(STBUFF_DEPTH)
+      .N(Len5Cfg.STBUFF_DEPTH)
   ) cdb_req_selector (
       .lines_i(valid_a & completed_a),
       .enc_o  (cdb_req_idx),
@@ -879,7 +881,7 @@ module store_buffer (
   always @(negedge clk_i) begin
     // Notice when the load buffer is full
     assert (valid_a !== '1)
-    else $display("Store buffer full (%0d entries): you might want to increase its depth", STBUFF_DEPTH);
+    else $display("Store buffer full (%0d entries): you might want to increase its depth", Len5Cfg.STBUFF_DEPTH);
     foreach (sb_data[i]) begin
       // Check if the correct order of operations is respected
       assert (sb_data[i].except_code != E_UNKNOWN)

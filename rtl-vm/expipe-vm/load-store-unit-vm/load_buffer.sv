@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -14,7 +15,7 @@
 
 import len5_config_pkg::*;
 import len5_pkg::XLEN;
-import len5_pkg::LDBUFF_DEPTH;
+
 
 import expipe_pkg::*;
 import memory_pkg::*;
@@ -25,7 +26,11 @@ import csr_pkg::BARE;
 import csr_pkg::SV39;
 import csr_pkg::SV48;
 
-module load_buffer (
+module load_buffer #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg)
+) (
     input logic clk_i,
     input logic rst_ni,
     input logic flush_i,
@@ -52,12 +57,12 @@ module load_buffer (
 
     // Data from/to the virtual address adder
     input logic [len5_pkg::XLEN-1:0] vadder_vaddr_i,
-    input logic [LDBUFF_TAG_W-1:0] vadder_idx_i,
+    input logic [Len5Cfg.LDBUFF_TAG_W-1:0] vadder_idx_i,
     input vadder_except_t vadder_except_i,  // LD_ADDR_MISALIGNED or LD_PAGE_FAULT exceptions
     output logic vadder_isstore_o,
     output logic [len5_pkg::XLEN-1:0] rs1_value_o,
     output logic [len5_pkg::XLEN-1:0] imm_value_o,
-    output logic [LDBUFF_TAG_W-1:0] vadder_idx_o,
+    output logic [Len5Cfg.LDBUFF_TAG_W-1:0] vadder_idx_o,
     output logic [LDST_TYPE_LEN-1:0] vadder_ldtype_o,
 
     // Handshake from/to the TLB
@@ -71,10 +76,10 @@ module load_buffer (
     input  logic       [     VPN_LEN-1:0] dtlb_vaddr_i,
     input  logic       [     PPN_LEN-1:0] dtlb_ppn_i,
     input  exception_e                    dtlb_except_i,
-    input  logic       [LDBUFF_TAG_W-1:0] dtlb_idx_i,
+    input  logic       [Len5Cfg.LDBUFF_TAG_W-1:0] dtlb_idx_i,
     output logic                          dtlb_isstore_o,
     output logic       [     VPN_LEN-1:0] dtlb_vaddr_o,
-    output logic       [LDBUFF_TAG_W-1:0] dtlb_idx_o,
+    output logic       [Len5Cfg.LDBUFF_TAG_W-1:0] dtlb_idx_o,
 
     // Handshake from/to the D$
     input  logic dcache_wu_valid_i,
@@ -86,13 +91,13 @@ module load_buffer (
     // Data from/to the D$
     input  logic [DCACHE_L1_LINE_A_LEN-1:0] dcache_lineaddr_i,
     input  logic [                len5_pkg::XLEN-1:0] dcache_value_i,
-    input  logic [        LDBUFF_TAG_W-1:0] dcache_idx_i,
+    input  logic [        Len5Cfg.LDBUFF_TAG_W-1:0] dcache_idx_i,
     output logic                            dcache_isstore_o,
     output logic [                len5_pkg::XLEN-1:0] dcache_paddr_o,
-    output logic [        LDBUFF_TAG_W-1:0] dcache_idx_o,
+    output logic [        Len5Cfg.LDBUFF_TAG_W-1:0] dcache_idx_o,
 
     // Data from/to the store buffer
-    input   logic [STBUFF_TAG_W:0]    inflight_store_cnt_i, // number of uncommitted store instructions in the store buffer
+    input   logic [Len5Cfg.STBUFF_TAG_W:0]    inflight_store_cnt_i, // number of uncommitted store instructions in the store buffer
     input logic store_committing_i,  // A store is committing in the store buffer
     input logic vfwd_hit_i,
     input logic vfwd_depfree_i,
@@ -104,8 +109,8 @@ module load_buffer (
     output logic [len5_pkg::XLEN-1:0] pfwd_paddr_o,
     output logic [LDST_TYPE_LEN-1:0] vfwd_ldtype_o,
     output logic [LDST_TYPE_LEN-1:0] pfwd_ldtype_o,
-    output logic [STBUFF_TAG_W:0] vfwd_older_stores_o,
-    output logic [STBUFF_TAG_W:0] pfwd_older_stores_o,
+    output logic [Len5Cfg.STBUFF_TAG_W:0] vfwd_older_stores_o,
+    output logic [Len5Cfg.STBUFF_TAG_W:0] pfwd_older_stores_o,
 
     // Hanshake from/to the CDB
     input  logic cdb_ready_i,
@@ -119,10 +124,7 @@ module load_buffer (
     output cdb_data_t            cdb_data_o
 );
 
-  // DEFINITIONS
-
-  // Load buffer pointers
-  logic [LDBUFF_TAG_W-1:0]
+  logic [Len5Cfg.LDBUFF_TAG_W-1:0]
       new_idx,
       vadder_req_idx,
       dtlb_req_idx,
@@ -132,7 +134,7 @@ module load_buffer (
 
   // Forwarding indexes
   logic vfwd_idx_reg_en;
-  logic [LDBUFF_TAG_W-1:0] vfwd_idx, pfwd_idx;
+  logic [Len5Cfg.LDBUFF_TAG_W-1:0] vfwd_idx, pfwd_idx;
   logic pfwd_idx_valid;
 
   // Operation control
@@ -154,10 +156,10 @@ module load_buffer (
   logic      [XLEN-1:0] dcache_value;
 
   // The load buffer data structure
-  lb_entry_t            lb_data      [LDBUFF_DEPTH-1:0];
+  lb_entry_t            lb_data      [Len5Cfg.LDBUFF_DEPTH-1:0];
 
   // Status signals
-  logic [LDBUFF_DEPTH-1:0]
+  logic [Len5Cfg.LDBUFF_DEPTH-1:0]
       valid_a, busy_a, store_dep_a, pfwd_attempted_a, no_older_stores_a, rs1_ready_a, vaddr_ready_a, paddr_ready_a, except_raised_a, completed_a;
 `ifdef ENABLE_AGE_BASED_SELECTOR
   rob_idx_t entry_age_a[0:LDBUFF_DEPTH-1];
@@ -171,7 +173,7 @@ module load_buffer (
   // --------------
   // These are required because name selection after indexing is not supported
   always_comb begin : status_signals_gen
-    for (int i = 0; i < LDBUFF_DEPTH; i++) begin
+    for (int i = 0; i < Len5Cfg.LDBUFF_DEPTH; i++) begin
       valid_a[i]           = lb_data[i].valid;
       busy_a[i]            = lb_data[i].busy;
       store_dep_a[i]       = lb_data[i].store_dep;
@@ -192,7 +194,7 @@ module load_buffer (
   // COMPLETE PHYSICAL ADDRESS
   // -------------------------
   always_comb begin : paddr_gen
-    for (int i = 0; i < LDBUFF_DEPTH; i++) begin
+    for (int i = 0; i < Len5Cfg.LDBUFF_DEPTH; i++) begin
       paddr_a[i] = {{(XLEN - PADDR_LEN) {1'b0}}, lb_data[i].ppn, lb_data[i].vaddr[PAGE_OFFSET_LEN-1:0]};
     end
   end
@@ -420,7 +422,7 @@ module load_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
         // Update the age of all valid entries
         foreach (lb_data[i]) begin
-          if (new_idx != i[LDBUFF_TAG_W-1:0] && lb_data[i].valid) lb_data[i].entry_age <= lb_data[i].entry_age + 1;
+          if (new_idx != i[Len5Cfg.LDBUFF_TAG_W-1:0] && lb_data[i].valid) lb_data[i].entry_age <= lb_data[i].entry_age + 1;
         end
 `endif
       end
@@ -570,7 +572,7 @@ module load_buffer (
   // ------------------
   // Selects the entry where the next issued instruction will be inserted. It is the first empty (i.e. not valid) entry in the queue, selected by a priority encoder.
   prio_enc #(
-      .N(LDBUFF_DEPTH)
+      .N(Len5Cfg.LDBUFF_DEPTH)
   ) new_entry_selector (
       .lines_i(~valid_a),
       .enc_o  (new_idx),
@@ -583,8 +585,8 @@ module load_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // The selector follows a "first come first served" scheduling policy. The oldest valid entry whose base address from rs1 is available and whose virtual address hasn't been computed yet (vaddr_ready = 0) is selected to be sent to the virtual address adder
   age_based_sel #(
-      .N(LDBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.LDBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) vaddr_req_selector (
       .lines_i(valid_a & ~busy_a & rs1_ready_a & ~vaddr_ready_a & ~completed_a),
       .ages_i (entry_age_a),
@@ -594,7 +596,7 @@ module load_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(LDBUFF_DEPTH)
+      .N(Len5Cfg.LDBUFF_DEPTH)
   ) vaddr_req_selector (
       .lines_i(valid_a & ~busy_a & rs1_ready_a & ~vaddr_ready_a & ~completed_a),
       .enc_o  (vadder_req_idx),
@@ -608,8 +610,8 @@ module load_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // The selector follows a "first come first served" scheduling policy. The oldest valid entry whose virtual address has already be computed and that's not busy or completed (thanks to forwarding) is selected for the address translation
   age_based_sel #(
-      .N(LDBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.LDBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) dtlb_req_selector (
       .lines_i(valid_a & ~busy_a & vaddr_ready_a & ~paddr_ready_a & ~except_raised_a & ~completed_a),
       .ages_i (entry_age_a),
@@ -619,7 +621,7 @@ module load_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(LDBUFF_DEPTH)
+      .N(Len5Cfg.LDBUFF_DEPTH)
   ) dtlb_req_selector (
       .lines_i(valid_a & ~busy_a & vaddr_ready_a & ~paddr_ready_a & ~except_raised_a & ~completed_a),
       .enc_o  (dtlb_req_idx),
@@ -633,8 +635,8 @@ module load_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // The selector follows a "first come first served" scheduling policy. In order to be selcted, an instruction must be valid, not busy or completed, have its paddr ready, no exceptions registered and no physical forwarding attempted.
   age_based_sel #(
-      .N(LDBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.LDBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) pfwd_req_selector (
       .lines_i(valid_a & ~busy_a & paddr_ready_a & ~completed_a & ~except_raised_a & ~pfwd_attempted_a),
       .ages_i (entry_age_a),
@@ -644,7 +646,7 @@ module load_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(LDBUFF_DEPTH)
+      .N(Len5Cfg.LDBUFF_DEPTH)
   ) pfwd_req_selector (
       .lines_i(valid_a & ~busy_a & paddr_ready_a & ~completed_a & ~except_raised_a & ~pfwd_attempted_a),
       .enc_o  (pfwd_idx),
@@ -658,8 +660,8 @@ module load_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // The selector follows a "first come first served" scheduling policy. The oldest valid entry whose physical address has already be computed and that's not busy or completed (thanks to forwarding) is selected for the cache access
   age_based_sel #(
-      .N(LDBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.LDBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) dcache_req_selector (
       .lines_i(valid_a & ~busy_a & ~completed_a & paddr_ready_a & ~except_raised_a & pfwd_attempted_a & (~store_dep_a | no_older_stores_a)),
       .ages_i (entry_age_a),
@@ -669,7 +671,7 @@ module load_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(LDBUFF_DEPTH)
+      .N(Len5Cfg.LDBUFF_DEPTH)
   ) dcache_req_selector (
       .lines_i(valid_a & ~busy_a & ~completed_a & paddr_ready_a & ~except_raised_a & pfwd_attempted_a & (~store_dep_a | no_older_stores_a)),
       .enc_o  (dcache_req_idx),
@@ -683,8 +685,8 @@ module load_buffer (
 `ifdef ENABLE_AGE_BASED_SELECTOR
   // The selector follows a "first come first served" scheduling policy. The oldest valid entry that has already completed (by forwarding, cache access or exception raising) is selected to write its data on the CDB, as soon as it becomes available
   age_based_sel #(
-      .N(LDBUFF_DEPTH),
-      .AGE_LEN(ROB_IDX_LEN)
+      .N(Len5Cfg.LDBUFF_DEPTH),
+      .AGE_LEN(Len5Cfg.ROB_IDX_LEN)
   ) cdb_req_selector (
       .lines_i(valid_a & completed_a),
       .ages_i (entry_age_a),
@@ -694,7 +696,7 @@ module load_buffer (
 `else
   // Simple priority encoder
   prio_enc #(
-      .N(LDBUFF_DEPTH)
+      .N(Len5Cfg.LDBUFF_DEPTH)
   ) cdb_req_selector (
       .lines_i(valid_a & completed_a),
       .enc_o  (cdb_req_idx),
@@ -767,7 +769,7 @@ module load_buffer (
   always @(negedge clk_i) begin
     // Notice when the load buffer is full
     assert (valid_a !== '1)
-    else $display("Load buffer full (%0d entries): you might want to increase its depth", LDBUFF_DEPTH);
+    else $display("Load buffer full (%0d entries): you might want to increase its depth", Len5Cfg.LDBUFF_DEPTH);
     foreach (lb_data[i]) begin
       assert (lb_data[i].except_code != E_UNKNOWN)
       else `$error("Load buffer entry %4d has encountered an unknown exception", i);

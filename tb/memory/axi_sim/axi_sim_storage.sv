@@ -1,22 +1,34 @@
+`include "tb_typedef.svh"
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Native AXI model and firmware deposits. No protocol conversion or array clearing.
 module axi_sim_storage #(
-  parameter logic [63:0] BASE_ADDR = tb_config_pkg::IMEM_BASE_ADDR,
-  parameter int unsigned SIZE_BYTES = tb_config_pkg::IMEM_SIZE_BYTES,
-  parameter logic [63:0] OTHER_BASE_ADDR = tb_config_pkg::DMEM_BASE_ADDR,
-  parameter int unsigned OTHER_SIZE_BYTES = tb_config_pkg::DMEM_SIZE_BYTES,
-  parameter int unsigned DATA_WIDTH = 64,
-  parameter int unsigned NUM_PORTS = 1,
-  parameter type AXI_REQ_T = axi_memory_pkg::dmem_axi_req_t,
-  parameter type AXI_RESP_T = axi_memory_pkg::dmem_axi_resp_t,
-  parameter bit LOAD_FIRMWARE = 1
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
+        tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
+    ),
+    localparam type dmem_axi_aw_chan_t = `LEN5_DMEM_AXI_AW_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_w_chan_t = `LEN5_DMEM_AXI_W_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_ar_chan_t = `LEN5_DMEM_AXI_AR_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_b_chan_t = `LEN5_DMEM_AXI_B_CHAN_T(Len5Cfg),
+    localparam type dmem_axi_r_chan_t = `LEN5_DMEM_AXI_R_CHAN_T(Len5Cfg),
+    parameter logic [63:0] BASE_ADDR = TbCfg.IMEM_BASE_ADDR,
+    parameter int unsigned SIZE_BYTES = TbCfg.IMEM_SIZE_BYTES,
+    parameter logic [63:0] OTHER_BASE_ADDR = TbCfg.DMEM_BASE_ADDR,
+    parameter int unsigned OTHER_SIZE_BYTES = TbCfg.DMEM_SIZE_BYTES,
+    parameter int unsigned DATA_WIDTH = 64,
+    parameter int unsigned NUM_PORTS = 1,
+    parameter type AXI_REQ_T =
+    `AXI_DECL_REQ_T(dmem_axi_aw_chan_t, dmem_axi_w_chan_t, dmem_axi_ar_chan_t),
+    parameter type AXI_RESP_T = `AXI_DECL_RESP_T(dmem_axi_b_chan_t, dmem_axi_r_chan_t),
+    parameter bit LOAD_FIRMWARE = 1
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input AXI_REQ_T [NUM_PORTS-1:0] req_i,
-  output AXI_RESP_T [NUM_PORTS-1:0] rsp_o,
-  output bit initialized_o
+    input logic clk_i,
+    input logic rst_ni,
+    input AXI_REQ_T [NUM_PORTS-1:0] req_i,
+    output AXI_RESP_T [NUM_PORTS-1:0] rsp_o,
+    output bit initialized_o
 );
+
   timeunit 1ps; timeprecision 1ps;
   localparam string FirmwareBackend = "AXI_SIM";
   localparam string FirmwareStorage = "AXI memory";
@@ -38,34 +50,34 @@ module axi_sim_storage #(
     end
   end
   axi_sim_mem #(
-    .AddrWidth(64),
-    .DataWidth(DATA_WIDTH),
-    .IdWidth  (len5_pkg::BUFF_IDX_LEN),
-    .UserWidth(1),
-    .NumPorts (NUM_PORTS),
-    .axi_req_t(AXI_REQ_T),
-    .axi_rsp_t(AXI_RESP_T),
-    .ApplDelay(1),
-    .AcqDelay (time'(tb_config_pkg::AXI_CLOCK_HALF_PERIOD_PS) + 2)
+      .AddrWidth(64),
+      .DataWidth(DATA_WIDTH),
+      .IdWidth  (Len5Cfg.BUFF_IDX_LEN),
+      .UserWidth(1),
+      .NumPorts (NUM_PORTS),
+      .axi_req_t(AXI_REQ_T),
+      .axi_rsp_t(AXI_RESP_T),
+      .ApplDelay(1),
+      .AcqDelay (time'(TbCfg.AXI_CLOCK_HALF_PERIOD_PS) + 2)
   ) u_mem (
-    .clk_i             (!clk_i),
-    .rst_ni,
-    .axi_req_i         (model_req_q),
-    .axi_rsp_o         (rsp_o),
-    .mon_w_valid_o     (),
-    .mon_w_addr_o      (),
-    .mon_w_data_o      (),
-    .mon_w_id_o        (),
-    .mon_w_user_o      (),
-    .mon_w_beat_count_o(),
-    .mon_w_last_o      (),
-    .mon_r_valid_o     (),
-    .mon_r_addr_o      (),
-    .mon_r_data_o      (),
-    .mon_r_id_o        (),
-    .mon_r_user_o      (),
-    .mon_r_beat_count_o(),
-    .mon_r_last_o      ()
+      .clk_i             (!clk_i),
+      .rst_ni,
+      .axi_req_i         (model_req_q),
+      .axi_rsp_o         (rsp_o),
+      .mon_w_valid_o     (),
+      .mon_w_addr_o      (),
+      .mon_w_data_o      (),
+      .mon_w_id_o        (),
+      .mon_w_user_o      (),
+      .mon_w_beat_count_o(),
+      .mon_w_last_o      (),
+      .mon_r_valid_o     (),
+      .mon_r_addr_o      (),
+      .mon_r_data_o      (),
+      .mon_r_id_o        (),
+      .mon_r_user_o      (),
+      .mon_r_beat_count_o(),
+      .mon_r_last_o      ()
   );
 
   function automatic void put_byte(logic [63:0] address, logic [7:0] value);
@@ -81,7 +93,7 @@ module axi_sim_storage #(
   endfunction
   `include "firmware_loader.svh"
   initial begin
-    if (tb_config_pkg::AXI_CLOCK_HALF_PERIOD_PS < 3)
+    if (TbCfg.AXI_CLOCK_HALF_PERIOD_PS < 3)
       $fatal(1, "AXI_CLOCK_HALF_PERIOD_PS must exceed the model phase margins");
     initialized_o = 0;
     if (LOAD_FIRMWARE) load_firmware();

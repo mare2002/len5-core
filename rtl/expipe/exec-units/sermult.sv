@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2024 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -23,27 +24,29 @@ The interface of the unit has to be adapted to that of the processor exe unit*/
 // TODO: remove useless comments, add comments
 
 module sermult #(
-  parameter int unsigned EU_CTL_LEN = 4
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    parameter int unsigned EU_CTL_LEN = 4
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Handshake from/to the reservation station unit
-  input  logic valid_i,
-  input  logic ready_i,
-  output logic valid_o,
-  output logic ready_o,
+    // Handshake from/to the reservation station unit
+    input  logic valid_i,
+    input  logic ready_i,
+    output logic valid_o,
+    output logic ready_o,
 
-  // Data from/to the reservation station unit
-  input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-  input  expipe_pkg::rob_idx_t                        rob_idx_i,
-  input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
-  input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-  output expipe_pkg::rob_idx_t                        rob_idx_o,
-  output logic                   [len5_pkg::XLEN-1:0] result_o,
-  output logic                                        except_raised_o,
-  output len5_pkg::except_code_t                      except_code_o
+    // Data from/to the reservation station unit
+    input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
+    input  rob_idx_t                                    rob_idx_i,
+    input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
+    input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
+    output rob_idx_t                                    rob_idx_o,
+    output logic                   [len5_pkg::XLEN-1:0] result_o,
+    output logic                                        except_raised_o,
+    output len5_pkg::except_code_t                      except_code_o
 );
 
   import len5_pkg::*;
@@ -171,7 +174,7 @@ module sermult #(
   end
 
   ////////////////////////////////////////////
-  // MUL 64-bit multicycle datapath control //
+  // MUL 64-bit multicycle len5_datapath control //
   ////////////////////////////////////////////
   always_comb begin : control_s
     mult_a        = rs1_l;

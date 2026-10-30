@@ -55,6 +55,53 @@ targets:
       fetch_mem_tb: true
     default_tool: verilator
     toplevel: fetch_mem_drain_tb
+    parameters:
+    - BOOT_VM_MODE
+    - BOOT_PC_HI
+    - BOOT_PC_LO
+    - LEN5_MULTIPLE_ISSUES
+    - LEN5_M_EN
+    - LEN5_DIV_EN
+    - LEN5_F_EN
+    - LEN5_D_EN
+    - LEN5_C_EN
+    - LEN5_A_EN
+    - LEN5_STORE_LOAD_FWD_EN
+    - MAX_EU_N
+    - ONLY_DOUBLEWORD_MEM_ACCESSES
+    - LEN5_CSR_HPMCOUNTERS_EN
+    - MMAP_MASK_HI
+    - MMAP_MASK_LO
+    - BPU_HLEN
+    - BPU_BTB_BITS
+    - RAS_DEPTH
+    - FETCH_MEMIF_FIFO_DEPTH
+    - FETCH_MEM_DRAIN_ON_FLUSH
+    - LOAD_BUFFER_DRAIN_ON_FLUSH
+    - FETCH_REQ_SPILL_SKIP
+    - FETCH_ANS_SPILL_SKIP
+    - IQ_DEPTH
+    - LDBUFF_DEPTH
+    - STBUFF_DEPTH
+    - LSU_SPILL_SKIP
+    - ALU_RS_DEPTH
+    - ALU_SPILL_SKIP
+    - ALU_RR_ARBITER
+    - MULT_RS_DEPTH
+    - LEN5_MULT_SERIAL
+    - MULT_PIPE_DEPTH
+    - MULT_RR_ARBITER
+    - DIV_RS_DEPTH
+    - DIV_RR_ARBITER
+    - FPU_RS_DEPTH
+    - FPU_RR_ARBITER
+    - FPU_PIPE_DEPTH
+    - FPU_SPILL_SKIP
+    - BU_RS_DEPTH
+    - BU_SPILL_SKIP
+    - ROB_DEPTH
+    - COMMIT_SPILL_SKIP
+    - BPU_INIT_C2B
     filesets: [dut, drain, waivers]
     tools:
       verilator:
@@ -80,6 +127,52 @@ targets:
     - harness
     - waivers
     parameters:
+    - BOOT_VM_MODE
+    - BOOT_PC_HI
+    - BOOT_PC_LO
+    - LEN5_MULTIPLE_ISSUES
+    - LEN5_M_EN
+    - LEN5_DIV_EN
+    - LEN5_F_EN
+    - LEN5_D_EN
+    - LEN5_C_EN
+    - LEN5_A_EN
+    - LEN5_STORE_LOAD_FWD_EN
+    - MAX_EU_N
+    - ONLY_DOUBLEWORD_MEM_ACCESSES
+    - LEN5_CSR_HPMCOUNTERS_EN
+    - MMAP_MASK_HI
+    - MMAP_MASK_LO
+    - BPU_HLEN
+    - BPU_BTB_BITS
+    - RAS_DEPTH
+    - FETCH_MEMIF_FIFO_DEPTH
+    - FETCH_MEM_DRAIN_ON_FLUSH
+    - LOAD_BUFFER_DRAIN_ON_FLUSH
+    - FETCH_REQ_SPILL_SKIP
+    - FETCH_ANS_SPILL_SKIP
+    - IQ_DEPTH
+    - LDBUFF_DEPTH
+    - STBUFF_DEPTH
+    - LSU_SPILL_SKIP
+    - ALU_RS_DEPTH
+    - ALU_SPILL_SKIP
+    - ALU_RR_ARBITER
+    - MULT_RS_DEPTH
+    - LEN5_MULT_SERIAL
+    - MULT_PIPE_DEPTH
+    - MULT_RR_ARBITER
+    - DIV_RS_DEPTH
+    - DIV_RR_ARBITER
+    - FPU_RS_DEPTH
+    - FPU_RR_ARBITER
+    - FPU_PIPE_DEPTH
+    - FPU_SPILL_SKIP
+    - BU_RS_DEPTH
+    - BU_SPILL_SKIP
+    - ROB_DEPTH
+    - COMMIT_SPILL_SKIP
+    - BPU_INIT_C2B
     - MEM_DEPTH
     tools:
       verilator:
@@ -99,9 +192,242 @@ targets:
         - OPT_FAST=-O2
         - OPT_GLOBAL=-O2
         - CXXFLAGS+=-std=c++17
+
 parameters:
   MEM_DEPTH:
     datatype: int
     paramtype: vlogparam
     default: 2
     description: Source-derived production metadata-depth default; verified at startup
+  BOOT_VM_MODE:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for BOOT_VM_MODE.
+  LEN5_MULTIPLE_ISSUES:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_MULTIPLE_ISSUES.
+  LEN5_M_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_M_EN.
+  LEN5_DIV_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_DIV_EN.
+  LEN5_F_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_F_EN.
+  LEN5_D_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_D_EN.
+  LEN5_C_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_C_EN.
+  LEN5_A_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_A_EN.
+  LEN5_STORE_LOAD_FWD_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_STORE_LOAD_FWD_EN.
+  MAX_EU_N:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for MAX_EU_N.
+  ONLY_DOUBLEWORD_MEM_ACCESSES:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for ONLY_DOUBLEWORD_MEM_ACCESSES.
+  LEN5_CSR_HPMCOUNTERS_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_CSR_HPMCOUNTERS_EN.
+  BPU_HLEN:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for BPU_HLEN.
+  BPU_BTB_BITS:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for BPU_BTB_BITS.
+  RAS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for RAS_DEPTH.
+  FETCH_MEMIF_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FETCH_MEMIF_FIFO_DEPTH.
+  FETCH_MEM_DRAIN_ON_FLUSH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FETCH_MEM_DRAIN_ON_FLUSH.
+  LOAD_BUFFER_DRAIN_ON_FLUSH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LOAD_BUFFER_DRAIN_ON_FLUSH.
+  FETCH_REQ_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FETCH_REQ_SPILL_SKIP.
+  FETCH_ANS_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FETCH_ANS_SPILL_SKIP.
+  IQ_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for IQ_DEPTH.
+  LDBUFF_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LDBUFF_DEPTH.
+  STBUFF_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for STBUFF_DEPTH.
+  LSU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LSU_SPILL_SKIP.
+  ALU_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for ALU_RS_DEPTH.
+  ALU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for ALU_SPILL_SKIP.
+  ALU_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for ALU_RR_ARBITER.
+  MULT_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for MULT_RS_DEPTH.
+  LEN5_MULT_SERIAL:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LEN5_MULT_SERIAL.
+  MULT_PIPE_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for MULT_PIPE_DEPTH.
+  MULT_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for MULT_RR_ARBITER.
+  DIV_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for DIV_RS_DEPTH.
+  DIV_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for DIV_RR_ARBITER.
+  FPU_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FPU_RS_DEPTH.
+  FPU_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FPU_RR_ARBITER.
+  FPU_PIPE_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FPU_PIPE_DEPTH.
+  FPU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for FPU_SPILL_SKIP.
+  BU_RS_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for BU_RS_DEPTH.
+  BU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for BU_SPILL_SKIP.
+  ROB_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for ROB_DEPTH.
+  COMMIT_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for COMMIT_SPILL_SKIP.
+  BPU_INIT_C2B:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for BPU_INIT_C2B.
+  MEMORY_BACKEND:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for MEMORY_BACKEND.
+  AXI_CLOCK_HALF_PERIOD_PS:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for AXI_CLOCK_HALF_PERIOD_PS.
+  IMEM_SIZE_BYTES:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for IMEM_SIZE_BYTES.
+  IMEM_LATENCY:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for IMEM_LATENCY.
+  DMEM_SIZE_BYTES:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for DMEM_SIZE_BYTES.
+  DMEM_LATENCY:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for DMEM_LATENCY.
+  SRAM_SIM_INIT:
+    datatype: str
+    paramtype: vlogparam
+    description: Native SRAM simulation initialization.
+  BOOT_PC_HI:
+    datatype: int
+    paramtype: vlogparam
+  BOOT_PC_LO:
+    datatype: int
+    paramtype: vlogparam
+  MMAP_MASK_HI:
+    datatype: int
+    paramtype: vlogparam
+  MMAP_MASK_LO:
+    datatype: int
+    paramtype: vlogparam
+  IMEM_BASE_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  IMEM_BASE_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam
+  DMEM_BASE_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  DMEM_BASE_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam
+  SERIAL_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  SERIAL_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam
+  EXIT_ADDR_HI:
+    datatype: int
+    paramtype: vlogparam
+  EXIT_ADDR_LO:
+    datatype: int
+    paramtype: vlogparam

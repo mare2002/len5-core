@@ -54,7 +54,7 @@ Paths are relative to the repository root; links are relative to this document.
 | S4 | [fetch_mem_if.sv](../../../rtl/frontend/fetch_mem_if.sv), [spill_cell_flush.sv](../../../rtl/common/spill_cell_flush.sv) | Fetch ready/valid boundary, request buffering/bypass, ordered responses, prediction FIFO and flush. |
 | S5 | [bpu.sv](../../../rtl/frontend/bpu.sv), [gen_valid_instr.sv](../../../rtl/frontend/gen_valid_instr.sv) | Bundle PCs, prediction selection, skipped lanes before the starting PC. |
 | S6 | [early_jump_unit.sv](../../../rtl/frontend/early_jump_unit.sv), [ras.sv](../../../rtl/frontend/ras.sv) | JAL/call and return correction, older fetched PC as base, sign-extended offset, requests held while issue is blocked. |
-| S7 | [datapath.sv](../../../rtl/datapath.sv), [backend.sv](../../../rtl/expipe/backend.sv), [exec_stage.sv](../../../rtl/expipe/exec-units/exec_stage.sv) | Hierarchical routing of branch resolution, commit redirect, ready feedback and flush. |
+| S7 | [datapath.sv](../../../rtl/len5_datapath.sv), [backend.sv](../../../rtl/expipe/backend.sv), [exec_stage.sv](../../../rtl/expipe/exec-units/exec_stage.sv) | Hierarchical routing of branch resolution, commit redirect, ready feedback and flush. |
 | S8 | [branch_unit.sv](../../../rtl/expipe/exec-units/branch_unit.sv), [branch_cu.sv](../../../rtl/expipe/exec-units/branch_cu.sv) | Resolution originates from an executed instruction; misprediction notification, frontend acknowledgment and wait for backend flush. |
 | S9 | [commit_stage.sv](../../../rtl/expipe/commit-unit/commit_stage.sv), [commit_cu.sv](../../../rtl/expipe/commit-unit/commit_cu.sv), [csrs.sv](../../../rtl/expipe/register-file/csrs.sv) | Trap/MRET redirect producer, CSR-derived target, shared frontend ready input. |
 | S10 | [ARCHITECTURE.md](../../verilator/diff/ARCHITECTURE.md), [README.md](../../../README.md), [doc/notes/todo.txt](../../../doc/notes/todo.txt) | Eight-instruction fetch bundles, verification boundaries and historical limitations. No standalone authoritative pc_gen specification was found. |
@@ -79,7 +79,7 @@ redirect priority, reset value, or a signal named `early_jump_target_o`.
 
 The active module is `rtl/frontend/pc_gen.sv:16`; its active RTL instantiation is
 `rtl/frontend/fetch_stage.sv:157`, named `u_pc_gen`. Its normal system hierarchy
-is `tb_bare.u_datapath.u_fetch_stage.u_pc_gen`.
+is `tb_bare.i_len5_datapath.u_fetch_stage.u_pc_gen`.
 
 There is a second module with the same name in `rtl-vm/frontend-vm/pc_gen.sv`,
 instantiated as `pc_gen_u` in `rtl-vm/frontend-vm/frontend.sv:100`. Its older

@@ -14,7 +14,7 @@
 
 package expipe_pkg;
   // Import global constants
-  import len5_config_pkg::*;
+
   import len5_pkg::*;
 
   // ----------
@@ -23,27 +23,25 @@ package expipe_pkg;
 
   // COMMIT UNIT
   // -----------
-  localparam int unsigned ROB_IDX_LEN = $clog2(ROB_DEPTH);  // ROB index width
+
   localparam int unsigned ROB_EXCEPT_LEN = EXCEPT_TYPE_LEN;
 
   // Maximum number of in-flight instructions
   // NOTE: currently, the registers in the commit can hold up to 3 additional
   // instructions besides those contained of the ROB.
-  localparam int unsigned COMMIT_UNIT_DEPTH = ROB_DEPTH + 3;
+
 
   // ISSUE QUEUE
   // -----------
-  localparam int unsigned IQ_IDX_LEN = $clog2(IQ_DEPTH);  // issue queue index width
+
 
   // EXECUTION UNITS
   // ---------------
   localparam int unsigned BASE_EU_N = 4;  // load buffer, store buffer, branch unit, ALU
-  localparam int unsigned MULT_EU_N = (LEN5_M_EN) ? 1 : 0;  // MULT
-  localparam int unsigned DIV_EU_N = (LEN5_DIV_EN) ? 1 : 0;  // DIV, split from MUL
-  localparam int unsigned FP_EU_N = (LEN5_D_EN | LEN5_F_EN) ? 1 : 0;  // FPU
+
 
   // Total number of execution units
-  localparam int unsigned EU_N = BASE_EU_N + MULT_EU_N + DIV_EU_N + FP_EU_N;
+
 
   // RESERVATION STATIONS
   // --------------------
@@ -77,7 +75,7 @@ package expipe_pkg;
 
   // REGISTER STATUS REGISTER(S)
   // ---------------------------
-  localparam int unsigned REGSTAT_CNT_W = $clog2(COMMIT_UNIT_DEPTH);
+
 
   // ----
   // ROB
@@ -93,7 +91,7 @@ package expipe_pkg;
   } flags_t;
 
   // ROB index
-  typedef logic [ROB_IDX_LEN-1:0] rob_idx_t;
+
 
   // ROB entry
   typedef struct packed {
@@ -114,13 +112,7 @@ package expipe_pkg;
   // ----
   // CDB
   // ----
-  typedef struct packed {
-    rob_idx_t        rob_idx;
-    logic [XLEN-1:0] res_value;
-    logic            except_raised;
-    except_code_t    except_code;
-    flags_t          flags;
-  } cdb_data_t;
+
 
   // --------------------
   // RESERVATION STATIONS
@@ -290,9 +282,7 @@ package expipe_pkg;
   } issue_type_t;
 
   // Assigned execution unit
-  typedef enum logic [$clog2(
-MAX_EU_N
-)-1:0] {
+  typedef enum logic [2:0] {
     EU_STORE_BUFFER,
     EU_LOAD_BUFFER,
     EU_BRANCH_UNIT,
@@ -338,11 +328,7 @@ MAX_EU_N
 
   // Operand data
   // ------------
-  typedef struct packed {
-    logic            ready;
-    rob_idx_t        rob_idx;
-    logic [XLEN-1:0] value;
-  } op_data_t;
+
 
   // ---------------
   // LOAD-STORE UNIT
@@ -351,20 +337,10 @@ MAX_EU_N
   // ADDRESS ADDER
   // -------------
   // Request
-  typedef struct packed {
-    logic [BUFF_IDX_LEN-1:0] tag;
-    ldst_width_t             ls_type;
-    logic [XLEN-1:0]         base;
-    logic [XLEN-1:0]         offs;
-  } adder_req_t;
+
 
   // Answer
-  typedef struct packed {
-    logic [BUFF_IDX_LEN-1:0] tag;
-    logic [XLEN-1:0]         result;
-    logic                    except_raised;
-    except_code_t            except_code;
-  } adder_ans_t;
+
 
   // ------------
   // COMMIT LOGIC
@@ -398,13 +374,13 @@ MAX_EU_N
 
   // CSR mux control
   typedef enum logic [2:0] {
-    COMM_CSR_SEL_RES,     // select instruction result
-    COMM_CSR_SEL_INSN,    // select instruction
-    COMM_CSR_SEL_PC,      // select PC of the current instruction
-    COMM_CSR_SEL_EXCEPT,  // select exception data
-    COMM_CSR_SEL_INT,     // select interrupt data
-    COMM_CSR_SEL_FP,      // select floating-point flags data
-    COMM_CSR_SEL_ZERO,    // 'h0
+    COMM_CSR_SEL_RES,        // select instruction result
+    COMM_CSR_SEL_INSN,       // select instruction
+    COMM_CSR_SEL_PC,         // select PC of the current instruction
+    COMM_CSR_SEL_EXCEPT,     // select exception data
+    COMM_CSR_SEL_INT,        // select interrupt data
+    COMM_CSR_SEL_FP,         // select floating-point flags data
+    COMM_CSR_SEL_ZERO,       // 'h0
     COMM_CSR_SEL_FAULT_ADDR  // fault address from instruction result
   } comm_csr_sel_t;
 

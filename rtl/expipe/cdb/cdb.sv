@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -12,68 +13,72 @@
 // Author: Michele Caon
 // Date: 11/11/2019
 
-module cdb (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+module cdb #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg)
+) (
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Handshake from/to the maximum priority EU
-  input  logic max_prio_valid_i,
-  output logic max_prio_ready_o,
+    // Handshake from/to the maximum priority EU
+    input  logic max_prio_valid_i,
+    output logic max_prio_ready_o,
 
-  // Data from the maximum priority EU
-  input expipe_pkg::cdb_data_t max_prio_data_i,
+    // Data from the maximum priority EU
+    input cdb_data_t max_prio_data_i,
 
-  // Handshake from/to the reservation stations
-  input  logic [len5_config_pkg::MAX_EU_N-2:0] rs_valid_i,
-  output logic [len5_config_pkg::MAX_EU_N-2:0] rs_ready_o,
+    // Handshake from/to the reservation stations
+    input  logic [Len5Cfg.MAX_EU_N-2:0] rs_valid_i,
+    output logic [Len5Cfg.MAX_EU_N-2:0] rs_ready_o,
 
-  // Data from the reservation stations or issue queue.
-  input expipe_pkg::cdb_data_t [len5_config_pkg::MAX_EU_N-2:0] rs_data_i,
+    // Data from the reservation stations or issue queue.
+    input cdb_data_t [Len5Cfg.MAX_EU_N-2:0] rs_data_i,
 
-  // Handshake from/to the ROB
-  input logic rob_ready_i,
+    // Handshake from/to the ROB
+    input logic rob_ready_i,
 
-  // Output valid and data (to multiple units)
-  output logic                  valid_o,
-  output expipe_pkg::cdb_data_t data_o
+    // Output valid and data (to multiple units)
+    output logic      valid_o,
+    output cdb_data_t data_o
 );
 
   import expipe_pkg::*;
   import len5_pkg::XLEN;
-  import len5_config_pkg::MAX_EU_N;
-  import expipe_pkg::cdb_data_t;
+
 
   // CDB MUX
-  cdb_data_t                        low_prio_mux_data;
+  cdb_data_t                                low_prio_mux_data;
 
   // Served unit index
-  logic                             served_max_prio;
-  logic      [$clog2(MAX_EU_N)-1:0] served;
+  logic                                     served_max_prio;
+  logic      [$clog2(Len5Cfg.MAX_EU_N)-1:0] served;
 
   // -----------
   // CDB ARBITER
   // -----------
-  cdb_arbiter u_cdb_arbiter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(flush_i),
+  cdb_arbiter #(
+      .Len5Cfg(Len5Cfg)
+  ) u_cdb_arbiter (
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(flush_i),
 
-    // Handshake from/to the maximum priority unit
-    .max_prio_valid_i(max_prio_valid_i),
-    .max_prio_ready_o(max_prio_ready_o),
+      // Handshake from/to the maximum priority unit
+      .max_prio_valid_i(max_prio_valid_i),
+      .max_prio_ready_o(max_prio_ready_o),
 
-    // Handshake from/to the units
-    .valid_i(rs_valid_i),
-    .ready_o(rs_ready_o),
+      // Handshake from/to the units
+      .valid_i(rs_valid_i),
+      .ready_o(rs_ready_o),
 
-    // Handshake from/to the ROB
-    .rob_ready_i(rob_ready_i),
-    .rob_valid_o(valid_o),
+      // Handshake from/to the ROB
+      .rob_ready_i(rob_ready_i),
+      .rob_valid_o(valid_o),
 
-    // Served unit
-    .served_max_prio_o(served_max_prio),
-    .served_o         (served)
+      // Served unit
+      .served_max_prio_o(served_max_prio),
+      .served_o         (served)
   );
 
   // --------------

@@ -9,7 +9,7 @@ description: "LEN5 CPU datapath"
 filesets:
   rtl-bare:
     files:
-    - datapath.sv
+    - len5_datapath.sv
     file_type: systemVerilogSource
     depend:
     - polito:len5:packages
@@ -26,4 +26,4 @@ targets:
     filesets:
     - rtl-bare
     - tool_verilator ? (verilator-waivers)
-    toplevel: datapath
+    toplevel: len5_datapath

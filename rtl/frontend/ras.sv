@@ -20,21 +20,22 @@
  *          return address is fetched and used as the next value for the PC.
  */
 module ras #(
-  parameter int unsigned DEPTH = 4  // number of recent return addresses to buffer
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter int unsigned DEPTH = Len5Cfg.RAS_DEPTH
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Call/return update interface
-  input  logic                      push_i,                  // push a new return address
-  input  logic                      pop_i,                   // pop the last return address
-  input  logic [len5_pkg::ALEN-1:0] link_addr_i,               // new return address
-  output logic                      valid_o,                  // return address valid
-  output logic [len5_pkg::ALEN-1:0] ret_addr_o,               // last return address
-  input  logic                      call_confirm_i,          // confirm a resolved call
-  input  logic                      ret_confirm_i,           // confirm a resolved return
-  input  logic [len5_pkg::ALEN-1:0] res_link_addr_i      // link address from Branch Unit
+    // Call/return update interface
+    input  logic                      push_i,          // push a new return address
+    input  logic                      pop_i,           // pop the last return address
+    input  logic [len5_pkg::ALEN-1:0] link_addr_i,     // new return address
+    output logic                      valid_o,         // return address valid
+    output logic [len5_pkg::ALEN-1:0] ret_addr_o,      // last return address
+    input  logic                      call_confirm_i,  // confirm a resolved call
+    input  logic                      ret_confirm_i,   // confirm a resolved return
+    input  logic [len5_pkg::ALEN-1:0] res_link_addr_i  // link address from Branch Unit
 );
 
   import len5_pkg::*;
@@ -124,40 +125,40 @@ module ras #(
   // -----------
   // Last valid entry
   prio_enc #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) prio_enc_last (
-    .lines_i(ras_valid_q),
-    .enc_o  (last_idx),
-    .valid_o(last_valid)
+      .lines_i(ras_valid_q),
+      .enc_o  (last_idx),
+      .valid_o(last_valid)
   );
 
   // First free entry
   prio_enc #(
-    .N  (DEPTH),
-    .INV(1'b1)
+      .N  (DEPTH),
+      .INV(1'b1)
   ) prio_enc_new (
-    .lines_i(~ras_valid_q),
-    .enc_o  (new_idx),
-    .valid_o()             // not used
+      .lines_i(~ras_valid_q),
+      .enc_o  (new_idx),
+      .valid_o()               // not used
   );
 
   // Latest confirmed entry
   prio_enc #(
-    .N(DEPTH)
+      .N(DEPTH)
   ) prio_enc_confirmed (
-    .lines_i(ras_valid_confirmed_q),
-    .enc_o  (confirmed_last_idx),
-    .valid_o()                     // not used
+      .lines_i(ras_valid_confirmed_q),
+      .enc_o  (confirmed_last_idx),
+      .valid_o()                        // not used
   );
 
   // Latest confirmed entry
   prio_enc #(
-    .N  (DEPTH),
-    .INV(1'b1)
+      .N  (DEPTH),
+      .INV(1'b1)
   ) prio_enc_spec (
-    .lines_i(~ras_valid_confirmed_q),
-    .enc_o  (confirmed_new_idx),
-    .valid_o()                    // not used
+      .lines_i(~ras_valid_confirmed_q),
+      .enc_o  (confirmed_new_idx),
+      .valid_o()                         // not used
   );
 
   // -----------------

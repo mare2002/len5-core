@@ -1,3 +1,5 @@
+`include "len5_memory_typedef.svh"
+`include "len5_typedef.svh"
 // Copyright 2021 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -15,16 +17,23 @@
 import len5_config_pkg::*;
 import len5_pkg::*;
 import expipe_pkg::*;
-import memory_pkg::dtlb_lsq_ans_t;
+
 import memory_pkg::dtlb_lsq_wup_t;
-import memory_pkg::lsq_dtlb_req_t;
-import memory_pkg::l1dc_lsq_ans_t;
+
 import memory_pkg::l1dc_lsq_wup_t;
-import memory_pkg::lsq_l1dc_req_t;
+
 import csr_pkg::satp_mode_t;
 import csr_pkg::SATP_MODE_LEN;
 
-module exec_stage_vm (
+module exec_stage_vm #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type lsq_l1dc_req_t = `LEN5_VM_LSQ_L1DC_REQ_T(Len5Cfg),
+  localparam type l1dc_lsq_ans_t = `LEN5_VM_L1DC_LSQ_ANS_T(Len5Cfg),
+  localparam type lsq_dtlb_req_t = `LEN5_VM_LSQ_DTLB_REQ_T(Len5Cfg),
+  localparam type dtlb_lsq_ans_t = `LEN5_VM_DTLB_LSQ_ANS_T(Len5Cfg),
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg)
+) (
     // Clock, reset, and flush
     input logic clk_i,
     input logic rst_ni,
@@ -101,12 +110,7 @@ module exec_stage_vm (
     output lsq_l1dc_req_t dcache_req_o
 );
 
-
-  // ---------------
-  // LOAD/STORE UNIT
-  // ---------------
-
-  load_store_unit u_load_store_unit (
+  load_store_unit #(.Len5Cfg(Len5Cfg)) u_load_store_unit (
       .clk_i                    (clk_i),
       .rst_ni                  (rst_ni),
       .flush_i                  (flush_i),
@@ -151,7 +155,9 @@ module exec_stage_vm (
   // -----------
 
   branch_unit #(
-      .RS_DEPTH(BU_RS_DEPTH)
+
+    .Len5Cfg(Len5Cfg),
+      .RS_DEPTH(Len5Cfg.BU_RS_DEPTH)
   ) u_branch_unit (
       .clk_i           (clk_i),
       .rst_ni         (rst_ni),
@@ -189,8 +195,9 @@ module exec_stage_vm (
   // Integer ALU
   // -----------
   alu_unit #(
+    .Len5Cfg(Len5Cfg),
       .EU_CTL_LEN(ALU_CTL_LEN),
-      .RS_DEPTH  (ALU_RS_DEPTH)
+      .RS_DEPTH  (Len5Cfg.ALU_RS_DEPTH)
   ) u_alu_unit (
       .clk_i              (clk_i),
       .rst_ni            (rst_ni),
@@ -217,12 +224,13 @@ module exec_stage_vm (
       .cdb_except_o       (cdb_data_o[EU_INT_ALU].except_code)
   );
 
-`ifdef LEN5_M_EN
+`ifdef Len5Cfg.LEN5_M_EN
   // Integer multiplier
   // ------------------
   mult_unit #(
+    .Len5Cfg(Len5Cfg),
       .EU_CTL_LEN(MULT_CTL_LEN),
-      .RS_DEPTH  (MULT_RS_DEPTH)
+      .RS_DEPTH  (Len5Cfg.MULT_RS_DEPTH)
   ) u_mult_unit (
       .clk_i              (clk_i),
       .rst_ni            (rst_ni),
@@ -253,8 +261,9 @@ module exec_stage_vm (
   // Integer divider
   // ---------------
   div_unit #(
+    .Len5Cfg(Len5Cfg),
       .EU_CTL_LEN(DIV_CTL_LEN),
-      .RS_DEPTH  (DIV_RS_DEPTH)
+      .RS_DEPTH  (Len5Cfg.DIV_RS_DEPTH)
   ) u_div_unit (
       .clk_i              (clk_i),
       .rst_ni            (rst_ni),
@@ -289,7 +298,7 @@ module exec_stage_vm (
 `ifdef LEN5_FP_EN
   fp_unit #(
       .EU_CTL_LEN(FPU_CTL_LEN),
-      .RS_DEPTH  (FPU_RS_DEPTH)
+      .RS_DEPTH  (Len5Cfg.FPU_RS_DEPTH)
   ) u_fpu_unit (
       .clk_i              (clk_i),
       .rst_ni            (rst_ni),
@@ -323,6 +332,8 @@ module exec_stage_vm (
   // ------------------
 
   op_only_unit #(
+
+    .Len5Cfg(Len5Cfg),
       .RS_DEPTH  (OP_ONLY_RS_DEPTH),
       .EU_CTL_LEN(OP_ONLY_CTL_LEN)
   ) u_op_only_unit (

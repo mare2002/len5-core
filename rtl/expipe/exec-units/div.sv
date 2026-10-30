@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2024 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -15,30 +16,33 @@
 
 // Inspired by https://github.com/openhwgroup/cva6/blob/master/core/mult.sv
 
-module div #(  // TODO: call div
-  // EU-specific parameters
-  parameter int unsigned EU_CTL_LEN = 4,
-  parameter bit SKIP_IN_REG = 1'b0  // skip input register
+module div #(
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    // TODO: call div
+    // EU-specific parameters
+    parameter int unsigned EU_CTL_LEN = 4,
+    parameter bit SKIP_IN_REG = 1'b0  // skip input register
 ) (
-  input logic clk_i,
-  input logic rst_ni,
-  input logic flush_i,
+    input logic clk_i,
+    input logic rst_ni,
+    input logic flush_i,
 
-  // Handshake from/to the reservation station unit
-  input  logic valid_i,
-  input  logic ready_i,
-  output logic valid_o,
-  output logic ready_o,
+    // Handshake from/to the reservation station unit
+    input  logic valid_i,
+    input  logic ready_i,
+    output logic valid_o,
+    output logic ready_o,
 
-  // Data from/to the reservation station unit
-  input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-  input  expipe_pkg::rob_idx_t                        rob_idx_i,
-  input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
-  input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-  output expipe_pkg::rob_idx_t                        rob_idx_o,
-  output logic                   [len5_pkg::XLEN-1:0] result_o,
-  output logic                                        except_raised_o,
-  output len5_pkg::except_code_t                      except_code_o
+    // Data from/to the reservation station unit
+    input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
+    input  rob_idx_t                                    rob_idx_i,
+    input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
+    input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
+    output rob_idx_t                                    rob_idx_o,
+    output logic                   [len5_pkg::XLEN-1:0] result_o,
+    output logic                                        except_raised_o,
+    output len5_pkg::except_code_t                      except_code_o
 );
 
   import len5_pkg::*;
@@ -73,18 +77,18 @@ module div #(  // TODO: call div
 
   // Input reservation station
   spill_cell_flush #(
-    .DATA_T(in_reg_data_t),
-    .SKIP  (SKIP_IN_REG)
+      .DATA_T(in_reg_data_t),
+      .SKIP  (SKIP_IN_REG)
   ) u_out_reg (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(flush_i),
-    .valid_i(valid_i),         // valid from EU (downstream)
-    .ready_o(ready_o),         // ready to EU (downstream)
-    .ready_i(ready_div),       // ready from RS (upstream), CHECK if ready_i or ready_q
-    .valid_o(valid_div),       // valid to RS (upstream)
-    .data_i (in_reg_data_in),
-    .data_o (in_reg_data_out)
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .flush_i(flush_i),
+      .valid_i(valid_i),         // valid from EU (downstream)
+      .ready_o(ready_o),         // ready to EU (downstream)
+      .ready_i(ready_div),       // ready from RS (upstream), CHECK if ready_i or ready_q
+      .valid_o(valid_div),       // valid to RS (upstream)
+      .data_i (in_reg_data_in),
+      .data_o (in_reg_data_out)
   );
 
 
@@ -141,21 +145,22 @@ module div #(  // TODO: call div
   // Serial divider //
   ////////////////////
   serdiv #(
-    .STABLE_HANDSHAKE(1'b1)
+      .Len5Cfg         (Len5Cfg),
+      .STABLE_HANDSHAKE(1'b1)
   ) u_serdiv (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .id_i(in_reg_data_out.rob_idx),
-    .op_a_i(div_a),
-    .op_b_i(div_b),
-    .opcode_i (in_reg_data_out.ctl[1:0]),   // 00: udiv, 10: urem, 01: div, 11: rem TODO:  manipulate ctl_i to get the opcode
-    .in_vld_i(valid_div),
-    .in_rdy_o(ready_div),
-    .flush_i(flush_i),
-    .out_vld_o(valid_o),
-    .out_rdy_i(ready_i),
-    .id_o(rob_idx_o),
-    .res_o(result)
+      .clk_i(clk_i),
+      .rst_ni(rst_ni),
+      .id_i(in_reg_data_out.rob_idx),
+      .op_a_i(div_a),
+      .op_b_i(div_b),
+      .opcode_i (in_reg_data_out.ctl[1:0]),   // 00: udiv, 10: urem, 01: div, 11: rem TODO:  manipulate ctl_i to get the opcode
+      .in_vld_i(valid_div),
+      .in_rdy_o(ready_div),
+      .flush_i(flush_i),
+      .out_vld_o(valid_o),
+      .out_rdy_i(ready_i),
+      .id_o(rob_idx_o),
+      .res_o(result)
   );
 
   //////////////////////
