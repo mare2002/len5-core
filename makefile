@@ -44,6 +44,15 @@ ifneq ($(strip $(CONFIG_EXPORTS)),)
 export $(CONFIG_EXPORTS)
 endif
 
+
+# The helper validates and formats scalar overrides; defaults remain in SystemVerilog.
+FUSESOC_CONFIG_ARGS := $(shell bash scripts/sim/config-args.sh all fusesoc || printf '__LEN5_CONFIG_ERROR__')
+RTL_CONFIG_ARGS := $(shell bash scripts/sim/config-args.sh rtl fusesoc || printf '__LEN5_CONFIG_ERROR__')
+# $(shell) ignores exit status; the marker makes either conversion failure stop Make.
+ifneq ($(filter __LEN5_CONFIG_ERROR__,$(FUSESOC_CONFIG_ARGS) $(RTL_CONFIG_ARGS)),)
+$(error Invalid configuration overrides)
+endif
+
 # Debug simulation (RTL checked against Spike)
 DEBUG_BUILD_DIR ?= $(BUILD_DIR)/debug
 DEBUG_SUITE_DIR ?= $(BUILD_DIR)/$(SUITE)_debug
@@ -75,10 +84,16 @@ PARALLEL_JOBS   := $(addprefix job_, ${PARALLEL_TESTS})
 PARALLEL_DEBUG_JOBS := $(addsuffix -debug,$(PARALLEL_JOBS))
 # ---------
 # RTL simulation files
-SIM_CORE_FILES 	:= $(shell find . -type f -name "*.core")
+SIM_CORE_FILES 	:= $(shell find . -type d \( -name .git -o -path ./build -o -path ./sw/vendor \) -prune -o -type f -name "*.core" -print)
 SIM_HDL_FILES 	:= $(shell find rtl -type f -name "*.v" -o -name "*.sv" -o -name "*.svh")
 SIM_HDL_FILES 	+= $(shell find tb -type f -name "*.v" -o -name "*.sv" -o -name "*.svh")
 SIM_CPP_FILES	:= $(shell find tb/verilator -type f -name "*.cpp" -o -name "*.hh")
+# Shared files that affect the Verilator models.
+BUILD_INPUTS := makefile scripts/sim/config-args.sh $(SIM_CORE_FILES) $(SIM_HDL_FILES) \
+	$(SIM_CPP_FILES) scripts/sim/copy-logs.sh
+DEBUG_LIBS := $(wildcard $(abspath $(SPIKE_BUILD))/libriscv.a \
+	$(abspath $(SPIKE_BUILD))/libdisasm.a $(abspath $(SPIKE_BUILD))/libsoftfloat.a \
+	$(abspath $(SPIKE_BUILD))/libfesvr.a)
 
 #######################
 # ----- TARGETS ----- #
@@ -100,13 +115,67 @@ lint: | .check-fusesoc
 
 # RTL simulation
 # --------------
-# Build Verilator models; the shell helper handles caching, locks and messages.
-.PHONY: verilator-build verilator-build-debug
-verilator-build: | .check-fusesoc
-	@bash scripts/sim/build-verilator.sh sim "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS)
+# Normal Verilator model.
+.PHONY: verilator-build
+verilator-build: $(BUILD_DIR)/normal/.verilator.lock
 
-verilator-build-debug: | .check-fusesoc
-	@bash scripts/sim/build-verilator.sh sim-diff "$(DEBUG_BUILD_DIR)" $(FUSESOC_FLAGS)
+$(BUILD_DIR)/normal/.verilator.lock: $(BUILD_INPUTS) $(BUILD_DIR)/normal/.build-config \
+    $(if $(wildcard $(BUILD_DIR)/normal/sim-verilator/Vtb_bare),,FORCE) \
+    | .check-fusesoc $(BUILD_DIR)/normal/.verilator-build.lock
+	$(FUSESOC) $(if $(filter true 1 yes,$(VERBOSE)),--verbose) run --no-export \
+		--target sim --tool verilator --build-root "$(BUILD_DIR)/normal" \
+		$(FUSESOC_FLAGS) --setup --build polito:len5:len5 $(FUSESOC_CONFIG_ARGS) && touch "$@"
+
+# Differential model, with an independent stamp even when build roots coincide.
+.PHONY: verilator-build-debug
+verilator-build-debug: $(DEBUG_BUILD_DIR)/.verilator-diff.lock
+
+$(DEBUG_BUILD_DIR)/.verilator-diff.lock: $(BUILD_INPUTS) $(DEBUG_BUILD_DIR)/.build-config $(DEBUG_LIBS) \
+    scripts/sim/prepare-diff.sh scripts/sim/prepare-spike.sh \
+    tb/verilator/diff/bootstrap_spike.py tb/verilator/diff/layout.py \
+    $(if $(wildcard $(DEBUG_BUILD_DIR)/sim-diff-verilator/Vtb_bare),,FORCE) \
+    | .check-fusesoc $(DEBUG_BUILD_DIR)/.verilator-build.lock
+	CCACHE_DISABLE=1 SPIKE_SRC="$(abspath $(SPIKE_SRC))" SPIKE_BUILD="$(abspath $(SPIKE_BUILD))" \
+	$(FUSESOC) $(if $(filter true 1 yes,$(VERBOSE)),--verbose) run --no-export \
+		--target sim-diff --tool verilator --build-root "$(DEBUG_BUILD_DIR)" \
+		$(FUSESOC_FLAGS) --setup --build polito:len5:len5 $(FUSESOC_CONFIG_ARGS) && touch "$@"
+
+# Configuration-only elaboration, without compiling a CPU simulator.
+.PHONY: checkbuild
+checkbuild: $(BUILD_DIR)/checkbuild/.verilator.lock
+
+$(BUILD_DIR)/checkbuild/.verilator.lock: $(BUILD_INPUTS) $(BUILD_DIR)/checkbuild/.build-config \
+    | .check-fusesoc $(BUILD_DIR)/checkbuild/.verilator-build.lock
+	$(FUSESOC) run --no-export --target checkbuild --tool verilator \
+		--build-root "$(BUILD_DIR)/checkbuild" $(FUSESOC_FLAGS) \
+		--setup --build polito:len5:len5 $(FUSESOC_CONFIG_ARGS) && touch "$@"
+
+# Persistent lock files share a recipe; the %/ rule creates their directories.
+$(BUILD_DIR)/normal/.verilator-build.lock: | $(BUILD_DIR)/normal/
+$(DEBUG_BUILD_DIR)/.verilator-build.lock: | $(DEBUG_BUILD_DIR)/
+$(BUILD_DIR)/checkbuild/.verilator-build.lock: | $(BUILD_DIR)/checkbuild/
+%/.verilator-build.lock:
+	@touch "$@"
+
+# Hold the process lock for each complete stamp recipe, not only its prerequisites.
+shell_quote = '$(subst ','"'"',$(1))'
+%/.verilator.lock %/.verilator-diff.lock: private SHELL := flock
+%/.verilator.lock %/.verilator-diff.lock: private .SHELLFLAGS = $(call shell_quote,$(@D)/.verilator-build.lock) /bin/sh -ec
+
+# Changed selections invalidate stamps; identical records keep their timestamps.
+.PHONY: FORCE
+FORCE:
+$(BUILD_DIR)/normal/.build-config: FORCE | $(BUILD_DIR)/normal/
+$(DEBUG_BUILD_DIR)/.build-config: FORCE | $(DEBUG_BUILD_DIR)/
+$(BUILD_DIR)/checkbuild/.build-config: FORCE | $(BUILD_DIR)/checkbuild/
+%/.build-config: export LEN5_BUILD_CONFIG = \
+    $(FUSESOC_CONFIG_ARGS)|$(FUSESOC_FLAGS)|$(FUSESOC)|$(VERILATOR)|$(PATH)|\
+    $(CC)|$(CXX)|$(AR)|$(CFLAGS)|$(CXXFLAGS)|$(CPPFLAGS)|$(LDFLAGS)|\
+    $(abspath $(SPIKE_SRC))|$(abspath $(SPIKE_BUILD))|$(BUILD_INPUTS)|$(DEBUG_LIBS)
+%/.build-config:
+	@tmp="$@.$$$$"; trap 'rm -f "$$tmp"' EXIT; \
+	printf '%s\n' "$$LEN5_BUILD_CONFIG" > "$$tmp" || exit $$?; \
+	if ! cmp -s "$$tmp" "$@"; then mv -f "$$tmp" "$@"; fi
 
 # Run Verilator simulation
 .PHONY: verilator-sim verilator-opt
@@ -115,9 +184,8 @@ verilator-sim: DUMP_TRACE ?= true
 verilator-opt: DUMP_WAVES ?= false
 verilator-opt: DUMP_TRACE ?= false
 verilator-sim verilator-opt: verilator-build $(FIRMWARE)
-	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
 	$(FUSESOC) run --no-export --target sim --tool verilator --run \
-		--build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 $$config_args \
+		--build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 $(FUSESOC_CONFIG_ARGS) \
 		--log_level=$(LOG_LEVEL) \
 		--firmware="$(abspath $(FIRMWARE))" \
 		--max_cycles=$(MAX_CYCLES) \
@@ -131,11 +199,9 @@ verilator-sim-debug: DUMP_WAVES ?= true
 verilator-sim-debug: DUMP_TRACE ?= true
 verilator-opt-debug: DUMP_WAVES ?= false
 verilator-opt-debug: DUMP_TRACE ?= false
-verilator-sim-debug verilator-opt-debug: verilator-build-debug $(FIRMWARE)
-	@mkdir -p "$(SIM_RUN_DIR)"
-	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
+verilator-sim-debug verilator-opt-debug: verilator-build-debug $(FIRMWARE) | $(SIM_RUN_DIR)/
 	$(FUSESOC) run --no-export --target sim-diff --tool verilator --run \
-		--build-root "$(DEBUG_BUILD_DIR)" $(FUSESOC_FLAGS) polito:len5:len5 $$config_args \
+		--build-root "$(DEBUG_BUILD_DIR)" $(FUSESOC_FLAGS) polito:len5:len5 $(FUSESOC_CONFIG_ARGS) \
 		--log_level=$(LOG_LEVEL) \
 		--firmware="$(abspath $(FIRMWARE))" \
 		--max_cycles=$(MAX_CYCLES) \
@@ -165,8 +231,7 @@ $(SIM_RUN_DIR)/logs/diff/annotated.gtkw:
 .PHONY: questasim-sim
 questasim-sim: | app .check-fusesoc $(BUILD_DIR)/
 	@echo "## Running simulation with QuestaSim..."
-	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
-	$(FUSESOC) run --no-export --target sim --tool modelsim $(FUSESOC_FLAGS) --build polito:len5:len5 $$config_args 2>&1 | tee build/build.log
+	$(FUSESOC) run --no-export --target sim --tool modelsim $(FUSESOC_FLAGS) --build polito:len5:len5 $(FUSESOC_CONFIG_ARGS) 2>&1 | tee build/build.log
 
 # Benchmarking targets
 # --------------------
@@ -266,8 +331,7 @@ $(BUILD_DIR)/sim-common/spike-trace.log: $(BUILD_DIR)/spike/main.elf | $(BUILD_D
 .PHONY: spike-check
 spike-check: verilator-build | $(BUILD_DIR)/sim-common/ .check-fusesoc
 	@echo "## Launching Verilator simulation..."
-	@config_args="$$(bash scripts/sim/config-args.sh all fusesoc)" || exit $$?; \
-	$(FUSESOC) run --no-export --target sim --tool verilator --run --build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 $$config_args \
+	$(FUSESOC) run --no-export --target sim --tool verilator --run --build-root "$(BUILD_DIR)/normal" $(FUSESOC_FLAGS) polito:len5:len5 $(FUSESOC_CONFIG_ARGS) \
 		--log_level=$(LOG_LEVEL) \
 		--firmware=$(BUILD_DIR)/spike/main.hex \
 		--max_cycles=$(MAX_CYCLES) \
@@ -299,8 +363,7 @@ check: | check-alu .check-fusesoc
 .PHONY: check-alu
 check-alu: | .check-fusesoc
 	@echo "## Checking ALU RTL..."
-	@config_args="$$(bash scripts/sim/config-args.sh rtl fusesoc)" || exit $$?; \
-	$(FUSESOC) run --no-export --target sim --tool verilator polito:len5:alu-tb $$config_args \
+	$(FUSESOC) run --no-export --target sim --tool verilator polito:len5:alu-tb $(RTL_CONFIG_ARGS) \
 		--log_level=LOG_LOW \
 		--dump_waves=false \
 		--max_cycles=1000000
@@ -363,7 +426,7 @@ charts: w/benchmarks/embench/output/benchmarks.csv scripts/xheep_resultsO2.csv
 
 # Create new directories
 %/:
-	mkdir -p $@
+	mkdir -p "$@"
 
 # Clean-up
 .PHONY: clean
@@ -478,8 +541,7 @@ check-fetch-mem-if-mutations: fetch-mem-if-build
 # Directed native-memory drain protocol at the source-selected depth and width.
 .PHONY: check-fetch-mem-if-drain
 check-fetch-mem-if-drain:
-	@config_args="$$(bash scripts/sim/config-args.sh rtl fusesoc)" || exit $$?; \
-	$(FUSESOC) run --target drain --tool verilator --build-root "$(BUILD_DIR)/fetch-mem-if/drain" polito:len5:fetch-mem-if-tb $$config_args
+	$(FUSESOC) run --target drain --tool verilator --build-root "$(BUILD_DIR)/fetch-mem-if/drain" polito:len5:fetch-mem-if-tb $(RTL_CONFIG_ARGS)
 
 # Closed-loop complete production frontend. Only source-selected configuration.
 STRICT_COMPLETION ?= false

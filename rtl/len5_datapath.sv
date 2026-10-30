@@ -67,6 +67,10 @@ module len5_datapath #(
   import fetch_pkg::*;
   import csr_pkg::csr_priv_t;
 
+  if (!len5_config_pkg::check_build(Len5Cfg)) begin : gen_invalid_configuration
+    $fatal(1, "Invalid LEN5 configuration");
+  end
+
   // ----------------
   // INTERNAL SIGNALS
   // ----------------

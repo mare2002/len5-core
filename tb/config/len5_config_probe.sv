@@ -131,8 +131,14 @@ module len5_config_probe #(
             BPU_INIT_C2B: 2'(BPU_INIT_C2B)
         }
     ),
-    parameter bit Dump = 1
+    parameter bit Dump = 1,
+    parameter bit CheckBuild = 0
 );
+  if (CheckBuild) begin : gen_check_build
+    if (!tb_config_pkg::check_build(Len5Cfg, TbCfg, SRAM_SIM_INIT)) begin : gen_invalid_configuration
+      $fatal(1, "Invalid LEN5/TB configuration");
+    end
+  end
   initial begin
     if (Dump) begin
       $write("{\"rtl\":{");

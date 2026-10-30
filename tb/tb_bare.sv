@@ -283,26 +283,13 @@ module tb_bare #(
   // BODY
   // ----
 
-  if (Len5Cfg.LOAD_BUFFER_DRAIN_ON_FLUSH != (TbCfg.MEMORY_BACKEND == MEM_BACKEND_TC_SRAM ||
-                                    TbCfg.MEMORY_BACKEND == MEM_BACKEND_AXI_SIM)) begin : gen_load_protocol_error
-    $fatal(
-        1,
-        "LOAD_BUFFER_DRAIN_ON_FLUSH must be enabled for native memories; use prepare-memory-backend.py"
-    );
-  end
-  if (Len5Cfg.FETCH_MEM_DRAIN_ON_FLUSH != (TbCfg.MEMORY_BACKEND == MEM_BACKEND_TC_SRAM ||
-                                  TbCfg.MEMORY_BACKEND == MEM_BACKEND_AXI_SIM)) begin : gen_fetch_protocol_error
-    $fatal(
-        1,
-        "FETCH_MEM_DRAIN_ON_FLUSH must be enabled for native memories; use prepare-memory-backend.py"
-    );
+  if (!tb_config_pkg::check_build(Len5Cfg, TbCfg, SRAM_SIM_INIT)) begin : gen_invalid_configuration
+    $fatal(1, "Invalid LEN5/TB configuration");
   end
 
   // Command-line options and configuration
   // --------------------------------------
   initial begin
-    if (Len5Cfg.FETCH_MEMIF_FIFO_DEPTH == 0 || (Len5Cfg.FETCH_MEMIF_FIFO_DEPTH & (Len5Cfg.FETCH_MEMIF_FIFO_DEPTH - 1)) != 0)
-      $fatal(1, "Fetch completion queue requires a positive power-of-two capacity");
     $display(
         "[CFG] issues=%0d rob=%0d load=%0d store=%0d fetch=%0d flen=%0d backend=%0d imem_latency=%0d dmem_latency=%0d boot=0x%h",
         i_len5_datapath.Len5Cfg.LEN5_MULTIPLE_ISSUES,

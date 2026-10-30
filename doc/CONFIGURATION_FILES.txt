@@ -87,7 +87,6 @@ rtl/packages/len5_pkg.sv
 rtl/packages/len5_typedef.svh
 rtl/packages/memory_pkg.sv
 scripts/gen-memory-map.py
-scripts/sim/build-verilator.sh
 scripts/sim/check-axi-sim.sh
 scripts/sim/check-early-jump.sh
 scripts/sim/check-fetch-mem-if.sh
@@ -99,8 +98,6 @@ scripts/sim/check-tc-sram-loader.py
 scripts/sim/check-tc-sram.sh
 scripts/sim/config-args.sh
 scripts/sim/prepare-memory-backend.py
-scripts/test_gen_memory_map.py
-scripts/test_len5_config.py
 tb/AUDIT_REPORT.md
 tb/config/len5_config_probe.sv
 tb/expipe/alu/alu_tb.core

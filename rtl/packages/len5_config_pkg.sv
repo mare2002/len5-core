@@ -352,5 +352,75 @@ package len5_config_pkg;
     return cfg;
   endfunction
 
+  // Use explicit fatal checks so constant evaluation also rejects invalid builds without --assert.
+  function automatic bit check_build(len5_cfg cfg);
+    int unsigned depths[6];
+    int unsigned max_outstanding;
+    bit derived_valid;
+    if ($isunknown(cfg)) $fatal(1, "check_build: LEN5 configuration contains unknown bits");
+    if (!(cfg.LEN5_MULTIPLE_ISSUES inside {1, 2, 4, 8}))
+      $fatal(1, "check_build: LEN5_MULTIPLE_ISSUES must be 1, 2, 4 or 8");
+    if (cfg.BOOT_VM_MODE > SV48) $fatal(1, "check_build: invalid BOOT_VM_MODE");
+    if (cfg.LEN5_C_EN || cfg.LEN5_A_EN)
+      $fatal(1, "check_build: compressed and atomic instructions are currently unsupported");
+    if (cfg.FETCH_MEMIF_FIFO_DEPTH == 0 ||
+        (cfg.FETCH_MEMIF_FIFO_DEPTH & (cfg.FETCH_MEMIF_FIFO_DEPTH - 1)) != 0)
+      $fatal(1, "check_build: FETCH_MEMIF_FIFO_DEPTH must be a positive power of two");
+    if (cfg.IQ_DEPTH < 2 || (cfg.IQ_DEPTH & (cfg.IQ_DEPTH - 1)) != 0)
+      $fatal(1, "check_build: IQ_DEPTH must be a power of two of at least two");
+    depths = '{
+        cfg.RAS_DEPTH,
+        cfg.LDBUFF_DEPTH,
+        cfg.STBUFF_DEPTH,
+        cfg.ALU_RS_DEPTH,
+        cfg.BU_RS_DEPTH,
+        cfg.ROB_DEPTH
+    };
+    foreach (depths[i]) begin
+      if (depths[i] < 2)
+        $fatal(
+            1, "check_build: RAS, ROB, buffer and reservation-station depths must be at least two"
+        );
+    end
+    if ((cfg.LEN5_M_EN && cfg.MULT_RS_DEPTH < 2) ||
+        (cfg.LEN5_DIV_EN && cfg.DIV_RS_DEPTH < 2) ||
+        ((cfg.LEN5_F_EN || cfg.LEN5_D_EN) && cfg.FPU_RS_DEPTH < 2))
+      $fatal(
+          1,
+          "check_build: enabled execution units require reservation-station depths of at least two"
+      );
+    if (cfg.MAX_EU_N < 7)
+      $fatal(
+          1,
+          "check_build: MAX_EU_N must accommodate all seven architectural execution-unit identifiers"
+      );
+    if (cfg.BPU_HLEN <= cfg.LEN5_MULTIPLE_ISSUES_BITS || cfg.BPU_HLEN >= 32 ||
+        cfg.BPU_BTB_BITS == 0 || cfg.BPU_BTB_BITS >= 32)
+      $fatal(1, "check_build: invalid BPU_HLEN or BPU_BTB_BITS");
+    derived_valid = cfg.LEN5_MULTIPLE_ISSUES_BITS == $clog2(cfg.LEN5_MULTIPLE_ISSUES);
+    derived_valid &= cfg.LWIDTH == 32 * cfg.LEN5_MULTIPLE_ISSUES;
+    derived_valid &= cfg.FLEN == (cfg.LEN5_D_EN ? 64 : 32);
+    derived_valid &= cfg.LDBUFF_TAG_W == $clog2(cfg.LDBUFF_DEPTH);
+    derived_valid &= cfg.STBUFF_TAG_W == $clog2(cfg.STBUFF_DEPTH);
+    derived_valid &= cfg.BUFF_IDX_LEN == (cfg.LDBUFF_TAG_W > cfg.STBUFF_TAG_W ? cfg.LDBUFF_TAG_W : cfg.STBUFF_TAG_W);
+    derived_valid &= cfg.ROB_IDX_LEN == $clog2(cfg.ROB_DEPTH);
+    derived_valid &= cfg.COMMIT_UNIT_DEPTH == cfg.ROB_DEPTH + 3;
+    derived_valid &= cfg.IQ_IDX_LEN == $clog2(cfg.IQ_DEPTH);
+    derived_valid &= cfg.REGSTAT_CNT_W == $clog2(cfg.COMMIT_UNIT_DEPTH);
+    derived_valid &= cfg.MULT_EU_N == (cfg.LEN5_M_EN ? 1 : 0);
+    derived_valid &= cfg.DIV_EU_N == (cfg.LEN5_DIV_EN ? 1 : 0);
+    derived_valid &= cfg.FP_EU_N == ((cfg.LEN5_F_EN || cfg.LEN5_D_EN) ? 1 : 0);
+    derived_valid &= cfg.EU_N == 4 + cfg.MULT_EU_N + cfg.DIV_EU_N + cfg.FP_EU_N;
+    derived_valid &= cfg.IMEM_DATA_WIDTH == (cfg.LEN5_MULTIPLE_ISSUES > 2 ? 32 * cfg.LEN5_MULTIPLE_ISSUES : 64);
+    derived_valid &= cfg.TAG_COUNT == (1 << cfg.BUFF_IDX_LEN);
+    max_outstanding = cfg.TAG_COUNT > cfg.FETCH_MEMIF_FIFO_DEPTH ? cfg.TAG_COUNT : cfg.FETCH_MEMIF_FIFO_DEPTH;
+    derived_valid &= cfg.AXI_COUNT_WIDTH == $clog2(max_outstanding + 1);
+    if (!derived_valid)
+      $fatal(
+          1, "check_build: inconsistent derived LEN5 fields; construct Len5Cfg with build_config()"
+      );
+    return 1'b1;
+  endfunction
+
   localparam len5_cfg DEFAULT_LEN5_CFG = build_config(DEFAULT_LEN5_USER_CFG);
 endpackage

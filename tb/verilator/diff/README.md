@@ -83,12 +83,13 @@ needs its adjacent lock file. On the tested workstation the tool paths are
 `/home/markospremic/miniconda3/envs/core-len5/bin/fusesoc`; source `private/init.sh`
 in a shell with Conda initialized to add the local tools to PATH.
 
-FuseSoC builds and runs both the ordinary `sim` target and the checked `sim-diff`
-target in `len5.core`. The shell build helper fingerprints RTL/checker sources,
-tool paths, flags and compiler configuration; unchanged invocations reuse the
-model. Spike retains its separate content and compiler fingerprint cache, including
-backdated source changes. Missing libraries or an executable are rebuilt. Build
-locks serialize concurrent invocations. Outputs stay under `build/`, outside the source
+Make invokes FuseSoC directly to build and run the ordinary `sim` target and the
+checked `sim-diff` target in `len5.core`. Make file-target rules create directories,
+lock files, selection records and build stamps. Unchanged builds reuse the stamp;
+source and configuration changes invoke FuseSoC/Edalize again. A target-specific
+shell holds the process lock during compilation. Spike retains
+its separate content and compiler fingerprint cache, including backdated source
+changes. Build locks serialize concurrent builds in each directory. Outputs stay under `build/`, outside the source
 tree; deleting that build directory requires a new compile, never a new download.
 `make clean-keep-spike` removes its other contents, including hidden build stamps,
 RTL executables, firmware, logs and waveforms. It retains the entire `SPIKE_BUILD`
@@ -96,14 +97,11 @@ directory, including archives, object files and the cache/configuration metadata
 The next verification run rebuilds the RTL model and reuses the Spike libraries.
 `make clean` and `make clean-sim` retain their full-clean behavior.
 
-Verilator builds show `Building RTL with Verilator...` when rebuilding starts
-and `RTL build complete.` after a successful build. Repeated cache checks are
-quiet. Spike builds likewise show `Building Spike reference libraries...` and
+FuseSoC and compiler diagnostics are printed directly; use shell redirection to
+save a build log. Spike builds show `Building Spike reference libraries...` and
 `Spike reference library build complete.` only when compilation is required.
 Spike compiler diagnostics stay in `SPIKE_BUILD/bootstrap.log`.
-FuseSoC diagnostics are saved to `DEBUG_BUILD_DIR/build.log` for debug
-builds and `BUILD_DIR/normal/build.log` for ordinary builds. A failed build prints
-its last 60 output lines and the log path, and still returns a failing status. Set `VERBOSE=true` to enable
+Build failures propagate to Make. Set `VERBOSE=true` to enable
 FuseSoC's verbose output. `DUMP_WAVES` controls waveform files and
 `LOG_LEVEL` controls simulation logging independently.
 
@@ -128,8 +126,10 @@ RTL elaboration, C++ compilation, linking and simulation are owned by FuseSoC:
 
 * `bootstrap_spike.py`: validate local pinned sources, configure only when needed,
   and cache the four Spike reference libraries. It does not clone or download.
-* `scripts/sim/build-verilator.sh`: serialize builds, check the source/configuration
-  cache, and print build progress while FuseSoC compiles the model.
+* `makefile`: own directories, locks and build stamps, and invoke FuseSoC directly
+  when sources or the selected configuration change.
+* `scripts/sim/config-args.sh`: render explicitly selected overrides as FuseSoC or
+  Verilator parameters, without selecting hardware defaults or running builds.
 * `scripts/sim/prepare-diff.sh`: FuseSoC pre-build hook that supplies Spike include
   paths/libraries and generates the checker metadata before Edalize builds the model.
 * `layout.py`: generate `diff_layout.hh` from Verilator XML, including packed-field

@@ -19,6 +19,14 @@ name: "polito:len5:len5:0.1.1"
 description: "LEN5: out-of-order superscalar CPU"
 
 filesets:
+  configuration:
+    files:
+    - rtl/packages/len5_config_pkg.sv
+    - rtl/packages/len5_pkg.sv
+    - tb/packages/tb_config_pkg.sv
+    - tb/config/len5_config_probe.sv
+    file_type: systemVerilogSource
+
   rtl-bare:
     depend:
     - polito:len5:packages
@@ -145,7 +153,7 @@ targets:
     toplevel: 
       - tool_verilator ? (tb_bare)
       - "!tool_verilator ? (len5_tb)"
-    parameters:
+    parameters: &configuration_parameters
     - BOOT_VM_MODE
     - BOOT_PC_HI
     - BOOT_PC_LO
@@ -284,6 +292,19 @@ targets:
         run_options:
         - '--diff'
 
+  checkbuild:
+    description: Validate the selected CPU and memory configuration during elaboration.
+    default_tool: verilator
+    filesets:
+    - configuration
+    toplevel: len5_config_probe
+    parameters: *configuration_parameters
+    parameters_append:
+    - CheckBuild=1
+    tools:
+      verilator:
+        mode: lint-only
+
   # Format HDL with Verible
   format:
     filesets:
@@ -327,6 +348,10 @@ targets:
 # Parameters
 
 parameters:
+  CheckBuild:
+    datatype: int
+    paramtype: vlogparam
+    description: Evaluate check_build for the standalone configuration target.
   run_dir:
     datatype: str
     description: Directory for this simulation's logs and waveforms.

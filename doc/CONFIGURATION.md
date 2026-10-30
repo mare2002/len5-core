@@ -87,6 +87,10 @@ Derived quantities are fields in the resolved configuration, filled only by the 
 
 Make preserves the original uppercase names and exports only explicitly selected variables. Build caches, source manifests, standalone oracles, firmware maps and mutation builds include the selected configuration. Memory-backend snapshot preparation now writes `config.mk` instead of rewriting packages.
 
+The normal and differential Make build recipes invoke FuseSoC directly. Directories, process-lock files, configuration-selection records and successful-build stamps have separate Make rules. The normal `.verilator.lock` and differential `.verilator-diff.lock` stamps are updated only after a successful build; unchanged sources and selections reuse them. Configuration arguments, tool settings and changes to the source list invalidate the selection record. A target-specific `flock` shell holds the process lock for the complete build recipe; merely creating the lock file as a prerequisite would not hold that lock during compilation. Separate build directories should be used for concurrent, different configurations.
+
+`scripts/sim/config-args.sh` owns scalar override validation and rendering. Make uses its output in `FUSESOC_CONFIG_ARGS` for normal CPU/TB builds and `RTL_CONFIG_ARGS` for RTL-only targets. Standalone verification and firmware tools call the same helper directly. Its arguments are the domain (`rtl|tb|all`), output format (`fusesoc|verilator`), and an optional comma-separated exclusion list. The helper never runs a build. Defaults and derived hardware fields remain exclusively in SystemVerilog.
+
 ```sh
 make verilator-build LEN5_MULTIPLE_ISSUES=2 ROB_DEPTH=16 LDBUFF_DEPTH=4 STBUFF_DEPTH=8
 make verilator-build MEMORY_BACKEND=TC_SRAM IMEM_LATENCY=3 DMEM_LATENCY=2
@@ -121,8 +125,7 @@ The five pre-existing incomplete fetch-stage scenarios FE-T43/48/49/50/51 remain
 
 | Check | Result |
 |---|---|
-| SV builder/transport tests | 9 passed |
-| Firmware memory-map tests | 6 passed |
+| Selected-configuration validation | `make checkbuild`, using SV `check_build()` functions |
 | PC directed T01–T22 and both framework suites | Passed |
 | PC regression, 100 seeds × 10,000 cycles, JOBS=4, REQUIRE_MATRIX=true | 6,948,463 checks, zero mismatches; required combination matrices complete |
 | EJU, fetch-memory and composed frontend directed/framework/random-framework | Passed, preserving the documented five incomplete frontend cases |
@@ -145,8 +148,9 @@ An additional integer-only two-issue SRAM profile timed out at a CSR write, both
 Representative verification commands (use the repository tool environment with Verilator 5.040):
 
 ```sh
-python3 scripts/test_len5_config.py
-python3 scripts/test_gen_memory_map.py
+make checkbuild
+make checkbuild LEN5_MULTIPLE_ISSUES=4 ROB_DEPTH=64 LEN5_D_EN=0
+make checkbuild MEMORY_BACKEND=LEGACY FETCH_MEM_DRAIN_ON_FLUSH=0 LOAD_BUFFER_DRAIN_ON_FLUSH=0
 make check-pc-gen-run check-pc-gen-framework check-pc-gen-random-framework
 make check-pc-gen-regression SEEDS=100 CYCLES=10000 JOBS=4 REQUIRE_MATRIX=true
 make check-early-jump-run check-early-jump-framework check-early-jump-random-framework
@@ -169,13 +173,25 @@ The complete changed-file inventory is [CONFIGURATION_FILES.txt](CONFIGURATION_F
 
 ## Follow-up: build once in SystemVerilog
 
-The additional `scripts/len5_config.py` parser has been removed. Make and shell simulator builds call `scripts/sim/config-args.sh` solely to validate and render explicit scalar overrides; the helper contains no configuration defaults or hardware derivations. Source expressions and configuration construction are evaluated by SystemVerilog.
+The additional Python configuration parser has been removed. Scalar transport lives in the readable `scripts/sim/config-args.sh` helper, shared by Make and the existing verification/firmware tools. It contains no configuration defaults or hardware derivations. Source expressions and configuration construction are evaluated by SystemVerilog.
 
 The existing verification configuration modules and firmware map generator read JSON exported by `tb/config/len5_config_probe.sv`. This small, cached Verilator executable uses the same canonical SV defaults and builders as the processor; its only role is exporting elaborated metadata. Python neither parses SV configuration definitions nor evaluates their expressions. Existing independent verification oracles still calculate expected behavior independently.
 
 The firmware memory-map generator now requires Verilator to elaborate this cached probe, even when invoked before the full CPU simulator build. Its existing overlap, alignment, overflow and malformed-configuration rejection checks are retained.
 
-Follow-up validation: default and four-issue/F32 hello_world completed with byte-identical traces to their pre-follow-up versions; the 2000 ps AXI half-period profile also completed at timestamp 118,644,000. Spike differential verification passed 14,122 commits; PC regression passed 100 seeds/1,000,000 cycles with 6,948,463 checks and zero mismatches. Standalone frontend directed/framework checks, ALU, SRAM/AXI protocols, and both load/store suites passed. All 35 memory-geometry cases, 63 SRAM loader cases, 36 AXI loader cases, and nine backend-selection cases passed. Nine builder/transport tests and six firmware-map tests pass. The existing ten pinned-vendor lint diagnostics remain; no new waivers were added. Follow-up receipts are in `build/config-migration/build-once-results.json`.
+Follow-up validation before the direct-FuseSoC change: default and four-issue/F32 hello_world completed with byte-identical traces to their pre-follow-up versions; the 2000 ps AXI half-period profile also completed at timestamp 118,644,000. Spike differential verification passed 14,122 commits; PC regression passed 100 seeds/1,000,000 cycles with 6,948,463 checks and zero mismatches. Standalone frontend directed/framework checks, ALU, SRAM/AXI protocols, and both load/store suites passed. All 35 memory-geometry cases, 63 SRAM loader cases, 36 AXI loader cases, and nine backend-selection cases passed. The existing ten pinned-vendor lint diagnostics remain; no new waivers were added. Those receipts are in `build/config-migration/build-once-results.json`.
+
+## Configuration validation during the build
+
+The two additional Python test scripts have been removed. `len5_config_pkg::check_build(Len5Cfg)` validates CPU dimensions, supported features, and consistency of the derived fields. `tb_config_pkg::check_build(Len5Cfg, TbCfg, SRAM_SIM_INIT)` also validates memory geometry, MMIO addresses, initialization, and the CPU/memory flush protocol. Native memories cannot cancel accepted requests and therefore require both drain switches; legacy memory requires both switches disabled. Independently overridden adapter dimensions retain their existing local checks.
+
+The functions use explicit `if (...) $fatal(...)` checks: Verilator 5.040 cannot evaluate immediate `assert` statements in a constant function. The datapath and system TB call the validators in constant generate conditions, so invalid settings fail elaboration even without `--assert`, before C++ compilation or simulation. The separate `make checkbuild` target uses the same functions in a small FuseSoC `lint-only` target, without building the CPU simulator. Derived-value calculations inside these validators are consistency checks and do not produce hardware.
+
+For example, `make checkbuild LOAD_BUFFER_DRAIN_ON_FLUSH=0` fails with a message naming that switch and explaining the native-memory requirement. No separate test program is needed to validate the currently selected configuration. Build-argument syntax checks and firmware output generation remain in the existing transport and firmware tools; SV validation cannot inspect a generated linker file or a malformed argument rejected before elaboration.
+
+Direct-build validation accepted eight valid profiles and rejected twenty invalid profiles. Corrupted derived CPU/TB fields were rejected on Verilator 5.040 and 5.046 without `--assert`. Default hello_world and a four-issue/F32 rebuild in the same directory produced traces identical to their saved baselines; Spike passed 14,122 commits. PC directed/framework checks and the 100-seed regression passed with 6,948,463 checks and zero mismatches. All nine backend-selection cases passed. An incompatible normal `make verilator-build` failed before producing any C++ objects. The same ten existing vendor lint diagnostics remain. Receipts are in `build/config-migration/direct-build-results.json`.
+
+The build-rule update passed build-stamp reuse and invalidation checks, failed-build recovery, missing-binary rebuilding, and parallel build-lock checks. Normal and differential targets retain separate stamps even if their custom roots coincide. The default and four-issue core traces remained identical to their baselines; Spike passed 14,122 commits. PC directed/framework checks and the 100-seed regression passed again with 6,948,463 checks and zero mismatches. Standalone frontend directed checks, SRAM and AXI protocol runs (three seeds each), and load/store ordering passed. Those receipts are in `build/config-make-owned/results.json`. Restoring the standalone argument helper preserves those Make rules and the probe; compatibility receipts are in `build/config-args-restored/`.
 
 ## Resolved field mapping
 
