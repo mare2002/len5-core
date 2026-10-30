@@ -26,9 +26,8 @@ module store_buffer #(
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned DEPTH = Len5Cfg.STBUFF_DEPTH,
-    parameter int unsigned LB_DEPTH = Len5Cfg.LDBUFF_DEPTH,
-    // Dependent parameters: do NOT override
+    localparam int unsigned DEPTH = Len5Cfg.STBUFF_DEPTH,
+    localparam int unsigned LB_DEPTH = Len5Cfg.LDBUFF_DEPTH,
     localparam int unsigned IdxW = $clog2(DEPTH)
 ) (
     input logic clk_i,

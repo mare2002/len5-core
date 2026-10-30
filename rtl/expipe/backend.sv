@@ -333,8 +333,7 @@ module backend #(
   // Integer register status register
   // --------------------------------
   int_regstat #(
-      .Len5Cfg(Len5Cfg),
-      .REG_NUM(XREG_NUM)
+      .Len5Cfg(Len5Cfg)
   ) u_int_regstat (
       .clk_i              (clk_i),
       .rst_ni             (rst_ni),
@@ -372,8 +371,7 @@ module backend #(
     if (Len5Cfg.LEN5_D_EN | Len5Cfg.LEN5_F_EN) begin : gen_fp_rf
       // FP register status register
       fp_regstat #(
-          .Len5Cfg(Len5Cfg),
-          .REG_NUM(XREG_NUM)
+          .Len5Cfg(Len5Cfg)
       ) u_fp_regstat (
           .clk_i              (clk_i),
           .rst_ni             (rst_ni),

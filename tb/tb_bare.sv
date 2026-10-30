@@ -442,8 +442,7 @@ module tb_bare #(
   // LEN5 BAREMETAL DATAPATH
   // -----------------------
   len5_datapath #(
-      .Len5Cfg(Len5Cfg),
-      .BOOT_PC(Len5Cfg.BOOT_PC)
+      .Len5Cfg(Len5Cfg)
   ) i_len5_datapath (
       .clk_i                     (clk_i),
       .rst_ni                    (rst_ni),

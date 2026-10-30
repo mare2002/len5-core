@@ -124,9 +124,7 @@ module fetch_mem_drain_tb #(
   int accepted_requests, accepted_responses, delivered, early_consumed;
 
   fetch_mem_if #(
-
-      .Len5Cfg                     (Len5Cfg),
-      .MAX_MEM_OUTSTANDING_REQUESTS(Depth)
+      .Len5Cfg(Len5Cfg)
   ) dut (
       .clk_i                (clk),
       .rst_ni               (rst_n),

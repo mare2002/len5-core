@@ -19,10 +19,8 @@
 module div #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    // TODO: call div
-    // EU-specific parameters
-    parameter int unsigned EU_CTL_LEN = 4,
-    parameter bit SKIP_IN_REG = 1'b0  // skip input register
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN,
+    parameter bit SKIP_IN_REG = 1'b0
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -145,8 +143,7 @@ module div #(
   // Serial divider //
   ////////////////////
   serdiv #(
-      .Len5Cfg         (Len5Cfg),
-      .STABLE_HANDSHAKE(1'b1)
+      .Len5Cfg(Len5Cfg)
   ) u_serdiv (
       .clk_i(clk_i),
       .rst_ni(rst_ni),

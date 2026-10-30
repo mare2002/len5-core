@@ -131,10 +131,7 @@ module load_store_killed_tb #(
   logic [Len5Cfg.BUFF_IDX_LEN-1:0] store_tag, store_rsp_tag;
 
   load_store_unit #(
-
-      .Len5Cfg (Len5Cfg),
-      .LB_DEPTH(Len5Cfg.LDBUFF_DEPTH),
-      .SB_DEPTH(Len5Cfg.STBUFF_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) dut (
       .clk_i                    (clk),
       .rst_ni                   (rst_n),

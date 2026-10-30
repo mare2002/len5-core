@@ -17,8 +17,7 @@ module branch_unit #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned RS_DEPTH = Len5Cfg.BU_RS_DEPTH
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg)
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -225,8 +224,7 @@ module branch_unit #(
   // BRANCH UNIT RESERVATION STATION
   // -------------------------------
   branch_rs #(
-      .Len5Cfg(Len5Cfg),
-      .DEPTH  (RS_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_branch_rs (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),

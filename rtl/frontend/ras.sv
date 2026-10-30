@@ -21,7 +21,7 @@
  */
 module ras #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter int unsigned DEPTH = Len5Cfg.RAS_DEPTH
+    localparam int unsigned DEPTH = Len5Cfg.RAS_DEPTH
 ) (
     input logic clk_i,
     input logic rst_ni,

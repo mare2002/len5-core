@@ -27,8 +27,8 @@ module load_store_unit #(
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
     localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
-    parameter int unsigned LB_DEPTH = Len5Cfg.LDBUFF_DEPTH,
-    parameter int unsigned SB_DEPTH = Len5Cfg.STBUFF_DEPTH
+    localparam int unsigned LB_DEPTH = Len5Cfg.LDBUFF_DEPTH,
+    localparam int unsigned SB_DEPTH = Len5Cfg.STBUFF_DEPTH
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -137,9 +137,7 @@ module load_store_unit #(
   // LOAD BUFFER
   // -----------
   load_buffer #(
-      .Len5Cfg(Len5Cfg),
-      .DEPTH  (LB_DEPTH),
-      .TAG_W  (Len5Cfg.BUFF_IDX_LEN)
+      .Len5Cfg(Len5Cfg)
   ) u_load_buffer (
       .clk_i                (clk_i),
       .rst_ni               (rst_ni),
@@ -190,9 +188,7 @@ module load_store_unit #(
   // STORE BUFFER
   // ------------
   store_buffer #(
-      .Len5Cfg (Len5Cfg),
-      .DEPTH   (SB_DEPTH),
-      .LB_DEPTH(LB_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_store_buffer (
       .clk_i                (clk_i),
       .rst_ni               (rst_ni),

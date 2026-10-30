@@ -16,10 +16,9 @@
 module fpu_wrapper #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    // EU-specific parameters
-    parameter int unsigned EU_CTL_LEN = 32'd4,
-    parameter bit SKIP_IN_REG = Len5Cfg.FPU_SPILL_SKIP,  // skip input register
-    parameter int unsigned PIPE_DEPTH = Len5Cfg.FPU_PIPE_DEPTH
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN,
+    localparam bit SKIP_IN_REG = Len5Cfg.FPU_SPILL_SKIP,
+    localparam int unsigned PIPE_DEPTH = Len5Cfg.FPU_PIPE_DEPTH
 ) (
     input logic clk_i,
     input logic rst_ni,

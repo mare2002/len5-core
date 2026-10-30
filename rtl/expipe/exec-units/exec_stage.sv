@@ -100,9 +100,7 @@ module exec_stage #(
   // LOAD/STORE UNIT
   // ---------------
   load_store_unit #(
-      .Len5Cfg (Len5Cfg),
-      .LB_DEPTH(Len5Cfg.LDBUFF_DEPTH),
-      .SB_DEPTH(Len5Cfg.STBUFF_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_load_store_unit (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),
@@ -159,8 +157,7 @@ module exec_stage #(
   // BRANCH UNIT
   // -----------
   branch_unit #(
-      .Len5Cfg (Len5Cfg),
-      .RS_DEPTH(Len5Cfg.BU_RS_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_branch_unit (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),
@@ -197,10 +194,7 @@ module exec_stage #(
   // Integer ALU
   // -----------
   alu_unit #(
-      .Len5Cfg   (Len5Cfg),
-      .EU_CTL_LEN(MAX_EU_CTL_LEN),
-      .RS_DEPTH  (Len5Cfg.ALU_RS_DEPTH),
-      .RR_ARBITER(Len5Cfg.ALU_RR_ARBITER)
+      .Len5Cfg(Len5Cfg)
   ) u_alu_unit (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),
@@ -224,10 +218,7 @@ module exec_stage #(
   generate
     if (Len5Cfg.LEN5_M_EN) begin : gen_mult_unit  // TODO: unify flags and units
       mult_unit #(
-          .Len5Cfg   (Len5Cfg),
-          .EU_CTL_LEN(MAX_EU_CTL_LEN),
-          .RS_DEPTH  (Len5Cfg.MULT_RS_DEPTH),
-          .RR_ARBITER(Len5Cfg.MULT_RR_ARBITER)
+          .Len5Cfg(Len5Cfg)
       ) u_mult_unit (
           .clk_i               (clk_i),
           .rst_ni              (rst_ni),
@@ -255,10 +246,7 @@ module exec_stage #(
   generate
     if (Len5Cfg.LEN5_DIV_EN) begin : gen_div_unit
       div_unit #(
-          .Len5Cfg   (Len5Cfg),
-          .EU_CTL_LEN(MAX_EU_CTL_LEN),
-          .RS_DEPTH  (Len5Cfg.DIV_RS_DEPTH),
-          .RR_ARBITER(Len5Cfg.DIV_RR_ARBITER)
+          .Len5Cfg(Len5Cfg)
       ) u_div_unit (
           .clk_i               (clk_i),
           .rst_ni              (rst_ni),
@@ -288,10 +276,7 @@ module exec_stage #(
   generate
     if (Len5Cfg.LEN5_D_EN | Len5Cfg.LEN5_F_EN) begin : gen_fp_unit
       fpu_unit #(
-          .Len5Cfg   (Len5Cfg),
-          .EU_CTL_LEN(FPU_CTL_LEN),
-          .RS_DEPTH  (Len5Cfg.FPU_RS_DEPTH),
-          .RR_ARBITER(Len5Cfg.FPU_RR_ARBITER)
+          .Len5Cfg(Len5Cfg)
       ) u_fpu_unit (
           .clk_i               (clk_i),
           .rst_ni              (rst_ni),

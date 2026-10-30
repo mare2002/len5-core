@@ -344,6 +344,7 @@ targets:
         - '--waiver_files=../../../rtl/misc/verible-lint.waiver'
         rules:
         - 'line-length=length:160'
+        - 'parameter-name-style=localparam_style:CamelCase|ALL_CAPS'
 
 # Parameters
 

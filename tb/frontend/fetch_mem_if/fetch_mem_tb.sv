@@ -68,8 +68,8 @@ module fetch_mem_tb #(
             BPU_HLEN: BPU_HLEN,
             BPU_BTB_BITS: BPU_BTB_BITS,
             RAS_DEPTH: RAS_DEPTH,
-            FETCH_MEMIF_FIFO_DEPTH: FETCH_MEMIF_FIFO_DEPTH,
-            FETCH_MEM_DRAIN_ON_FLUSH: FETCH_MEM_DRAIN_ON_FLUSH,
+            FETCH_MEMIF_FIFO_DEPTH: MEM_DEPTH,
+            FETCH_MEM_DRAIN_ON_FLUSH: 1'b0,
             LOAD_BUFFER_DRAIN_ON_FLUSH: LOAD_BUFFER_DRAIN_ON_FLUSH,
             FETCH_REQ_SPILL_SKIP: FETCH_REQ_SPILL_SKIP,
             FETCH_ANS_SPILL_SKIP: FETCH_ANS_SPILL_SKIP,
@@ -168,9 +168,7 @@ module fetch_mem_tb #(
   assign config_ans_skip_o   = 32'(Len5Cfg.FETCH_ANS_SPILL_SKIP);
   // This existing oracle models a memory that cancels requests on flush.
   fetch_mem_if #(
-      .Len5Cfg                     (Len5Cfg),
-      .MAX_MEM_OUTSTANDING_REQUESTS(MEM_DEPTH),
-      .DRAIN_ON_FLUSH              (1'b0)
+      .Len5Cfg(Len5Cfg)
   ) dut (
       .clk_i,
       .rst_ni,

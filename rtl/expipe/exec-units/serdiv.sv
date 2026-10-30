@@ -21,13 +21,9 @@ module serdiv
 #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int WIDTH = 64,  // width of the input operands, need to be this typpe for correct shift_a assignment
-    parameter logic [$clog2(
-WIDTH
-):0] WIDTH_S = WIDTH[$clog2(
-        WIDTH
-    ):0],  // width of the input operands, need to be this typpe for correct shift_a assignment
-    parameter bit STABLE_HANDSHAKE = 1             // MODIFIED Guarantee a stable in_rdy_o during the input handshake. Keep it at 0 in CVA6
+    parameter int WIDTH = 64,  // signed int required for the shift_a assignment
+    localparam logic [$clog2(WIDTH):0] WIDTH_S = WIDTH[$clog2(WIDTH):0],
+    parameter bit STABLE_HANDSHAKE = 1  // LEN5 guarantees stable in_rdy_o during the input handshake; CVA6 uses 0
 ) (
     input logic clk_i,
     input logic rst_ni,

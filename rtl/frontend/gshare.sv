@@ -14,9 +14,9 @@
 
 
 module gshare #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg  = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter int unsigned              HLEN     = Len5Cfg.BPU_HLEN,
-    parameter fetch_pkg::c2b_t          INIT_C2B = fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam int unsigned HLEN = Len5Cfg.BPU_HLEN,
+    localparam fetch_pkg::c2b_t INIT_C2B = fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)
 ) (
     input logic                                              clk_i,
     input logic                                              rst_ni,

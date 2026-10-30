@@ -39,7 +39,7 @@ def main():
     # All edits are applied to private copies. Count guards prevent accidental edits at changed sites.
     mutations=[
         ('lost-training','09','FE05','fetch_stage.sv','.bu_res_valid_i(bu_bpu_valid_i)',".bu_res_valid_i(1'b0)",1),
-        ('wrong-integrated-initial','08','FE05','fetch_stage.sv',".INIT_C2B(fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B))",'.INIT_C2B(fetch_pkg::WNT)',1),
+        ('wrong-integrated-initial','08','FE05','gshare.sv',"fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)",'fetch_pkg::WNT',1),
         ('invert-history','13','FE05','gshare.sv','history[HLEN-2:0], res_taken_i','history[HLEN-2:0], ~res_taken_i',1),
         ('wrong-btb-target','18','FE04','btb.sv','res_target_i[XLEN-1:OFFSET];',"res_target_i[XLEN-1:OFFSET] + 1'b1;",1),
         ('take-without-hit','08','FE03','gen_valid_instr.sv','pred_i[i].hit & pred_i[i].taken','pred_i[i].taken',1),

@@ -18,11 +18,7 @@ module fpu_unit #(
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned RS_DEPTH = Len5Cfg.FPU_RS_DEPTH,  // must be a power of 2,
-
-    // EU-specific parameters
-    parameter int unsigned EU_CTL_LEN = 4,
-    parameter bit          RR_ARBITER = Len5Cfg.FPU_RR_ARBITER
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN
 ) (
     // Clock, reset, and flush
     input logic clk_i,
@@ -74,10 +70,7 @@ module fpu_unit #(
   // DIV reservation station
   // -----------------------
   arith_rs_fpu #(
-      .Len5Cfg   (Len5Cfg),
-      .DEPTH     (RS_DEPTH),
-      .EU_CTL_LEN(EU_CTL_LEN),
-      .RR_ARBITER(RR_ARBITER)
+      .Len5Cfg(Len5Cfg)
   ) u_fpu_rs (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),
@@ -117,10 +110,7 @@ module fpu_unit #(
 
   // FPU wrapper
   fpu_wrapper #(
-      .Len5Cfg    (Len5Cfg),
-      .EU_CTL_LEN (EU_CTL_LEN),
-      .SKIP_IN_REG(Len5Cfg.FPU_SPILL_SKIP),
-      .PIPE_DEPTH (Len5Cfg.FPU_PIPE_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_fpu_wrapper (
       .clk_i          (clk_i),
       .rst_ni         (rst_ni),

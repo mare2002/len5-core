@@ -155,9 +155,7 @@ module exec_stage_vm #(
   // -----------
 
   branch_unit #(
-
-    .Len5Cfg(Len5Cfg),
-      .RS_DEPTH(Len5Cfg.BU_RS_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_branch_unit (
       .clk_i           (clk_i),
       .rst_ni         (rst_ni),
@@ -195,9 +193,7 @@ module exec_stage_vm #(
   // Integer ALU
   // -----------
   alu_unit #(
-    .Len5Cfg(Len5Cfg),
-      .EU_CTL_LEN(ALU_CTL_LEN),
-      .RS_DEPTH  (Len5Cfg.ALU_RS_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_alu_unit (
       .clk_i              (clk_i),
       .rst_ni            (rst_ni),
@@ -228,9 +224,7 @@ module exec_stage_vm #(
   // Integer multiplier
   // ------------------
   mult_unit #(
-    .Len5Cfg(Len5Cfg),
-      .EU_CTL_LEN(MULT_CTL_LEN),
-      .RS_DEPTH  (Len5Cfg.MULT_RS_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_mult_unit (
       .clk_i              (clk_i),
       .rst_ni            (rst_ni),
@@ -261,9 +255,7 @@ module exec_stage_vm #(
   // Integer divider
   // ---------------
   div_unit #(
-    .Len5Cfg(Len5Cfg),
-      .EU_CTL_LEN(DIV_CTL_LEN),
-      .RS_DEPTH  (Len5Cfg.DIV_RS_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_div_unit (
       .clk_i              (clk_i),
       .rst_ni            (rst_ni),

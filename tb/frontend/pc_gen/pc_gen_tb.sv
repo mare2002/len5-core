@@ -142,8 +142,7 @@ module pc_gen_tb #(
   assign config_instruction_bits_o    = len5_pkg::ILEN_BIT_SUFF;
   assign config_lwidth_o              = Len5Cfg.LWIDTH;
   pc_gen #(
-      .Len5Cfg(Len5Cfg),
-      .BOOT_PC(BOOT_PC)
+      .Len5Cfg(Len5Cfg)
   ) dut (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),

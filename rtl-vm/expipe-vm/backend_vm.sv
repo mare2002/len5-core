@@ -358,8 +358,7 @@ module backend_vm #(
   // Integer register status register
   // --------------------------------
   int_regstat #(
-    .Len5Cfg(Len5Cfg),
-    .REG_NUM(XREG_NUM)
+    .Len5Cfg(Len5Cfg)
   ) u_int_regstat (
     .clk_i              (clk_i),
     .rst_ni             (rst_ni),
@@ -401,8 +400,7 @@ module backend_vm #(
 
   // FP register status register
   fp_regstat #(
-    .Len5Cfg(Len5Cfg),
-    .REG_NUM(XREG_NUM)
+    .Len5Cfg(Len5Cfg)
   ) u_fp_regstat (
     .clk_i              (clk_i),
     .rst_ni             (rst_ni),
@@ -523,8 +521,7 @@ module backend_vm #(
   // Reorder Buffer (ROB)
   // --------------------
   rob #(
-    .Len5Cfg(Len5Cfg),
-    .DEPTH  (Len5Cfg.ROB_DEPTH)
+    .Len5Cfg(Len5Cfg)
   ) u_rob (
     .clk_i              (clk_i),
     .rst_ni             (rst_ni),

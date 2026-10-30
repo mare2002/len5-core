@@ -18,7 +18,7 @@ module branch_rs #(
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned DEPTH = Len5Cfg.BU_RS_DEPTH,  // must be a power of 2
+    localparam int unsigned DEPTH = Len5Cfg.BU_RS_DEPTH,
     localparam int unsigned RsIdxLen = $clog2(DEPTH)
 ) (
     input logic clk_i,

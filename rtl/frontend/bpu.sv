@@ -14,10 +14,8 @@
 
 
 module bpu #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg  = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter int unsigned              HLEN     = Len5Cfg.BPU_HLEN,
-    parameter int unsigned              BTB_BITS = Len5Cfg.BPU_BTB_BITS,
-    parameter fetch_pkg::c2b_t          INIT_C2B = fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam int unsigned HLEN = Len5Cfg.BPU_HLEN
 ) (
     input logic                                        clk_i,
     input logic                                        rst_ni,
@@ -40,9 +38,7 @@ module bpu #(
 
   // Gshare branch predictor
   gshare #(
-      .Len5Cfg (Len5Cfg),
-      .HLEN    (HLEN),
-      .INIT_C2B(INIT_C2B)
+      .Len5Cfg(Len5Cfg)
   ) u_gshare (
       .clk_i(clk_i),
       .rst_ni(rst_ni),
@@ -57,8 +53,7 @@ module bpu #(
   // Branch Target Buffer (BTB)
   assign btb_del_entry = bu_res_i.mispredict & ~bu_res_i.taken;
   btb #(
-      .Len5Cfg (Len5Cfg),
-      .BTB_BITS(BTB_BITS)
+      .Len5Cfg(Len5Cfg)
   ) u_btb (
       .clk_i       (clk_i),
       .rst_ni      (rst_ni),

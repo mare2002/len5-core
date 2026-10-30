@@ -15,13 +15,15 @@
 
 module arith_rs #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    parameter expipe_pkg::issue_eu_t EU = expipe_pkg::EU_INT_ALU,
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned DEPTH = 4,  // must be a power of 2
-    parameter int unsigned EU_CTL_LEN = 4,
-    parameter bit RR_ARBITER = 1'b0,
-    // Dependent parameters: do NOT override
+    localparam int unsigned DEPTH = EU == expipe_pkg::EU_INT_ALU ? Len5Cfg.ALU_RS_DEPTH :
+        EU == expipe_pkg::EU_INT_MULT ? Len5Cfg.MULT_RS_DEPTH : Len5Cfg.DIV_RS_DEPTH,
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN,
+    localparam bit RR_ARBITER = EU == expipe_pkg::EU_INT_ALU ? Len5Cfg.ALU_RR_ARBITER :
+        EU == expipe_pkg::EU_INT_MULT ? Len5Cfg.MULT_RR_ARBITER : Len5Cfg.DIV_RR_ARBITER,
     localparam int unsigned RsIdxLen = $clog2(DEPTH)
 ) (
     input logic clk_i,
@@ -62,6 +64,10 @@ module arith_rs #(
   import len5_config_pkg::*;
   import len5_pkg::*;
   import expipe_pkg::*;
+
+  if (!(EU inside {EU_INT_ALU, EU_INT_MULT, EU_INT_DIV})) begin : gen_invalid_eu
+    $fatal(1, "arith_rs supports the ALU, multiplier and divider roles");
+  end
 
   // DATA TYPES
   // ----------

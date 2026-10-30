@@ -13,9 +13,8 @@
 module fetch_mem_if #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type mem_if_ans_reg_t = `LEN5_MEM_IF_ANS_REG_T(Len5Cfg),
-    // Completion reservations include canceled requests until their entries retire.
-    parameter int unsigned MAX_MEM_OUTSTANDING_REQUESTS = Len5Cfg.FETCH_MEMIF_FIFO_DEPTH,
-    parameter bit DRAIN_ON_FLUSH = Len5Cfg.FETCH_MEM_DRAIN_ON_FLUSH
+    localparam int unsigned MAX_MEM_OUTSTANDING_REQUESTS = Len5Cfg.FETCH_MEMIF_FIFO_DEPTH,
+    localparam bit DRAIN_ON_FLUSH = Len5Cfg.FETCH_MEM_DRAIN_ON_FLUSH
 ) (
     input logic clk_i,
     input logic rst_ni,

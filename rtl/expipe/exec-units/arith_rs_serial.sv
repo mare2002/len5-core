@@ -24,10 +24,9 @@ module arith_rs_serial #(
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned DEPTH = 4,  // must be a power of 2
-    parameter int unsigned EU_CTL_LEN = 4,
-    parameter bit RR_ARBITER = 1'b0,
-    // Dependent parameters: do NOT override
+    localparam int unsigned DEPTH = Len5Cfg.MULT_RS_DEPTH,
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN,
+    localparam bit RR_ARBITER = Len5Cfg.MULT_RR_ARBITER,
     localparam int unsigned RsIdxLen = $clog2(DEPTH)
 ) (
     input logic clk_i,

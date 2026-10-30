@@ -26,10 +26,9 @@ module load_buffer #(
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
     localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
-    parameter int unsigned DEPTH = Len5Cfg.LDBUFF_DEPTH,
-    parameter int unsigned TAG_W = Len5Cfg.BUFF_IDX_LEN,
-    parameter bit DRAIN_ON_FLUSH = Len5Cfg.LOAD_BUFFER_DRAIN_ON_FLUSH,
-    // Dependent parameters: do NOT override
+    localparam int unsigned DEPTH = Len5Cfg.LDBUFF_DEPTH,
+    localparam int unsigned TAG_W = Len5Cfg.BUFF_IDX_LEN,
+    localparam bit DRAIN_ON_FLUSH = Len5Cfg.LOAD_BUFFER_DRAIN_ON_FLUSH,
     localparam int unsigned IdxW = $clog2(DEPTH)
 ) (
     input logic clk_i,

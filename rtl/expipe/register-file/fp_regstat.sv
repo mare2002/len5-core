@@ -16,9 +16,8 @@
 module fp_regstat #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned REG_NUM = 32,  // power of 2
-    // Dependent parameters: do NOT override
-    localparam int unsigned RegIdxLen = $clog2(REG_NUM)  // not exposed
+    localparam int unsigned REG_NUM = len5_pkg::FREG_NUM,
+    localparam int unsigned RegIdxLen = len5_pkg::FREG_IDX_LEN
 ) (
     input logic clk_i,
     input logic rst_ni,

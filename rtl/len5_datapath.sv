@@ -1,6 +1,5 @@
 module len5_datapath #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter longint unsigned BOOT_PC = Len5Cfg.BOOT_PC
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
     // Clock and reset
     input logic clk_i,
@@ -101,11 +100,7 @@ module len5_datapath #(
   // FRONT-END
   // ---------
   fetch_stage #(
-      .Len5Cfg         (Len5Cfg),
-      .HLEN            (Len5Cfg.BPU_HLEN),
-      .BTB_BITS        (Len5Cfg.BPU_BTB_BITS),
-      .BOOT_PC         (BOOT_PC),
-      .MEMIF_FIFO_DEPTH(Len5Cfg.FETCH_MEMIF_FIFO_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_fetch_stage (
       .clk_i                 (clk_i),
       .rst_ni                (rst_ni),

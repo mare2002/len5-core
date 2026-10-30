@@ -13,12 +13,7 @@
 // Date: 07/10/2019
 
 module fetch_stage #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter int unsigned HLEN = Len5Cfg.BPU_HLEN,
-    parameter int unsigned BTB_BITS = Len5Cfg.BPU_BTB_BITS,
-    parameter longint unsigned BOOT_PC = Len5Cfg.BOOT_PC,
-    parameter int unsigned MEMIF_FIFO_DEPTH = Len5Cfg.FETCH_MEMIF_FIFO_DEPTH,  // maximum memory transactions and completion reservations
-    parameter bit MEM_DRAIN_ON_FLUSH = Len5Cfg.FETCH_MEM_DRAIN_ON_FLUSH
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -141,10 +136,7 @@ module fetch_stage #(
   // NOTE: the prediction is provided in the same cycle as the PC, so no
   //       synchronization is required.
   bpu #(
-      .Len5Cfg (Len5Cfg),
-      .HLEN    (HLEN),
-      .BTB_BITS(BTB_BITS),
-      .INIT_C2B(fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B))
+      .Len5Cfg(Len5Cfg)
   ) u_bpu (
       .clk_i         (clk_i),
       .rst_ni        (rst_ni),
@@ -158,8 +150,7 @@ module fetch_stage #(
   // PC GENERATOR
   // ------------
   pc_gen #(
-      .Len5Cfg(Len5Cfg),
-      .BOOT_PC(BOOT_PC)
+      .Len5Cfg(Len5Cfg)
   ) u_pc_gen (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),
@@ -182,9 +173,7 @@ module fetch_stage #(
   // MEMORY INTERFACE
   // ----------------
   fetch_mem_if #(
-      .Len5Cfg                     (Len5Cfg),
-      .MAX_MEM_OUTSTANDING_REQUESTS(MEMIF_FIFO_DEPTH),
-      .DRAIN_ON_FLUSH              (MEM_DRAIN_ON_FLUSH)
+      .Len5Cfg(Len5Cfg)
   ) u_mem_if (
       .clk_i                (clk_i),
       .rst_ni               (rst_ni),

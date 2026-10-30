@@ -15,7 +15,7 @@
 
 module btb #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter int unsigned BTB_BITS = Len5Cfg.BPU_BTB_BITS
+    localparam int unsigned BTB_BITS = Len5Cfg.BPU_BTB_BITS
 ) (
     input logic                      clk_i,
     input logic                      rst_ni,

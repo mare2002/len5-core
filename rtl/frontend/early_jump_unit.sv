@@ -232,8 +232,7 @@ module early_jump_unit #(
 
   // RAS LIFO buffer
   ras #(
-      .Len5Cfg(Len5Cfg),
-      .DEPTH  (Len5Cfg.RAS_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_ras (
       .clk_i          (clk_i),
       .rst_ni         (rst_ni),

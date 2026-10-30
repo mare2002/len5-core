@@ -18,11 +18,7 @@ module alu_unit #(
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned RS_DEPTH = Len5Cfg.ALU_RS_DEPTH,  // must be a power of 2,
-
-    // EU-specific parameters
-    parameter int unsigned EU_CTL_LEN = 4,
-    parameter bit          RR_ARBITER = Len5Cfg.ALU_RR_ARBITER
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
     // Clock, reset, and flush
     input logic clk_i,
@@ -66,10 +62,8 @@ module alu_unit #(
   // ALU reservation station
   // -----------------------
   arith_rs #(
-      .Len5Cfg   (Len5Cfg),
-      .DEPTH     (RS_DEPTH),
-      .EU_CTL_LEN(EU_CTL_LEN),
-      .RR_ARBITER(RR_ARBITER)
+      .Len5Cfg(Len5Cfg),
+      .EU     (expipe_pkg::EU_INT_ALU)
   ) u_arith_rs (
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),
@@ -100,10 +94,7 @@ module alu_unit #(
   );
 
   alu #(
-
-      .Len5Cfg   (Len5Cfg),
-      .SKIP_REG  (Len5Cfg.ALU_SPILL_SKIP),
-      .EU_CTL_LEN(EU_CTL_LEN)
+      .Len5Cfg(Len5Cfg)
   ) u_alu (
       .clk_i    (clk_i),
       .rst_ni   (rst_ni),

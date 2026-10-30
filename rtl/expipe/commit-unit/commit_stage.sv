@@ -163,8 +163,7 @@ module commit_stage #(
   // Reorder Buffer (ROB)
   // --------------------
   rob #(
-      .Len5Cfg(Len5Cfg),
-      .DEPTH  (Len5Cfg.ROB_DEPTH)
+      .Len5Cfg(Len5Cfg)
   ) u_rob (
       .clk_i              (clk_i),
       .rst_ni             (rst_ni),

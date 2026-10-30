@@ -68,8 +68,8 @@ module fetch_stage_tb #(
             BPU_HLEN: BPU_HLEN,
             BPU_BTB_BITS: BPU_BTB_BITS,
             RAS_DEPTH: RAS_DEPTH,
-            FETCH_MEMIF_FIFO_DEPTH: FETCH_MEMIF_FIFO_DEPTH,
-            FETCH_MEM_DRAIN_ON_FLUSH: FETCH_MEM_DRAIN_ON_FLUSH,
+            FETCH_MEMIF_FIFO_DEPTH: MEM_DEPTH,
+            FETCH_MEM_DRAIN_ON_FLUSH: 1'b0,
             LOAD_BUFFER_DRAIN_ON_FLUSH: LOAD_BUFFER_DRAIN_ON_FLUSH,
             FETCH_REQ_SPILL_SKIP: FETCH_REQ_SPILL_SKIP,
             FETCH_ANS_SPILL_SKIP: FETCH_ANS_SPILL_SKIP,
@@ -182,12 +182,7 @@ module fetch_stage_tb #(
   assign config_cause_bits_o = len5_pkg::EXCEPT_TYPE_LEN;
   assign config_boot_o       = BOOT_PC;
   fetch_stage #(
-      .Len5Cfg           (Len5Cfg),
-      .HLEN              (Len5Cfg.BPU_HLEN),
-      .BTB_BITS          (Len5Cfg.BPU_BTB_BITS),
-      .BOOT_PC           (BOOT_PC),
-      .MEMIF_FIFO_DEPTH  (MEM_DEPTH),
-      .MEM_DRAIN_ON_FLUSH(1'b0)
+      .Len5Cfg(Len5Cfg)
   ) dut (
       .clk_i,
       .rst_ni,

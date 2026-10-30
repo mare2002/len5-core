@@ -16,11 +16,10 @@
 module mult #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned PIPE_DEPTH = Len5Cfg.MULT_PIPE_DEPTH,  // number of pipeline levels (>0)
-    parameter bit SKIP_IN_REG = 1'b0,  // skip input register
-    parameter bit SKIP_OUT_REG = 1'b1,  // skip output spillcell
-    // EU-specific parameters
-    parameter int unsigned EU_CTL_LEN = 4
+    localparam int unsigned PIPE_DEPTH = Len5Cfg.MULT_PIPE_DEPTH,
+    parameter bit SKIP_IN_REG = 1'b0,
+    parameter bit SKIP_OUT_REG = 1'b1,
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
     input logic clk_i,
     input logic rst_ni,

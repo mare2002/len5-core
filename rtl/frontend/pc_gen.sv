@@ -17,7 +17,7 @@
 
 module pc_gen #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter logic [len5_pkg::XLEN-1:0] BOOT_PC = Len5Cfg.BOOT_PC
+    localparam logic [len5_pkg::XLEN-1:0] BOOT_PC = Len5Cfg.BOOT_PC
 ) (
     input  logic                                        clk_i,
     input  logic                                        rst_ni,

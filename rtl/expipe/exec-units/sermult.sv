@@ -26,7 +26,7 @@ The interface of the unit has to be adapted to that of the processor exe unit*/
 module sermult #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int unsigned EU_CTL_LEN = 4
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
     input logic clk_i,
     input logic rst_ni,

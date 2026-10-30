@@ -103,7 +103,7 @@ module tc_sram_adapter_tb #(
             BPU_BTB_BITS: BPU_BTB_BITS,
             RAS_DEPTH: RAS_DEPTH,
             FETCH_MEMIF_FIFO_DEPTH: FETCH_MEMIF_FIFO_DEPTH,
-            FETCH_MEM_DRAIN_ON_FLUSH: FETCH_MEM_DRAIN_ON_FLUSH,
+            FETCH_MEM_DRAIN_ON_FLUSH: 1'b1,
             LOAD_BUFFER_DRAIN_ON_FLUSH: LOAD_BUFFER_DRAIN_ON_FLUSH,
             FETCH_REQ_SPILL_SKIP: FETCH_REQ_SPILL_SKIP,
             FETCH_ANS_SPILL_SKIP: FETCH_ANS_SPILL_SKIP,
@@ -190,9 +190,7 @@ module tc_sram_adapter_tb #(
   end
   assign instr_response_addr = returned_prediction[0].pc;
   fetch_mem_if #(
-      .Len5Cfg                     (Len5Cfg),
-      .MAX_MEM_OUTSTANDING_REQUESTS(FetchDepth),
-      .DRAIN_ON_FLUSH              (1'b1)
+      .Len5Cfg(Len5Cfg)
   ) u_frontend_responses (
       .clk_i                (clk),
       .rst_ni               (rst),

@@ -78,7 +78,7 @@ module alu_tb #(
             STBUFF_DEPTH: STBUFF_DEPTH,
             LSU_SPILL_SKIP: LSU_SPILL_SKIP,
             ALU_RS_DEPTH: ALU_RS_DEPTH,
-            ALU_SPILL_SKIP: ALU_SPILL_SKIP,
+            ALU_SPILL_SKIP: SKIP_REG,
             ALU_RR_ARBITER: ALU_RR_ARBITER,
             MULT_RS_DEPTH: MULT_RS_DEPTH,
             LEN5_MULT_SERIAL: LEN5_MULT_SERIAL,
@@ -98,8 +98,8 @@ module alu_tb #(
         }
     ),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter bit SKIP_REG = Len5Cfg.ALU_SPILL_SKIP,
-    parameter int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
+    parameter bit SKIP_REG = ALU_SPILL_SKIP,
+    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -122,9 +122,7 @@ module alu_tb #(
 );
   assign config_rob_depth_o = Len5Cfg.ROB_DEPTH;
   alu #(
-      .Len5Cfg   (Len5Cfg),
-      .SKIP_REG  (SKIP_REG),
-      .EU_CTL_LEN(EU_CTL_LEN)
+      .Len5Cfg(Len5Cfg)
   ) dut (
       .*
   );

@@ -23,7 +23,7 @@ module rob #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int DEPTH = Len5Cfg.ROB_DEPTH
+    localparam int DEPTH = Len5Cfg.ROB_DEPTH
 ) (
     // Clock and reset
     input logic clk_i,
