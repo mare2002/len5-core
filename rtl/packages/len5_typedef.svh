@@ -13,6 +13,8 @@ logic [Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr; \
 
 `define LEN5_ROB_IDX_T(Cfg) logic [Cfg.ROB_IDX_LEN-1:0]
 
+`define LEN5_ISSUE_COUNT_T(Cfg) logic [(Cfg.ISSUE_WIDTH > 0 ? $clog2(Cfg.ISSUE_WIDTH + 1) : 1)-1:0]
+
 `define LEN5_CDB_DATA_T(Cfg) struct packed { \
 `LEN5_ROB_IDX_T(Cfg)        rob_idx; \
 logic [len5_pkg::XLEN-1:0] res_value; \

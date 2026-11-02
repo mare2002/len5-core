@@ -1,3 +1,4 @@
+`include "len5_typedef.svh"
 // Copyright 2019 Politecnico di Torino.
 // Copyright and related rights are licensed under the Solderpad Hardware
 // License, Version 2.0 (the "License"); you may not use this file except in
@@ -13,7 +14,8 @@
 // Date: 17/10/2019
 
 module issue_queue #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+    localparam type issue_count_t = `LEN5_ISSUE_COUNT_T(Len5Cfg)
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -30,11 +32,12 @@ module issue_queue #(
     input expipe_pkg::iq_entry_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] push_instr_i,
 
     // Handshake from/to the issue logic
-    input  logic issue_ready_i,
-    output logic issue_valid_o,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_accepted_i,
+    output issue_count_t issue_pop_count_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_o,
 
     // Data to the execution pipeline
-    output expipe_pkg::iq_entry_t pop_instr_o
+    output expipe_pkg::iq_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] pop_instr_o
 );
 
   import len5_pkg::*;
@@ -53,6 +56,7 @@ module issue_queue #(
   logic [Len5Cfg.IQ_IDX_LEN-1:0] head_cnt, tail_cnt;
   logic head_cnt_en, tail_cnt_en;
   logic head_cnt_clr, tail_cnt_clr;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][Len5Cfg.IQ_IDX_LEN-1:0] read_idx;
 
   // FIFO data
   iq_entry_t data      [Len5Cfg.IQ_DEPTH];
@@ -61,28 +65,26 @@ module issue_queue #(
   // FIFO control
   logic fifo_push, fifo_pop;
 
-  // Push logic FIFO
-  logic      [      Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] alloc_nav;
-  logic      [                  Len5Cfg.IQ_DEPTH-1:0] write_instr_en;
-  iq_entry_t [                  Len5Cfg.IQ_DEPTH-1:0] push_instr_demux;
-
-  //Increase tail logic
-  logic      [$clog2(Len5Cfg.LEN5_MULTIPLE_ISSUES):0] increase_tail;
-
+  // Push/pop logic
+  logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] alloc_nav;
+  logic [Len5Cfg.IQ_DEPTH-1:0] write_instr_en, pop_instr_en;
+  iq_entry_t [Len5Cfg.IQ_DEPTH-1:0] push_instr_demux;
+  issue_count_t increase_head;
+  logic [$clog2(Len5Cfg.LEN5_MULTIPLE_ISSUES):0] increase_tail;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] valid_not_accepted;
 
   // -----------------
   // FIFO CONTROL UNIT
   // -----------------
+  assign fifo_push = fetch_valid_i && fetch_ready_o;
+  assign valid_not_accepted = issue_valid_o & ~issue_accepted_i;
+  assign fifo_pop = |(issue_valid_o & issue_accepted_i);
+  assign issue_pop_count_o = increase_head;
 
-  // Push/pop control
-  assign fifo_push    = fetch_valid_i && fetch_ready_o;
-  assign fifo_pop     = issue_valid_o && issue_ready_i;
-
-  // Counters control
   assign head_cnt_clr = flush_i;
   assign tail_cnt_clr = flush_i;
-  assign head_cnt_en  = fifo_pop;
-  assign tail_cnt_en  = fifo_push;
+  assign head_cnt_en = fifo_pop;
+  assign tail_cnt_en = fifo_push;
 
   // -----------
   // FIFO UPDATE
@@ -90,7 +92,7 @@ module issue_queue #(
   // NOTE: operations priority:
   // 1) pop
   // 2) push
-  //Allows for the push and pop to the same address
+  // Fetch availability excludes occupied entries, so accepted push/pop addresses differ.
   always_ff @(posedge clk_i or negedge rst_ni) begin : fifo_update
     if (!rst_ni) begin
       foreach (data[i]) begin
@@ -103,7 +105,7 @@ module issue_queue #(
       end
     end else begin
       foreach (data[i]) begin
-        if (fifo_pop && head_cnt == i[Len5Cfg.IQ_IDX_LEN-1:0]) begin
+        if (fifo_pop && pop_instr_en[i]) begin
           data_valid[i] <= 1'b0;
         end else if (fifo_push && write_instr_en[i]) begin
           data_valid[i] <= 1'b1;
@@ -117,25 +119,20 @@ module issue_queue #(
   // OUTPUT CONTROL
   // --------------
 
-  // NOTE: output valid when head entry is valid
-  //       output ready when tail entry is empty
-  assign issue_valid_o = data_valid[head_cnt];
-  // assign fetch_ready_o = !data_valid[tail_cnt];
   assign fetch_ready_o = &alloc_nav;
-  assign pop_instr_o   = data[head_cnt];
 
   // ----------------------
   // HEAD AND TAIL COUNTERS
   // ----------------------
-
+  // IQ_DEPTH is a power of two; fetch and issue widths are smaller than IQ_DEPTH.
   modn_counter_special #(
       .N(Len5Cfg.IQ_DEPTH),
-      .I(0)
+      .I($clog2(Len5Cfg.ISSUE_WIDTH))
   ) u_head_counter (
       .clk_i         (clk_i),
       .rst_ni        (rst_ni),
       .en_i          (head_cnt_en),
-      .increase_val_i(head_cnt_en),
+      .increase_val_i(increase_head),
       .clr_i         (head_cnt_clr),
       .count_o       (head_cnt)
   );
@@ -152,20 +149,50 @@ module issue_queue #(
       .count_o       (tail_cnt)
   );
 
+  always_comb begin : gen_valid_read
+    logic [Len5Cfg.ISSUE_WIDTH-1:0][Len5Cfg.IQ_IDX_LEN-1:0] counter_h;
+    counter_h = '0;
+    read_idx = '0;
+    issue_valid_o = '0;
+    pop_instr_o = '0;
+    for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
+      counter_h[i] = head_cnt + i[Len5Cfg.IQ_IDX_LEN-1:0];
+      read_idx[i] = counter_h[i];
+      issue_valid_o[i] = data_valid[counter_h[i]];
+      pop_instr_o[i] = data[counter_h[i]];
+    end
+  end
+
+  always_comb begin : gen_pop_en
+    pop_instr_en = '0;
+    for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
+      pop_instr_en[read_idx[i]] = issue_valid_o[i] && issue_accepted_i[i];
+    end
+  end
+
   always_comb begin : gen_ready_write
-    logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][Len5Cfg.IQ_IDX_LEN-1:0] counter_h = '0;
-    logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0]                         valid_data_queue = '0;
-    alloc_nav        = '0;
-    write_instr_en   = '0;
+    logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][Len5Cfg.IQ_IDX_LEN-1:0] counter_h;
+    counter_h = '0;
+    alloc_nav = '0;
+    write_instr_en = '0;
     push_instr_demux = '0;
     for (int i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin
-      counter_h[i]                   = tail_cnt + i[Len5Cfg.IQ_IDX_LEN-1:0];
-      valid_data_queue[i]            = data_valid[counter_h[i]];
-      alloc_nav[i]                   = ~(valid_data_queue[i] & fetch_valid_instr_i[i]);
-      write_instr_en[counter_h[i]]   = fetch_valid_instr_i[i];
+      counter_h[i] = tail_cnt + i[Len5Cfg.IQ_IDX_LEN-1:0];
+      alloc_nav[i] = ~(data_valid[counter_h[i]] & fetch_valid_instr_i[i]);
+      write_instr_en[counter_h[i]] = fetch_valid_instr_i[i];
       push_instr_demux[counter_h[i]] = push_instr_i[i];
     end
   end
+
+  // Invalid lanes terminate the accepted prefix, even when all available lanes are accepted.
+  lzc #(
+      .WIDTH(Len5Cfg.ISSUE_WIDTH + 1),
+      .MODE (0)
+  ) u_head_lzc (
+      .in_i   ({1'b1, valid_not_accepted | ~issue_valid_o}),
+      .cnt_o  (increase_head),
+      .empty_o()
+  );
 
   lzc #(
       .WIDTH(Len5Cfg.LEN5_MULTIPLE_ISSUES + 1),
@@ -177,4 +204,3 @@ module issue_queue #(
   );
 
 endmodule
-

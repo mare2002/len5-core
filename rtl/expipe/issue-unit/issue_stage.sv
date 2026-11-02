@@ -16,7 +16,8 @@
 module issue_stage #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg)
+    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    localparam type issue_count_t = `LEN5_ISSUE_COUNT_T(Len5Cfg)
 ) (
     // Clock, reset, and flush
     input logic clk_i,
@@ -119,6 +120,7 @@ module issue_stage #(
   typedef struct packed {
     logic [XLEN-1:0]                  curr_pc;
     instr_t                           instr;
+    issue_type_t                      issue_type;
     logic                             skip_eu;
     issue_eu_t                        assigned_eu;
     rs1_sel_t                         rs1_sel;
@@ -136,44 +138,25 @@ module issue_stage #(
     logic                             order_crit;
     logic                             pred_taken;
     logic [XLEN-1:0]                  pred_target;
-    logic                             except_raised;
+    logic                             except_raised;  // fetch exception; decode exceptions are in issue_type
     except_code_t                     except_code;
   } issue_reg_t;
-
-  // Instruction data
-  logic [REG_IDX_LEN-1:0] instr_rs1_idx, instr_rs2_idx, instr_rs3_idx, instr_rd_idx;
-  logic      [                  FUNCT3_LEN-1:0] instr_frm;
-  logic      [                        XLEN-1:0] instr_imm_i_value;
-  logic      [                        XLEN-1:0] instr_imm_s_value;
-  logic      [                        XLEN-1:0] instr_imm_b_value;
-  logic      [                        XLEN-1:0] instr_imm_u_value;
-  logic      [                        XLEN-1:0] instr_imm_j_value;
-  logic      [                        XLEN-1:0] instr_imm_rs1_value;  // for CSR immediate instr.
-  logic      [                        XLEN-1:0] imm_value;  // selected immediate
 
   // Fetch stage <--> issue queue
   iq_entry_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] new_instr;
 
-  // Issue queue <--> issuing instruction register
-  iq_entry_t                                    iq_data_out;
+  // Issue queue <--> parallel decoders
+  iq_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] iq_data_out;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] iq_valid, iq_accepted;
+  issue_count_t iq_pop_count;
 
-  // Issuing instruction registers
-  logic                                         ireg_en;
-  issue_reg_t ireg_data_in, ireg_data_out;
-
-  // Issue decoderc <--> issue stage
-  issue_type_t                         id_cu_issue_type;
-  except_code_t                        id_except_code;
-  logic                                id_skip_eu;
-  issue_eu_t                           id_assigned_eu;
-  eu_ctl_t                             id_eu_ctl;
-  logic                                id_mem_crit;
-  logic                                id_order_crit;
-  rs1_sel_t                            id_rs1_sel;
-  rs2_sel_t                            id_rs2_sel;
-  rs3_sel_t                            id_rs3_sel;
-  logic                                id_rd_upd;
-  imm_format_t                         id_imm_format;
+  // Ordered decoded instructions; only lane zero dispatches in this stage.
+  issue_reg_t [Len5Cfg.ISSUE_WIDTH-1:0] ireg_data_in, ireg_data_q, ireg_data_d;
+  issue_reg_t ireg_data_out;
+  issue_count_t ireg_count_q, ireg_count_d, ireg_pop_count, retained_count;
+  logic serialize_q, serialize_d, serialize_hold;
+  issue_count_t refill_space;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] serializing, id_stall;
 
   // Issue queue <--> issue logic
   logic                                cu_iq_ready;
@@ -225,128 +208,182 @@ module issue_stage #(
       .flush_i            (iq_flush),
       .fetch_valid_i      (fetch_valid_i),
       .fetch_valid_instr_i(fetch_valid_instr_i),
-      .issue_ready_i      (cu_iq_ready),
-      .issue_valid_o      (iq_cu_valid),
+      .issue_accepted_i   (iq_accepted),
+      .issue_pop_count_o  (iq_pop_count),
+      .issue_valid_o      (iq_valid),
       .fetch_ready_o      (fetch_ready_o),
       .push_instr_i       (new_instr),
       .pop_instr_o        (iq_data_out)
   );
 
-  assign iq_cu_except_raised = iq_data_out.except_raised;
+  // PARALLEL DECODERS
+  // -----------------
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_decoders
+    // Instruction data
+    logic [REG_IDX_LEN-1:0] instr_rs1_idx, instr_rs2_idx, instr_rs3_idx, instr_rd_idx;
+    logic      [                  FUNCT3_LEN-1:0] instr_frm;
+    logic      [                        XLEN-1:0] instr_imm_i_value;
+    logic      [                        XLEN-1:0] instr_imm_s_value;
+    logic      [                        XLEN-1:0] instr_imm_b_value;
+    logic      [                        XLEN-1:0] instr_imm_u_value;
+    logic      [                        XLEN-1:0] instr_imm_j_value;
+    logic      [                        XLEN-1:0] instr_imm_rs1_value;  // for CSR immediate instr.
+    logic      [                        XLEN-1:0] imm_value;  // selected immediate
 
-  // ISSUE DECODER
-  // -------------
-  // Main instruction decoder
-  issue_decoder #(
-      .Len5Cfg(Len5Cfg)
-  ) u_issue_decoder (
-      .instruction_i(iq_data_out.instruction),
-      .priv_mode_i  (csr_priv_mode_i),
-      .fp_enabled_i (csr_fp_enabled_i),
-      .issue_type_o (id_cu_issue_type),
-      .except_code_o(id_except_code),
-      .skip_eu_o    (id_skip_eu),
-      .assigned_eu_o(id_assigned_eu),
-      .eu_ctl_o     (id_eu_ctl),
-      .mem_crit_o   (id_mem_crit),
-      .order_crit_o (id_order_crit),
-      .rs1_sel_o    (id_rs1_sel),
-      .rs2_sel_o    (id_rs2_sel),
-      .rs3_sel_o    (id_rs3_sel),
-      .rd_upd_o     (id_rd_upd),
-      .imm_format_o (id_imm_format)
-  );
+    // Decoder controls
+    except_code_t                        id_except_code;
+    imm_format_t                         id_imm_format;
 
-  // Instruction fields extraction
-  assign instr_rs1_idx = iq_data_out.instruction.r.rs1;
-  assign instr_rs2_idx = iq_data_out.instruction.r.rs2;
-  assign instr_rd_idx = iq_data_out.instruction.r.rd;
-  assign instr_imm_i_value = {
-    {52{iq_data_out.instruction.i.imm11[31]}}, iq_data_out.instruction.i.imm11
-  };
-  assign instr_imm_s_value = {
-    {52{iq_data_out.instruction.s.imm11[31]}},
-    iq_data_out.instruction.s.imm11,
-    iq_data_out.instruction.s.imm4
-  };
-  assign instr_imm_b_value = {
-    {51{iq_data_out.instruction.b.imm12}},
-    iq_data_out.instruction.b.imm12,
-    iq_data_out.instruction.b.imm11,
-    iq_data_out.instruction.b.imm10,
-    iq_data_out.instruction.b.imm4,
-    1'b0
-  };
-  assign instr_imm_u_value = {
-    {32{iq_data_out.instruction.u.imm31[31]}}, iq_data_out.instruction.u.imm31, 12'b0
-  };
-  assign instr_imm_j_value = {
-    {43{iq_data_out.instruction.j.imm20}},
-    iq_data_out.instruction.j.imm20,
-    iq_data_out.instruction.j.imm19,
-    iq_data_out.instruction.j.imm11,
-    iq_data_out.instruction.j.imm10,
-    1'b0
-  };
-  assign instr_imm_rs1_value = {59'h0, iq_data_out.instruction.r.rs1};
+    // Main instruction decoder
+    issue_decoder #(
+        .Len5Cfg(Len5Cfg)
+    ) u_issue_decoder (
+        .instruction_i(iq_data_out[i].instruction),
+        .priv_mode_i  (csr_priv_mode_i),
+        .fp_enabled_i (csr_fp_enabled_i),
+        .issue_type_o (ireg_data_in[i].issue_type),
+        .stall_o      (id_stall[i]),
+        .except_code_o(id_except_code),
+        .skip_eu_o    (ireg_data_in[i].skip_eu),
+        .assigned_eu_o(ireg_data_in[i].assigned_eu),
+        .eu_ctl_o     (ireg_data_in[i].eu_ctl),
+        .mem_crit_o   (ireg_data_in[i].mem_crit),
+        .order_crit_o (ireg_data_in[i].order_crit),
+        .rs1_sel_o    (ireg_data_in[i].rs1_sel),
+        .rs2_sel_o    (ireg_data_in[i].rs2_sel),
+        .rs3_sel_o    (ireg_data_in[i].rs3_sel),
+        .rd_upd_o     (ireg_data_in[i].rd_upd),
+        .imm_format_o (id_imm_format)
+    );
 
-  // RV64F-RV64D
-  // rounding mode
-  assign instr_frm = iq_data_out.instruction.r4.funct3;
+    // Instruction fields extraction
+    assign instr_rs1_idx = iq_data_out[i].instruction.r.rs1;
+    assign instr_rs2_idx = iq_data_out[i].instruction.r.rs2;
+    assign instr_rd_idx = iq_data_out[i].instruction.r.rd;
+    assign instr_imm_i_value = {
+      {52{iq_data_out[i].instruction.i.imm11[31]}}, iq_data_out[i].instruction.i.imm11
+    };
+    assign instr_imm_s_value = {
+      {52{iq_data_out[i].instruction.s.imm11[31]}},
+      iq_data_out[i].instruction.s.imm11,
+      iq_data_out[i].instruction.s.imm4
+    };
+    assign instr_imm_b_value = {
+      {51{iq_data_out[i].instruction.b.imm12}},
+      iq_data_out[i].instruction.b.imm12,
+      iq_data_out[i].instruction.b.imm11,
+      iq_data_out[i].instruction.b.imm10,
+      iq_data_out[i].instruction.b.imm4,
+      1'b0
+    };
+    assign instr_imm_u_value = {
+      {32{iq_data_out[i].instruction.u.imm31[31]}}, iq_data_out[i].instruction.u.imm31, 12'b0
+    };
+    assign instr_imm_j_value = {
+      {43{iq_data_out[i].instruction.j.imm20}},
+      iq_data_out[i].instruction.j.imm20,
+      iq_data_out[i].instruction.j.imm19,
+      iq_data_out[i].instruction.j.imm11,
+      iq_data_out[i].instruction.j.imm10,
+      1'b0
+    };
+    assign instr_imm_rs1_value = {59'h0, iq_data_out[i].instruction.r.rs1};
 
-  // rs3 idx, R4 format
-  assign instr_rs3_idx = iq_data_out.instruction.r4.rs3;
+    // RV64F-RV64D
+    // rounding mode
+    assign instr_frm = iq_data_out[i].instruction.r4.funct3;
 
-  // Immediate MUX
-  always_comb begin : imm_mux
-    unique case (id_imm_format)
-      IMM_TYPE_S:   imm_value = instr_imm_s_value;
-      IMM_TYPE_B:   imm_value = instr_imm_b_value;
-      IMM_TYPE_U:   imm_value = instr_imm_u_value;
-      IMM_TYPE_J:   imm_value = instr_imm_j_value;
-      IMM_TYPE_RS1: imm_value = instr_imm_rs1_value;
-      default:      imm_value = instr_imm_i_value;
-    endcase
+    // rs3 idx, R4 format
+    assign instr_rs3_idx = iq_data_out[i].instruction.r4.rs3;
+
+    // Immediate MUX
+    always_comb begin : imm_mux
+      unique case (id_imm_format)
+        IMM_TYPE_S:   imm_value = instr_imm_s_value;
+        IMM_TYPE_B:   imm_value = instr_imm_b_value;
+        IMM_TYPE_U:   imm_value = instr_imm_u_value;
+        IMM_TYPE_J:   imm_value = instr_imm_j_value;
+        IMM_TYPE_RS1: imm_value = instr_imm_rs1_value;
+        default:      imm_value = instr_imm_i_value;
+      endcase
+    end
+
+    assign ireg_data_in[i].curr_pc = iq_data_out[i].curr_pc;
+    assign ireg_data_in[i].instr = iq_data_out[i].instruction;
+    assign ireg_data_in[i].rs1_idx = instr_rs1_idx;
+    assign ireg_data_in[i].rs2_idx = instr_rs2_idx;
+    assign ireg_data_in[i].rs3_idx = instr_rs3_idx;
+    assign ireg_data_in[i].imm_value = imm_value;
+    assign ireg_data_in[i].rd_idx = instr_rd_idx;
+    assign ireg_data_in[i].pred_taken = iq_data_out[i].pred_taken;
+    assign ireg_data_in[i].pred_target = iq_data_out[i].pred_target;
+    assign ireg_data_in[i].except_raised = iq_data_out[i].except_raised;
+    assign ireg_data_in[i].except_code    = (iq_data_out[i].except_raised) ? iq_data_out[i].except_code : id_except_code;
+    assign ireg_data_in[i].frm = instr_frm;
+
   end
 
-  // ISSUING INSTRUCTION REGISTER
-  // ----------------------------
-  // Enable when the CU accepts a valid instruction
-  assign ireg_en = iq_cu_valid & cu_iq_ready;
+  // ISSUE REGISTERS
+  // ---------------
+  assign ireg_data_out = ireg_data_q[0];
 
-  // Input data from issue queue and decoder
-  assign ireg_data_in.curr_pc = iq_data_out.curr_pc;
-  assign ireg_data_in.instr = iq_data_out.instruction;
-  assign ireg_data_in.skip_eu = id_skip_eu;
-  assign ireg_data_in.assigned_eu = id_assigned_eu;
-  assign ireg_data_in.rs1_sel = id_rs1_sel;
-  assign ireg_data_in.rs1_idx = instr_rs1_idx;
-  assign ireg_data_in.rs2_sel = id_rs2_sel;
-  assign ireg_data_in.rs2_idx = instr_rs2_idx;
-  assign ireg_data_in.rs3_sel = id_rs3_sel;
-  assign ireg_data_in.rs3_idx = instr_rs3_idx;
-  assign ireg_data_in.imm_value = imm_value;
-  assign ireg_data_in.rd_idx = instr_rd_idx;
-  assign ireg_data_in.rd_upd = id_rd_upd;
-  assign ireg_data_in.eu_ctl = id_eu_ctl;
-  assign ireg_data_in.mem_crit = id_mem_crit;
-  assign ireg_data_in.order_crit = id_order_crit;
-  assign ireg_data_in.pred_taken = iq_data_out.pred_taken;
-  assign ireg_data_in.pred_target = iq_data_out.pred_target;
-  assign ireg_data_in.except_raised  = iq_data_out.except_raised | (id_cu_issue_type == ISSUE_TYPE_EXCEPT);
-  assign ireg_data_in.except_code    = (iq_data_out.except_raised) ? iq_data_out.except_code : id_except_code;
-  assign ireg_data_in.frm = instr_frm;
+  // Dispatch removes the head; FENCE/WFI also discard their stall token on resume.
+  assign ireg_pop_count = issue_count_t'((comm_valid_o && comm_ready_i) ||
+      (comm_resume_i && (ireg_count_q != '0) && (ireg_data_out.issue_type == ISSUE_TYPE_STALL)));
 
-  // Issue register
-  always_ff @(posedge clk_i or negedge rst_ni) begin : issue_reg
-    if (!rst_ni) begin
-      ireg_data_out <= '0;
-    end else if (flush_i || cu_mis_flush) begin
-      ireg_data_out <= '0;
-    end else if (ireg_en) begin
-      ireg_data_out <= ireg_data_in;
+  // Account for removal before admitting the next IQ entries.
+  assign retained_count = ireg_count_q - ireg_pop_count;
+  assign refill_space = issue_count_t'(Len5Cfg.ISSUE_WIDTH) - retained_count;
+  assign ireg_count_d = retained_count + iq_pop_count;
+
+  // A resume must not release a CSR that is still waiting for its operand.
+  assign serialize_hold = serialize_q && !(comm_resume_i && cu_iq_ready &&
+      ((ireg_count_q == '0) || (ireg_data_out.issue_type == ISSUE_TYPE_STALL)));
+  assign serialize_d = serialize_hold || (|(iq_accepted & serializing));
+
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_issue_registers
+    logic older_serializing;
+
+    assign serializing[i] = iq_valid[i] && (ireg_data_in[i].except_raised || id_stall[i]);
+
+    // Accept the first serializing instruction, but none of its younger lanes.
+    if (i == 0) begin : gen_first
+      assign older_serializing = 1'b0;
+    end else begin : gen_younger
+      assign older_serializing = |serializing[i-1:0];
+    end
+    assign iq_accepted[i] = iq_valid[i] && (issue_count_t'(i) < refill_space) &&
+        (cu_iq_ready || (ireg_count_q != '0)) && !serialize_hold && !older_serializing;
+
+    // Retained instructions occupy the low lanes; refill follows them on the same edge.
+    always_comb begin : data_mux
+      ireg_data_d[i] = '0;
+      if (issue_count_t'(i) < retained_count)
+        ireg_data_d[i] = ireg_data_q[issue_count_t'(i) + ireg_pop_count];
+      else if (issue_count_t'(i) < ireg_count_d)
+        ireg_data_d[i] = ireg_data_in[issue_count_t'(i) - retained_count];
     end
   end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : issue_reg
+    if (!rst_ni) begin
+      ireg_data_q <= '0;
+      ireg_count_q <= '0;
+      serialize_q <= 1'b0;
+    end else if (iq_flush) begin
+      ireg_data_q <= '0;
+      ireg_count_q <= '0;
+      serialize_q <= 1'b0;
+    end else begin
+      ireg_data_q <= ireg_data_d;
+      ireg_count_q <= ireg_count_d;
+      serialize_q <= serialize_d;
+    end
+  end
+
+  // The CU classifies the head that will be registered on this same edge.
+  assign iq_cu_valid = |ireg_count_d;
+  assign iq_cu_except_raised = ireg_data_d[0].except_raised;
 
   // ISSUE CU
   // --------
@@ -362,7 +399,7 @@ module issue_stage #(
       .iq_valid_i         (iq_cu_valid),
       .iq_ready_o         (cu_iq_ready),
       .iq_except_raised_i (iq_cu_except_raised),
-      .issue_type_i       (id_cu_issue_type),
+      .issue_type_i       (ireg_data_d[0].issue_type),
       .issue_rs1_ready_i  (rs1_ready),
       .issue_res_ready_o  (cu_il_res_ready),
       .issue_res_sel_rs1_o(cu_il_res_sel_rs1),
@@ -563,7 +600,8 @@ module issue_stage #(
   assign comm_data_o.rd_upd        = ireg_data_out.rd_upd;
   assign comm_data_o.mem_crit      = ireg_data_out.mem_crit;
   assign comm_data_o.order_crit    = ireg_data_out.order_crit;
-  assign comm_data_o.except_raised = ireg_data_out.except_raised;
+  assign comm_data_o.except_raised = ireg_data_out.except_raised ||
+      (ireg_data_out.issue_type == ISSUE_TYPE_EXCEPT);
   assign comm_data_o.except_code   = ireg_data_out.except_code;
   assign comm_data_o.mem_clear     = 1'b0;
   assign comm_data_o.flags.raw     = '0;
@@ -575,6 +613,22 @@ module issue_stage #(
   // DEBUG CODE
   // ----------
 `ifndef SYNTHESIS
+  always @(posedge clk_i) begin : check_issue_registers
+    if (rst_ni && !iq_flush) begin
+      assert (ireg_pop_count <= ireg_count_q)
+      else $error("issue-register removal count is invalid");
+      assert (!comm_valid_o || (ireg_count_q != '0))
+      else $error("dispatch requires a registered instruction");
+    end
+  end
+  if (Len5Cfg.ISSUE_WIDTH > 1) begin : gen_check_occupancy
+    always @(posedge clk_i) begin
+      if (rst_ni && !iq_flush) begin
+        assert (int'(ireg_count_q) <= Len5Cfg.ISSUE_WIDTH)
+        else $error("issue-register occupancy is invalid");
+      end
+    end
+  end
 `ifndef VERILATOR
   always @(posedge clk_i) begin
     if (comm_valid_o && comm_ready_i) begin

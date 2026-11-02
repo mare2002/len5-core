@@ -40,6 +40,7 @@ module len5_config_probe #(
     parameter longint unsigned BOOT_PC = {BOOT_PC_HI, BOOT_PC_LO},
     parameter int unsigned BOOT_VM_MODE = int'(len5_config_pkg::DEFAULT_LEN5_CFG.BOOT_VM_MODE),
     parameter int unsigned LEN5_MULTIPLE_ISSUES = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_MULTIPLE_ISSUES,
+    parameter int unsigned ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.ISSUE_WIDTH,
     parameter bit LEN5_M_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_M_EN,
     parameter bit LEN5_DIV_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_DIV_EN,
     parameter bit LEN5_F_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_F_EN,
@@ -88,6 +89,7 @@ module len5_config_probe #(
             BOOT_VM_MODE: len5_config_pkg::boot_mode_t'(BOOT_VM_MODE),
             BOOT_PC: BOOT_PC,
             LEN5_MULTIPLE_ISSUES: LEN5_MULTIPLE_ISSUES,
+            ISSUE_WIDTH: ISSUE_WIDTH,
             LEN5_M_EN: LEN5_M_EN,
             LEN5_DIV_EN: LEN5_DIV_EN,
             LEN5_F_EN: LEN5_F_EN,
@@ -145,6 +147,7 @@ module len5_config_probe #(
       $write("\"BOOT_VM_MODE\":%0d", Len5Cfg.BOOT_VM_MODE);
       $write(",\"BOOT_PC\":%0d", Len5Cfg.BOOT_PC);
       $write(",\"LEN5_MULTIPLE_ISSUES\":%0d", Len5Cfg.LEN5_MULTIPLE_ISSUES);
+      $write(",\"ISSUE_WIDTH\":%0d", Len5Cfg.ISSUE_WIDTH);
       $write(",\"LEN5_M_EN\":%0d", Len5Cfg.LEN5_M_EN);
       $write(",\"LEN5_DIV_EN\":%0d", Len5Cfg.LEN5_DIV_EN);
       $write(",\"LEN5_F_EN\":%0d", Len5Cfg.LEN5_F_EN);

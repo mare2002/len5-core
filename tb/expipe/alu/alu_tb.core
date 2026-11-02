@@ -68,6 +68,7 @@ targets:
     - BOOT_PC_HI
     - BOOT_PC_LO
     - LEN5_MULTIPLE_ISSUES
+    - ISSUE_WIDTH
     - LEN5_M_EN
     - LEN5_DIV_EN
     - LEN5_F_EN
@@ -153,6 +154,10 @@ parameters:
   LEN5_MULTIPLE_ISSUES:
     datatype: int
     paramtype: vlogparam
+  ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: Number of decoded issue-register slots (positive power of two).
   LEN5_M_EN:
     datatype: int
     paramtype: vlogparam

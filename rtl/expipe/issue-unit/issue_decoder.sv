@@ -24,6 +24,7 @@ module issue_decoder #(
     output expipe_pkg::issue_type_t issue_type_o,  // issue operation type
 
     // Information to the issue logic
+    output logic stall_o,  // stall decoding of younger instructions
     output len5_pkg::except_code_t except_code_o,  // exception code to send to the ROB
     output expipe_pkg::issue_eu_t assigned_eu_o,  // assigned EU
     output logic skip_eu_o,  // do not assign to any EU
@@ -1646,6 +1647,7 @@ module issue_decoder #(
   // -----------------
   // OUTPUT GENERATION
   // -----------------
+  assign stall_o = issue_type_o inside {ISSUE_TYPE_CSR, ISSUE_TYPE_STALL, ISSUE_TYPE_WFI, ISSUE_TYPE_EXCEPT};
   assign except_code_o = except_code;
   assign assigned_eu_o = assigned_eu;
   assign eu_ctl_o      = eu_ctl;

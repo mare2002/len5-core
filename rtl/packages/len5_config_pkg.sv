@@ -34,7 +34,8 @@ package len5_config_pkg;
 
     // Multi-issue architecture
     // ------------------------
-    int unsigned LEN5_MULTIPLE_ISSUES;  //maximum number of issues per cycle
+    int unsigned LEN5_MULTIPLE_ISSUES;  // instructions per fetch bundle
+    int unsigned ISSUE_WIDTH;  // decoded instruction slots
 
     // Enable M extension support
     // --------------------------
@@ -133,7 +134,7 @@ package len5_config_pkg;
     // EXECUTION PIPELINE
     // ------------------
     // ISSUE QUEUE
-    int unsigned IQ_DEPTH;  // number of entries in the issue queue (power of 2)
+    int unsigned IQ_DEPTH;  // number of entries in the issue queue
 
     // LOAD/STORE UNIT
     int unsigned LDBUFF_DEPTH;  // number of entries in the load buffer
@@ -175,6 +176,7 @@ package len5_config_pkg;
     boot_mode_t BOOT_VM_MODE;
     logic [63:0] BOOT_PC;
     int unsigned LEN5_MULTIPLE_ISSUES;
+    int unsigned ISSUE_WIDTH;
     bit LEN5_M_EN;
     bit LEN5_DIV_EN;
     bit LEN5_F_EN;
@@ -242,6 +244,7 @@ package len5_config_pkg;
       BOOT_VM_MODE: BARE,
       BOOT_PC: 64'h180,
       LEN5_MULTIPLE_ISSUES: 32'd8,
+      ISSUE_WIDTH: 32'd1,
       LEN5_M_EN: 1'b1,
       LEN5_DIV_EN: 1'b1,
       LEN5_F_EN: 1'b1,
@@ -290,6 +293,7 @@ package len5_config_pkg;
     cfg.BOOT_VM_MODE = user_cfg.BOOT_VM_MODE;
     cfg.BOOT_PC = user_cfg.BOOT_PC;
     cfg.LEN5_MULTIPLE_ISSUES = user_cfg.LEN5_MULTIPLE_ISSUES;
+    cfg.ISSUE_WIDTH = user_cfg.ISSUE_WIDTH;
     cfg.LEN5_M_EN = user_cfg.LEN5_M_EN;
     cfg.LEN5_DIV_EN = user_cfg.LEN5_DIV_EN;
     cfg.LEN5_F_EN = user_cfg.LEN5_F_EN;
@@ -360,14 +364,16 @@ package len5_config_pkg;
     if ($isunknown(cfg)) $fatal(1, "check_build: LEN5 configuration contains unknown bits");
     if (!(cfg.LEN5_MULTIPLE_ISSUES inside {1, 2, 4, 8}))
       $fatal(1, "check_build: LEN5_MULTIPLE_ISSUES must be 1, 2, 4 or 8");
+    if (cfg.ISSUE_WIDTH == 0 || (cfg.ISSUE_WIDTH & (cfg.ISSUE_WIDTH - 1)) != 0)
+      $fatal(1, "check_build: ISSUE_WIDTH must be a positive power of two");
     if (cfg.BOOT_VM_MODE > SV48) $fatal(1, "check_build: invalid BOOT_VM_MODE");
     if (cfg.LEN5_C_EN || cfg.LEN5_A_EN)
       $fatal(1, "check_build: compressed and atomic instructions are currently unsupported");
     if (cfg.FETCH_MEMIF_FIFO_DEPTH == 0 ||
         (cfg.FETCH_MEMIF_FIFO_DEPTH & (cfg.FETCH_MEMIF_FIFO_DEPTH - 1)) != 0)
       $fatal(1, "check_build: FETCH_MEMIF_FIFO_DEPTH must be a positive power of two");
-    if (cfg.IQ_DEPTH < 2 || (cfg.IQ_DEPTH & (cfg.IQ_DEPTH - 1)) != 0)
-      $fatal(1, "check_build: IQ_DEPTH must be a power of two of at least two");
+    if (cfg.IQ_DEPTH < 2)
+      $fatal(1, "check_build: IQ_DEPTH must be at least two");
     depths = '{
         cfg.RAS_DEPTH,
         cfg.LDBUFF_DEPTH,

@@ -20,13 +20,13 @@ module issue_cu (
   // CU <--> others
   output logic mis_flush_o,  // flush issue and fetch stage
 
-  // Issue queue <--> CU
+  // Preview of the next registered head after removal and refill.
   input  logic iq_valid_i,
   output logic iq_ready_o,
   input  logic iq_except_raised_i,
 
   // Issue stage <--> CU
-  input  expipe_pkg::issue_type_t issue_type_i,        // type of operation needed
+  input  expipe_pkg::issue_type_t issue_type_i,        // next head classification
   input  logic                    issue_rs1_ready_i,   // for CSR instructions
   output logic                    issue_res_ready_o,
   output logic                    issue_res_sel_rs1_o,
