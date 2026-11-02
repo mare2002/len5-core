@@ -121,6 +121,7 @@ module issue_stage #(
     logic [XLEN-1:0]                  curr_pc;
     instr_t                           instr;
     issue_type_t                      issue_type;
+    issue_dispatch_t                  dispatch;
     logic                             skip_eu;
     issue_eu_t                        assigned_eu;
     rs1_sel_t                         rs1_sel;
@@ -243,6 +244,7 @@ module issue_stage #(
         .fp_enabled_i (csr_fp_enabled_i),
         .issue_type_o (ireg_data_in[i].issue_type),
         .stall_o      (id_stall[i]),
+        .dispatch_o   (ireg_data_in[i].dispatch),
         .except_code_o(id_except_code),
         .skip_eu_o    (ireg_data_in[i].skip_eu),
         .assigned_eu_o(ireg_data_in[i].assigned_eu),
@@ -400,6 +402,8 @@ module issue_stage #(
       .iq_ready_o         (cu_iq_ready),
       .iq_except_raised_i (iq_cu_except_raised),
       .issue_type_i       (ireg_data_d[0].issue_type),
+      .issue_valid_i      (ireg_count_q != '0),
+      .issue_dispatch_i   (ireg_data_out.dispatch),
       .issue_rs1_ready_i  (rs1_ready),
       .issue_res_ready_o  (cu_il_res_ready),
       .issue_res_sel_rs1_o(cu_il_res_sel_rs1),

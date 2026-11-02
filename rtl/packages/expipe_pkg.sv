@@ -281,6 +281,13 @@ package expipe_pkg;
     ISSUE_TYPE_EXCEPT     // an exception was generated
   } issue_type_t;
 
+  // Dispatch controls carried with each decoded instruction.
+  typedef struct packed {
+    logic direct_result;
+    logic int_rd_write;
+    logic fp_rd_write;
+  } issue_dispatch_t;
+
   // Assigned execution unit
   typedef enum logic [2:0] {
     EU_STORE_BUFFER,
