@@ -23,129 +23,67 @@ module fp_regstat #(
     input logic rst_ni,
     input logic flush_i,
 
-    // Issue Logic
-    input logic issue_valid_i,
-    input logic [RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
-    input rob_idx_t issue_rob_idx_i,  // allocated ROB index
-    input logic [RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
-    input logic [RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
-    input logic [RegIdxLen-1:0] issue_rs3_idx_i,  // third source register index
-    output logic issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
-    output rob_idx_t issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
-    output logic issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
-    output rob_idx_t issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
-    output logic issue_rs3_busy_o,  // rs3 value is in the ROB or has to be computed
-    output rob_idx_t issue_rs3_rob_idx_o,  // the index of the ROB where the result is found
+    // Issue Logic (valid lanes are accepted destination writes)
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rob_idx_i,  // allocated ROB index
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs3_idx_i,  // third source register index
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_busy_o,  // rs3 value is in the ROB or has to be computed
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_o,  // the index of the ROB where the result is found
 
     // Commit Logic
     input logic                 comm_valid_i,
-    input logic [RegIdxLen-1:0] comm_rd_idx_i  // destination register of the committing instr.
+    input logic [RegIdxLen-1:0] comm_rd_idx_i,  // destination register of the committing instr.
+    input rob_idx_t comm_rob_idx_i
 );
 
   import expipe_pkg::*;
-  // INTERNAL SIGNALS
-  // ----------------
-  logic     busy_rob_idx_upd;
-  rob_idx_t busy_rob_idx     [REG_NUM];  // newest ROB entry that is going to write rd
-  logic
-      busy_cnt_en[REG_NUM],
-      busy_cnt_dn[REG_NUM]; // TODO: check, unpacked dimension, starting from 0, declare only N instead of [0:N]
-  logic busy_cnt_clr;
-  logic [Len5Cfg.REGSTAT_CNT_W-1:0] busy_cnt[REG_NUM];  // number of in-flight instructions writing rd
-  logic skip_cnt_upd;
 
-  // -----------------------------
-  // REGISTER STATUS CONTROL LOGIC
-  // -----------------------------
-  assign busy_rob_idx_upd = issue_valid_i;
-  assign busy_cnt_clr     = flush_i;
-  assign skip_cnt_upd     = issue_valid_i && comm_valid_i && issue_rd_idx_i == comm_rd_idx_i;
+  logic busy_q[REG_NUM], busy_d[REG_NUM];
+  rob_idx_t rob_idx_q[REG_NUM], rob_idx_d[REG_NUM];
 
-  always_comb begin : busy_cnt_control
-    foreach (busy_cnt[i]) begin
-      busy_cnt_en[i] = 1'b0;
-      busy_cnt_dn[i] = 1'b1;
+  for (genvar r = 0; r < REG_NUM; r++) begin : gen_status
+    logic commit_match;
+    logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_match;
+
+    assign commit_match = comm_valid_i && comm_rd_idx_i == r[RegIdxLen-1:0] && comm_rob_idx_i == rob_idx_q[r];
+
+    // A new writer keeps the register busy even when the old writer commits.
+    assign busy_d[r] = (|issue_match) || (busy_q[r] && !commit_match);
+
+    always_comb begin : status_next
+      // The tag mux gives the youngest matching issue lane priority.
+      rob_idx_d[r] = rob_idx_q[r];
+      for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
+        issue_match[i] = issue_valid_i[i] && issue_rd_idx_i[i] == r[RegIdxLen-1:0];
+        if (issue_match[i]) rob_idx_d[r] = issue_rob_idx_i[i];
+      end
     end
 
-    if (!skip_cnt_upd) begin
-      if (issue_valid_i) begin
-        busy_cnt_en[issue_rd_idx_i] = 1'b1;
-        busy_cnt_dn[issue_rd_idx_i] = ~issue_valid_i;
-      end
-      if (comm_valid_i) begin
-        busy_cnt_en[comm_rd_idx_i] = comm_valid_i;
-      end
+    always_ff @(posedge clk_i or negedge rst_ni) begin : busy_update
+      if (!rst_ni) busy_q[r] <= 1'b0;
+      else if (flush_i) busy_q[r] <= 1'b0;
+      else busy_q[r] <= busy_d[r];
+    end
+
+    // Tags need no reset or flush value: consumers ignore them when not busy.
+    always_ff @(posedge clk_i) begin : tag_update
+      if (rst_ni && !flush_i) rob_idx_q[r] <= rob_idx_d[r];
     end
   end
 
-  // ---------------------------
-  // REGISTER STATUS DATA UPDATE
-  // ---------------------------
-  always_ff @(posedge clk_i or negedge rst_ni) begin : rs_data_update
-    if (!rst_ni) begin  // Asynchronous reset
-      foreach (busy_rob_idx[i]) begin
-        busy_rob_idx[i] <= 0;
-      end
-    end else if (flush_i) begin  // Normal update
-      foreach (busy_rob_idx[i]) begin
-        busy_rob_idx[i] <= 0;
-      end
-    end else if (busy_rob_idx_upd) begin
-      busy_rob_idx[issue_rd_idx_i] <= issue_rob_idx_i;
-    end
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_read_ports
+    assign issue_rs1_busy_o[i] = busy_q[issue_rs1_idx_i[i]];
+    assign issue_rs1_rob_idx_o[i] = rob_idx_q[issue_rs1_idx_i[i]];
+    assign issue_rs2_busy_o[i] = busy_q[issue_rs2_idx_i[i]];
+    assign issue_rs2_rob_idx_o[i] = rob_idx_q[issue_rs2_idx_i[i]];
+    assign issue_rs3_busy_o[i] = busy_q[issue_rs3_idx_i[i]];
+    assign issue_rs3_rob_idx_o[i] = rob_idx_q[issue_rs3_idx_i[i]];
   end
-
-  // BUSY COUNTERS
-  // -------------
-  generate
-    for (genvar i = 0; i < REG_NUM; i++) begin : gen_busy_counters
-      updown_counter #(
-          .WIDTH(Len5Cfg.REGSTAT_CNT_W)
-      ) u_rob_cnt (
-          .clk_i   (clk_i),
-          .rst_ni  (rst_ni),
-          .en_i    (busy_cnt_en[i]),
-          .clr_i   (busy_cnt_clr),
-          .dn_i    (busy_cnt_dn[i]),
-          .ld_i    (1'b0),            // not used
-          .ld_val_i('0),              // not used
-          .count_o (busy_cnt[i]),
-          .tc_o    ()                 // not needed
-      );
-    end
-  endgenerate
-
-  // --------------------------
-  // REGISTER STATUS READ PORTS
-  // --------------------------
-  always_comb begin : int_rs_out
-    // rs1 status (READ PORT 1)
-    issue_rs1_busy_o    = |busy_cnt[issue_rs1_idx_i];
-    issue_rs1_rob_idx_o = busy_rob_idx[issue_rs1_idx_i];
-    // rs2 status (READ PORT 2)
-    issue_rs2_busy_o    = |busy_cnt[issue_rs2_idx_i];
-    issue_rs2_rob_idx_o = busy_rob_idx[issue_rs2_idx_i];
-    // rs3 status (READ PORT 3)
-    issue_rs3_busy_o    = |busy_cnt[issue_rs3_idx_i];
-    issue_rs3_rob_idx_o = busy_rob_idx[issue_rs3_idx_i];
-  end
-
-  // ----------
-  // ASSERTIONS
-  // ----------
-`ifndef SYNTHESIS
-`ifndef VERILATOR
-  // The counter should never overflow
-  property p_busy_cnt_overflow(i, en, cnt);
-    @(posedge clk_i) disable iff (!rst_ni) en && &cnt |-> ##1 |cnt;
-  endproperty
-  generate
-    for (genvar i = 1; i < REG_NUM - 1; i++) begin : gen_assertion_gen
-      a_busy_cnt_overflow :
-      assert property (p_busy_cnt_overflow(i, busy_cnt_en[i], busy_cnt[i]))
-      else $error("busy count %0d overflow", i);
-    end
-  endgenerate
-`endif  /* VERILATOR */
-`endif  /* SYNTHESIS */
 endmodule

@@ -27,12 +27,12 @@ module fp_rf #(
     input logic [          Len5Cfg.FLEN-1:0] comm_rd_value_i,
 
     // Data to the issue stage (operands read ports)
-    input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs1_idx_i,
-    input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs2_idx_i,
-    input  logic [len5_pkg::FREG_IDX_LEN-1:0] issue_rs3_idx_i,
-    output logic [          Len5Cfg.FLEN-1:0] issue_rs1_value_o,
-    output logic [          Len5Cfg.FLEN-1:0] issue_rs2_value_o,
-    output logic [          Len5Cfg.FLEN-1:0] issue_rs3_value_o
+    input  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::FREG_IDX_LEN-1:0] issue_rs1_idx_i,
+    input  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::FREG_IDX_LEN-1:0] issue_rs2_idx_i,
+    input  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::FREG_IDX_LEN-1:0] issue_rs3_idx_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][Len5Cfg.FLEN-1:0] issue_rs1_value_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][Len5Cfg.FLEN-1:0] issue_rs2_value_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][Len5Cfg.FLEN-1:0] issue_rs3_value_o
 );
 
   import len5_pkg::FREG_NUM;
@@ -65,9 +65,11 @@ module fp_rf #(
   // ------------------------
   // Asynchronous read
   always_comb begin : operands_read_ports
-    issue_rs1_value_o = rf_data[issue_rs1_idx_i];  // READ PORT 1 (rs1)
-    issue_rs2_value_o = rf_data[issue_rs2_idx_i];  // READ PORT 2 (rs2)
-    issue_rs3_value_o = rf_data[issue_rs3_idx_i];  // READ PORT 3 (rs3)
+    for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
+      issue_rs1_value_o[i] = rf_data[issue_rs1_idx_i[i]];
+      issue_rs2_value_o[i] = rf_data[issue_rs2_idx_i[i]];
+      issue_rs3_value_o[i] = rf_data[issue_rs3_idx_i[i]];
+    end
   end
 
   // ---------

@@ -12,7 +12,9 @@
 // Author: Michele Caon
 // Date: 12/11/2019
 
-module int_rf (
+module int_rf #(
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+) (
   input logic clk_i,
   input logic rst_ni,
 
@@ -25,10 +27,10 @@ module int_rf (
   input logic [       len5_pkg::XLEN-1:0] comm_rd_value_i,
 
   // Data to the issue stage (operands read ports)
-  input  logic [len5_pkg::REG_IDX_LEN-1:0] issue_rs1_idx_i,
-  input  logic [len5_pkg::REG_IDX_LEN-1:0] issue_rs2_idx_i,
-  output logic [       len5_pkg::XLEN-1:0] issue_rs1_value_o,
-  output logic [       len5_pkg::XLEN-1:0] issue_rs2_value_o
+  input  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] issue_rs1_idx_i,
+  input  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] issue_rs2_idx_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs1_value_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs2_value_o
 );
 
   import len5_pkg::XLEN;
@@ -61,11 +63,9 @@ module int_rf (
   // ------------------------
   // Asynchronous read
   always_comb begin : operands_read_ports
-    // READ PORT 1 (rs1)
-    if (|issue_rs1_idx_i) issue_rs1_value_o = rf_data[issue_rs1_idx_i];
-    else issue_rs1_value_o = '0;
-    // READ PORT 2 (rs2)
-    if (|issue_rs2_idx_i) issue_rs2_value_o = rf_data[issue_rs2_idx_i];
-    else issue_rs2_value_o = '0;
+    for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
+      issue_rs1_value_o[i] = (|issue_rs1_idx_i[i]) ? rf_data[issue_rs1_idx_i[i]] : '0;
+      issue_rs2_value_o[i] = (|issue_rs2_idx_i[i]) ? rf_data[issue_rs2_idx_i[i]] : '0;
+    end
   end
 endmodule

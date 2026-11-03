@@ -83,26 +83,27 @@ module backend #(
 
   // Issue logic <--> integer register status register
   // -------------------------------------------------
-  logic                                   il_int_regstat_valid;
-  logic                                   int_regstat_il_rs1_busy;
-  rob_idx_t                               int_regstat_il_rs1_rob_idx;
-  logic                                   int_regstat_il_rs2_busy;
-  rob_idx_t                               int_regstat_il_rs2_rob_idx;
-  logic            [     REG_IDX_LEN-1:0] il_int_regstat_rd_idx;
-  rob_idx_t                               il_int_regstat_rob_idx;
-  logic            [     REG_IDX_LEN-1:0] il_int_regstat_rs1_idx;
-  logic            [     REG_IDX_LEN-1:0] il_int_regstat_rs2_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] il_int_regstat_valid;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_il_rs1_busy;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_il_rs1_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_il_rs2_busy;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_il_rs2_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_int_regstat_rd_idx;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] il_int_regstat_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_int_regstat_rs1_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_int_regstat_rs2_idx;
 
   // Integer register status register <--> commit logic
   // --------------------------------------------------
   logic                                   comm_intrs_valid;
+  rob_idx_t                               comm_regstat_rob_idx;
 
   // Issue logic <--> integer register file
   // --------------------------------------
-  logic            [            XLEN-1:0] intrf_il_rs1_value;
-  logic            [            XLEN-1:0] intrf_il_rs2_value;
-  logic            [     REG_IDX_LEN-1:0] il_intrf_rs1_idx;
-  logic            [     REG_IDX_LEN-1:0] il_intrf_rs2_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] intrf_il_rs1_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] intrf_il_rs2_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_intrf_rs1_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_intrf_rs2_idx;
 
   // Integer register file <--> commit logic
   // ---------------------------------------
@@ -110,18 +111,18 @@ module backend #(
 
   // Issue logic <--> floating-point register status register
   // --------------------------------------------------------
-  logic                                   il_fp_regstat_valid;
-  logic                                   fp_regstat_il_rs1_busy;
-  rob_idx_t                               fp_regstat_il_rs1_rob_idx;
-  logic                                   fp_regstat_il_rs2_busy;
-  rob_idx_t                               fp_regstat_il_rs2_rob_idx;
-  logic                                   fp_regstat_il_rs3_busy;
-  rob_idx_t                               fp_regstat_il_rs3_rob_idx;
-  logic            [     REG_IDX_LEN-1:0] il_fp_regstat_rd_idx;
-  rob_idx_t                               il_fp_regstat_rob_idx;
-  logic            [     REG_IDX_LEN-1:0] il_fp_regstat_rs1_idx;
-  logic            [     REG_IDX_LEN-1:0] il_fp_regstat_rs2_idx;
-  logic            [     REG_IDX_LEN-1:0] il_fp_regstat_rs3_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] il_fp_regstat_valid;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_il_rs1_busy;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_il_rs1_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_il_rs2_busy;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_il_rs2_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_il_rs3_busy;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_il_rs3_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_fp_regstat_rd_idx;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] il_fp_regstat_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_fp_regstat_rs1_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_fp_regstat_rs2_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_fp_regstat_rs3_idx;
 
   // Floating-point register status register <--> commit logic
   // ---------------------------------------------------------
@@ -130,12 +131,12 @@ module backend #(
 
   // Issue logic <--> floating-point register file
   // ---------------------------------------------
-  logic            [            XLEN-1:0] fprf_il_rs1_value;
-  logic            [            XLEN-1:0] fprf_il_rs2_value;
-  logic            [            XLEN-1:0] fprf_il_rs3_value;
-  logic            [     REG_IDX_LEN-1:0] il_fprf_rs1_idx;
-  logic            [     REG_IDX_LEN-1:0] il_fprf_rs2_idx;
-  logic            [     REG_IDX_LEN-1:0] il_fprf_rs3_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] fprf_il_rs1_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] fprf_il_rs2_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] fprf_il_rs3_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_fprf_rs1_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_fprf_rs2_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][REG_IDX_LEN-1:0] il_fprf_rs3_idx;
 
   // // Floating-point register file <--> commit logic
   // // ----------------------------------------------
@@ -143,11 +144,11 @@ module backend #(
 
   // Issue Stage <--> Commit Stage
   // -----------------------------
-  // Allocation feedback above lane zero is unused until multi-dispatch is enabled.
+  // Readiness above lane zero is unused until multi-dispatch is enabled.
   logic [Len5Cfg.ISSUE_WIDTH-1:0]          comm_issue_ready_unused;
   logic [Len5Cfg.ISSUE_WIDTH-1:0]          issue_comm_valid;
   logic                                   comm_issue_resume;
-  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0]      comm_issue_rob_tail_idx_unused;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_issue_rob_tail_idx;
   rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0]    issue_comm_rob_data;
   rob_idx_t                               issue_comm_rs1_rob_idx;
   logic                                   comm_issue_rs1_ready;
@@ -310,7 +311,7 @@ module backend #(
       .comm_ready_i      (comm_issue_ready_unused[0]),
       .comm_valid_o      (issue_comm_valid[0]),
       .comm_resume_i     (comm_issue_resume),
-      .comm_tail_idx_i   (comm_issue_rob_tail_idx_unused[0]),
+      .comm_tail_idx_i   (comm_issue_rob_tail_idx),
       .comm_data_o       (issue_comm_rob_data[0]),
       .comm_rs1_rob_idx_o(issue_comm_rs1_rob_idx),
       .comm_rs1_ready_i  (comm_issue_rs1_ready),
@@ -349,12 +350,15 @@ module backend #(
       .issue_rs2_busy_o   (int_regstat_il_rs2_busy),
       .issue_rs2_rob_idx_o(int_regstat_il_rs2_rob_idx),
       .comm_valid_i       (comm_intrs_valid),
-      .comm_rd_idx_i      (comm_rf_rd_idx)
+      .comm_rd_idx_i      (comm_rf_rd_idx),
+      .comm_rob_idx_i     (comm_regstat_rob_idx)
   );
 
   // Integer register file
   // ---------------------
-  int_rf u_int_rf (
+  int_rf #(
+      .Len5Cfg(Len5Cfg)
+  ) u_int_rf (
       .clk_i            (clk_i),
       .rst_ni           (rst_ni),
       .comm_valid_i     (comm_intrf_valid),
@@ -370,6 +374,7 @@ module backend #(
   // ---------------------------------------
   generate
     if (Len5Cfg.LEN5_D_EN | Len5Cfg.LEN5_F_EN) begin : gen_fp_rf
+      logic [Len5Cfg.ISSUE_WIDTH-1:0][Len5Cfg.FLEN-1:0] fp_rs1_value, fp_rs2_value, fp_rs3_value;
       // FP register status register
       fp_regstat #(
           .Len5Cfg(Len5Cfg)
@@ -390,7 +395,8 @@ module backend #(
           .issue_rs3_busy_o   (fp_regstat_il_rs3_busy),
           .issue_rs3_rob_idx_o(fp_regstat_il_rs3_rob_idx),
           .comm_valid_i       (comm_fprs_valid),
-          .comm_rd_idx_i      (comm_rf_rd_idx)
+          .comm_rd_idx_i      (comm_rf_rd_idx),
+          .comm_rob_idx_i     (comm_regstat_rob_idx)
       );
 
       // Floating-point register file
@@ -406,21 +412,21 @@ module backend #(
           .issue_rs1_idx_i  (il_fprf_rs1_idx),
           .issue_rs2_idx_i  (il_fprf_rs2_idx),
           .issue_rs3_idx_i  (il_fprf_rs3_idx),
-          .issue_rs1_value_o(fprf_il_rs1_value[Len5Cfg.FLEN-1:0]),
-          .issue_rs2_value_o(fprf_il_rs2_value[Len5Cfg.FLEN-1:0]),
-          .issue_rs3_value_o(fprf_il_rs3_value[Len5Cfg.FLEN-1:0])
+          .issue_rs1_value_o(fp_rs1_value),
+          .issue_rs2_value_o(fp_rs2_value),
+          .issue_rs3_value_o(fp_rs3_value)
       );
-      if (!Len5Cfg.LEN5_D_EN) begin : gen_f_zero_extension
-        assign fprf_il_rs1_value[XLEN-1:Len5Cfg.FLEN] = '0;
-        assign fprf_il_rs2_value[XLEN-1:Len5Cfg.FLEN] = '0;
-        assign fprf_il_rs3_value[XLEN-1:Len5Cfg.FLEN] = '0;
+      for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_fp_read_values
+        assign fprf_il_rs1_value[i] = XLEN'(fp_rs1_value[i]);
+        assign fprf_il_rs2_value[i] = XLEN'(fp_rs2_value[i]);
+        assign fprf_il_rs3_value[i] = XLEN'(fp_rs3_value[i]);
       end
     end else begin : gen_no_fp_rf
-      assign fp_regstat_il_rs1_busy    = 1'b0;
+      assign fp_regstat_il_rs1_busy    = '0;
       assign fp_regstat_il_rs1_rob_idx = '0;
-      assign fp_regstat_il_rs2_busy    = 1'b0;
+      assign fp_regstat_il_rs2_busy    = '0;
       assign fp_regstat_il_rs2_rob_idx = '0;
-      assign fp_regstat_il_rs3_busy    = 1'b0;
+      assign fp_regstat_il_rs3_busy    = '0;
       assign fp_regstat_il_rs3_rob_idx = '0;
       assign fprf_il_rs1_value         = '0;
       assign fprf_il_rs2_value         = '0;
@@ -548,7 +554,7 @@ module backend #(
       .issue_valid_i      (issue_comm_valid),
       .issue_ready_o      (comm_issue_ready_unused),
       .issue_data_i       (issue_comm_rob_data),
-      .issue_tail_idx_o   (comm_issue_rob_tail_idx_unused),
+      .issue_tail_idx_o   (comm_issue_rob_tail_idx),
       .issue_rs1_rob_idx_i(issue_comm_rs1_rob_idx),
       .issue_rs1_ready_o  (comm_issue_rs1_ready),
       .issue_rs1_value_o  (comm_issue_rs1_value),
@@ -573,8 +579,9 @@ module backend #(
       .fp_rs_valid_o(comm_fprs_valid),
       .fp_rf_valid_o(comm_fprf_valid),
 
-      .rd_idx_o  (comm_rf_rd_idx),
-      .rd_value_o(comm_rf_rd_value),
+      .rd_idx_o    (comm_rf_rd_idx),
+      .rd_rob_idx_o(comm_regstat_rob_idx),
+      .rd_value_o  (comm_rf_rd_value),
 
       .csr_valid_o      (comm_csr_valid),
       .csr_trap_enter_o (comm_csr_trap_enter),

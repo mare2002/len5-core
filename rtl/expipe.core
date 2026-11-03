@@ -65,10 +65,12 @@ filesets:
   issue-rtl:
     depend:
       - polito:len5:packages
+      - polito:len5:common
     files:
       - expipe/issue-unit/issue_cu.sv
       - expipe/issue-unit/issue_decoder.sv
       - expipe/issue-unit/issue_queue.sv
+      - expipe/issue-unit/issue_dependencies.sv
       - expipe/issue-unit/issue_stage.sv
     file_type: systemVerilogSource
 

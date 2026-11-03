@@ -63,8 +63,9 @@ module commit_stage #(
     output logic fp_rs_valid_o,
     output logic fp_rf_valid_o,
 
-    // Data to the register files
+    // Data to the register files and status tables
     output logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_o,   // the index of the destination register (rd)
+    output rob_idx_t rd_rob_idx_o,  // ROB tag of the committing register-status update
     output logic [len5_pkg::XLEN-1:0] rd_value_o,  // the value to be stored in rd
 
     // CSRs
@@ -425,8 +426,9 @@ module commit_stage #(
   // Data to front-end
   assign fe_except_pc_o = cu_pc_sel_mepc ? csr_mepc_i : adder_out;
 
-  // Data to the register file(s)
+  // Data to the register files and status tables
   assign rd_idx_o       = comm_reg_data.data.rd_idx;
+  assign rd_rob_idx_o    = comm_reg_data.rob_idx;
   assign rd_value_o     = rd_value;
 
   // Data to CSRs
