@@ -23,6 +23,7 @@ module rob #(
     parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
     localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
     localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    localparam type issue_count_t = `LEN5_ISSUE_COUNT_T(Len5Cfg),
     localparam int DEPTH = Len5Cfg.ROB_DEPTH
 ) (
     // Clock and reset
@@ -31,10 +32,10 @@ module rob #(
     input logic flush_i,
 
     // Issue stage
-    input logic issue_valid_i,  // from upstream hardware
-    output logic issue_ready_o,  // to upstream hardware
-    input expipe_pkg::rob_entry_t issue_data_i,
-    output rob_idx_t issue_tail_idx_o,  // the ROB entry where the new instruction is being allocated
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,  // ordered request prefix
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,  // available prefix, independent of requests
+    input expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_data_i,
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_tail_idx_o,
     input rob_idx_t issue_rs1_rob_idx_i,
     input rob_idx_t issue_rs2_rob_idx_i,
     input rob_idx_t issue_rs3_rob_idx_i,
@@ -86,6 +87,11 @@ module rob #(
   // FIFO control
   logic fifo_push, fifo_pop, update_res;
   logic rob_full;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] alloc_available, issue_accept;
+  issue_count_t alloc_count;
+  logic unused_alloc_empty;
+  logic [DEPTH-1:0] issue_write_en;
+  rob_entry_t [DEPTH-1:0] issue_write_data;
 
   // Clear store instruction
   logic mem_instr_clear, entry_clear, cdb_clear;
@@ -98,7 +104,7 @@ module rob #(
   // FIFO CONTROL UNIT
   // -----------------
   // Push/pop/update control
-  assign fifo_push = issue_valid_i & issue_ready_o;
+  assign fifo_push = |alloc_count;
   assign fifo_pop = commit_valid & comm_ready_i;
   assign update_res = cdb_valid_i;
   assign rob_full = data_valid[tail_idx];
@@ -112,6 +118,34 @@ module rob #(
   assign tail_cnt_en = fifo_push;
   assign clear_cnt_en = mem_instr_clear;
   assign work_cnt_en = commit_valid & comm_ready_i;  // in- OR out-of-order commit
+
+  // DEPTH is a power of two and ISSUE_WIDTH < DEPTH; indices wrap by overflow.
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_alloc
+    assign issue_tail_idx_o[i] = tail_idx + i[Len5Cfg.ROB_IDX_LEN-1:0];
+    assign alloc_available[i] = !data_valid[issue_tail_idx_o[i]];
+    assign issue_ready_o[i] = &alloc_available[i:0];
+    assign issue_accept[i] = issue_ready_o[i] && (&issue_valid_i[i:0]);
+  end
+
+  lzc #(
+      .WIDTH(Len5Cfg.ISSUE_WIDTH + 1),
+      .MODE (1'b0)
+  ) u_alloc_count (
+      .in_i   ({1'b1, ~issue_accept}),
+      .cnt_o  (alloc_count),
+      .empty_o(unused_alloc_empty)
+  );
+
+  always_comb begin : alloc_demux
+    issue_write_en = '0;
+    foreach (issue_write_data[i]) issue_write_data[i] = '0;
+    for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
+      if (issue_accept[i]) begin
+        issue_write_en[issue_tail_idx_o[i]] = 1'b1;
+        issue_write_data[issue_tail_idx_o[i]] = issue_data_i[i];
+      end
+    end
+  end
 
   // Out-of-order memory access
   // --------------------------
@@ -190,9 +224,9 @@ module rob #(
       end
     end else begin
       foreach (data[i]) begin
-        if (fifo_push && tail_idx == i[$clog2(DEPTH)-1:0]) begin
+        if (issue_write_en[i]) begin
           data_valid[i] <= 1'b1;
-          data[i]       <= issue_data_i;
+          data[i]       <= issue_write_data[i];
         end else if ((fifo_pop) && commit_idx == i[$clog2(DEPTH)-1:0]) begin
           data_valid[i] <= 1'b0;
         end else if (update_res && cdb_data_i.rob_idx == i[Len5Cfg.ROB_IDX_LEN-1:0]) begin
@@ -227,15 +261,16 @@ module rob #(
 
   // Tail counter
   // Tracks the first available empty entry in the ROB
-  modn_counter #(
-      .N(DEPTH)
+  modn_counter_special #(
+      .N(DEPTH),
+      .I($clog2(Len5Cfg.ISSUE_WIDTH))
   ) u_tail_counter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (tail_cnt_en),
-      .clr_i  (tail_cnt_clr),
-      .count_o(tail_idx),
-      .tc_o   ()               // not needed
+      .clk_i         (clk_i),
+      .rst_ni        (rst_ni),
+      .en_i          (tail_cnt_en),
+      .clr_i         (tail_cnt_clr),
+      .increase_val_i(alloc_count),
+      .count_o       (tail_idx)
   );
 
   // Clear counter for store instructions
@@ -273,10 +308,6 @@ module rob #(
   // always ready to get the results from the CDB.
   assign cdb_ready_o = 1'b1;
 
-  // Issue stage
-  assign issue_ready_o = !rob_full;
-  assign issue_tail_idx_o = tail_idx;
-
   // Store buffer
   assign sb_mem_clear_o    = data_valid[sb_mem_idx_i] & (data[sb_mem_idx_i].mem_clear | clear_idx == sb_mem_idx_i);
 
@@ -299,35 +330,20 @@ module rob #(
   // ----------
 `ifndef SYNTHESIS
 `ifndef VERILATOR
-  property p_fifo_push;
-    @(posedge clk_i) disable iff (!rst_ni) sync_accept_on (flush_i)
-      issue_valid_i && issue_ready_o |-> ##1 data_valid[$past(
-        tail_idx
-    )] == 1'b1 && data[$past(
-        tail_idx
-    )] == $past(
-        issue_data_i
-    );
-  endproperty
-  a_fifo_push :
-  assert property (p_fifo_push)
-  else
-    $error(
-        "%t: issue_valid_i: %b | past data_valid: %b | tail_idx: %h | past tail_idx: %h",
-        $time,
-        issue_valid_i,
-        data_valid[$past(
-            tail_idx
-        )],
-        tail_idx,
-        $past(
-            tail_idx
-        )
-    );
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_check_alloc
+    property p_fifo_push;
+      @(posedge clk_i) disable iff (!rst_ni) sync_accept_on (flush_i)
+        issue_accept[i] |-> ##1 data_valid[$past(issue_tail_idx_o[i])] &&
+        data[$past(issue_tail_idx_o[i])] == $past(issue_data_i[i]);
+    endproperty
+    a_fifo_push :
+    assert property (p_fifo_push)
+    else $error("%t: invalid ROB allocation in lane %0d", $time, i);
+  end
 
   property p_fifo_pop;
     @(posedge clk_i) disable iff (!rst_ni) sync_accept_on (flush_i)
-      comm_valid_o && comm_ready_i |-> ##1 issue_ready_o == 1'b1 && data_valid[$past(
+      comm_valid_o && comm_ready_i |-> ##1 issue_ready_o[0] == 1'b1 && data_valid[$past(
         head_idx
     )] == 1'b0;
   endproperty
@@ -355,7 +371,7 @@ module rob #(
   property p_flush;
     @(posedge clk_i) disable iff (!rst_ni) $rose(
         flush_i
-    ) |=> comm_valid_o == 1'b0 && issue_ready_o == 1'b1;
+    ) |=> comm_valid_o == 1'b0 && issue_ready_o[0] == 1'b1;
   endproperty
   a_flush :
   assert property (p_flush);

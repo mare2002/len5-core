@@ -31,10 +31,10 @@ module commit_stage #(
     output logic [len5_pkg::XLEN-1:0] fe_except_pc_o,
 
     // Issue logic <--> commit stage
-    input  logic                                        issue_valid_i,
-    output logic                                        issue_ready_o,
-    input  expipe_pkg::rob_entry_t                      issue_data_i,
-    output rob_idx_t                                    issue_tail_idx_o,
+    input  logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+    input  expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_data_i,
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_tail_idx_o,
     input  rob_idx_t                                    issue_rs1_rob_idx_i,
     output logic                                        issue_rs1_ready_o,
     output logic                   [len5_pkg::XLEN-1:0] issue_rs1_value_o,

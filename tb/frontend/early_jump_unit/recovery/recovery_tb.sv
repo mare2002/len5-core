@@ -170,7 +170,7 @@ module recovery_tb #(
         fd,
         "%s,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h,%h",
         phase, Len5Cfg.LEN5_MULTIPLE_ISSUES, `EJU.mem_if_pred_i[`EJU.jump_location].pc, cycle_i,
-        !rst_ni, `DP.instr_addr_o, `BE.issue_comm_valid, `BE.issue_comm_rob_data.instr_pc,
+        !rst_ni, `DP.instr_addr_o, `BE.issue_comm_valid[0], `BE.issue_comm_rob_data[0].instr_pc,
         `BU.rs_bu_valid, `BU.rs_bu_curr_pc, `BU.res_mispredicted, `BU.res_target,
         `BU.u_branch_cu.curr_state, `DP.be_fe_call_confirm, `DP.be_fe_ret_confirm,
         `DP.be_fe_res.pc, `DP.be_fe_link_addr, `DP.be_fe_mis_flush, `DP.be_fe_except_flush,

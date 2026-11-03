@@ -143,11 +143,12 @@ module backend #(
 
   // Issue Stage <--> Commit Stage
   // -----------------------------
-  logic                                   comm_issue_ready;
-  logic                                   issue_comm_valid;
+  // Allocation feedback above lane zero is unused until multi-dispatch is enabled.
+  logic [Len5Cfg.ISSUE_WIDTH-1:0]          comm_issue_ready_unused;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0]          issue_comm_valid;
   logic                                   comm_issue_resume;
-  rob_idx_t                               comm_issue_rob_tail_idx;
-  rob_entry_t                             issue_comm_rob_data;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0]      comm_issue_rob_tail_idx_unused;
+  rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0]    issue_comm_rob_data;
   rob_idx_t                               issue_comm_rs1_rob_idx;
   logic                                   comm_issue_rs1_ready;
   logic            [            XLEN-1:0] comm_issue_rs1_value;
@@ -306,11 +307,11 @@ module backend #(
       .ex_pred_target_o(issue_ex_pred_target),
       .ex_pred_taken_o (issue_ex_pred_taken),
 
-      .comm_ready_i      (comm_issue_ready),
-      .comm_valid_o      (issue_comm_valid),
+      .comm_ready_i      (comm_issue_ready_unused[0]),
+      .comm_valid_o      (issue_comm_valid[0]),
       .comm_resume_i     (comm_issue_resume),
-      .comm_tail_idx_i   (comm_issue_rob_tail_idx),
-      .comm_data_o       (issue_comm_rob_data),
+      .comm_tail_idx_i   (comm_issue_rob_tail_idx_unused[0]),
+      .comm_data_o       (issue_comm_rob_data[0]),
       .comm_rs1_rob_idx_o(issue_comm_rs1_rob_idx),
       .comm_rs1_ready_i  (comm_issue_rs1_ready),
       .comm_rs1_value_i  (comm_issue_rs1_value),
@@ -525,6 +526,12 @@ module backend #(
 
   // Commit logic
   // ------------
+  // Dispatch remains scalar until the issue-stage grant logic is widened.
+  for (genvar i = 1; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_unused_alloc_lanes
+    assign issue_comm_valid[i] = 1'b0;
+    assign issue_comm_rob_data[i] = '0;
+  end
+
   commit_stage #(
       .Len5Cfg(Len5Cfg)
   ) u_commit_stage (
@@ -539,9 +546,9 @@ module backend #(
       .fe_except_pc_o    (fetch_except_pc_o),
 
       .issue_valid_i      (issue_comm_valid),
-      .issue_ready_o      (comm_issue_ready),
+      .issue_ready_o      (comm_issue_ready_unused),
       .issue_data_i       (issue_comm_rob_data),
-      .issue_tail_idx_o   (comm_issue_rob_tail_idx),
+      .issue_tail_idx_o   (comm_issue_rob_tail_idx_unused),
       .issue_rs1_rob_idx_i(issue_comm_rs1_rob_idx),
       .issue_rs1_ready_o  (comm_issue_rs1_ready),
       .issue_rs1_value_o  (comm_issue_rs1_value),
