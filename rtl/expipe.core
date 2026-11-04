@@ -33,6 +33,7 @@ filesets:
       - polito:len5:frontend
     files:
       - expipe/commit-unit/commit_decoder.sv
+      - expipe/commit-unit/operand_forwarding.sv
       - expipe/commit-unit/commit_stage.sv
       - expipe/commit-unit/rob.sv
       - expipe/commit-unit/commit_cu.sv

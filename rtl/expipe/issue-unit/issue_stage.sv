@@ -94,16 +94,16 @@ module issue_stage #(
     input logic comm_resume_i,  // resume after stall
     input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_tail_idx_i,  // the entry of the ROB allocated for the new instr
     output expipe_pkg::rob_entry_t comm_data_o,  // data to the ROB
-    output rob_idx_t comm_rs1_rob_idx_o,
-    input logic comm_rs1_ready_i,
-    input logic [len5_pkg::XLEN-1:0] comm_rs1_value_i,
-    output rob_idx_t comm_rs2_rob_idx_o,
-    input logic comm_rs2_ready_i,
-    input logic [len5_pkg::XLEN-1:0] comm_rs2_value_i,
-    //Commit stage, third operand management
-    output rob_idx_t comm_rs3_rob_idx_o,
-    input logic comm_rs3_ready_i,
-    input logic [len5_pkg::XLEN-1:0] comm_rs3_value_i,
+    // Operand forwarding after same-bundle dependency resolution
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_rob_idx_o,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_ready_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs1_value_i,
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs2_rob_idx_o,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs2_ready_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs2_value_i,
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs3_rob_idx_o,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs3_ready_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs3_value_i,
 
     // CSRs
     input csr_pkg::csr_priv_t csr_priv_mode_i,  // current privilege mode
@@ -185,8 +185,11 @@ module issue_stage #(
   rs3_sel_t [Len5Cfg.ISSUE_WIDTH-1:0] operand_rs3_sel;
   logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] direct_result;
   op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_base, rs2_base, rs3_base;
-  // Upper resolved operands are prepared for the later multi-lane routing stage.
-  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_resolved_unused, rs2_resolved_unused, rs3_resolved_unused;
+  // Forwarding queries use resolved tags; bundle producers bypass the old tag contents.
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_resolved, rs2_resolved, rs3_resolved;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_bundle, rs2_bundle, rs3_bundle;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_fwd_en, rs2_fwd_en, rs3_fwd_en;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_forwarded_unused, rs2_forwarded_unused, rs3_forwarded_unused;
   logic unused_int_regstat_valid, unused_fp_regstat_valid;
   logic rs1_ready, rs2_ready, rs3_ready;
   logic [XLEN-1:0] rs1_value, rs2_value, rs3_value;
@@ -445,9 +448,9 @@ module issue_stage #(
   // 6) Commit input register (inreg_data_out).
   // 7) Commit register (comm_reg_data).
   // 8) Architectural register file, only when the source is not busy.
-  // Steps 3-7 are selected in commit_stage and currently serve only lane zero.
+  // Steps 3-7 are selected independently for each query in operand_forwarding.
   // A busy source without an available result remains unresolved for RS wakeup.
-  // issue_dependencies overrides the base operands calculated below for step 2.
+  // issue_dependencies selects step 2 before the remaining forwarding queries.
 
   // The scalar CU supplies the only actual grant until multi-lane arbitration is added.
   assign issue_grant = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, comm_valid_o && comm_ready_i};
@@ -504,16 +507,11 @@ module issue_stage #(
       endcase
     end
 
-    always_comb begin : forward_rs1
+    always_comb begin : prepare_rs1
       rs1_base[i] = rs1_selected;
       if (rs1_busy) begin
-        if ((i == 0) && comm_rs1_ready_i) begin
-          rs1_base[i].ready = 1'b1;
-          rs1_base[i].value = comm_rs1_value_i;
-        end else begin
-          rs1_base[i].ready = 1'b0;
-          rs1_base[i].value = '0;
-        end
+        rs1_base[i].ready = 1'b0;
+        rs1_base[i].value = '0;
       end
     end
 
@@ -537,16 +535,11 @@ module issue_stage #(
       endcase
     end
 
-    always_comb begin : forward_rs2
+    always_comb begin : prepare_rs2
       rs2_base[i] = rs2_selected;
       if (rs2_busy) begin
-        if ((i == 0) && comm_rs2_ready_i) begin
-          rs2_base[i].ready = 1'b1;
-          rs2_base[i].value = comm_rs2_value_i;
-        end else begin
-          rs2_base[i].ready = 1'b0;
-          rs2_base[i].value = '0;
-        end
+        rs2_base[i].ready = 1'b0;
+        rs2_base[i].value = '0;
       end
     end
 
@@ -564,16 +557,11 @@ module issue_stage #(
       endcase
     end
 
-    always_comb begin : forward_rs3
+    always_comb begin : prepare_rs3
       rs3_base[i] = rs3_selected;
       if (rs3_busy) begin
-        if ((i == 0) && comm_rs3_ready_i) begin
-          rs3_base[i].ready = 1'b1;
-          rs3_base[i].value = comm_rs3_value_i;
-        end else begin
-          rs3_base[i].ready = 1'b0;
-          rs3_base[i].value = '0;
-        end
+        rs3_base[i].ready = 1'b0;
+        rs3_base[i].value = '0;
       end
     end
   end
@@ -595,22 +583,62 @@ module issue_stage #(
       .rs1_i(rs1_base),
       .rs2_i(rs2_base),
       .rs3_i(rs3_base),
-      .rs1_o(rs1_resolved_unused),
-      .rs2_o(rs2_resolved_unused),
-      .rs3_o(rs3_resolved_unused),
-      .dependency_stall_o(dependency_stall_unused)
+      .rs1_o(rs1_resolved),
+      .rs2_o(rs2_resolved),
+      .rs3_o(rs3_resolved),
+      .dependency_stall_o(dependency_stall_unused),
+      .rs1_bundle_o(rs1_bundle),
+      .rs2_bundle_o(rs2_bundle),
+      .rs3_bundle_o(rs3_bundle)
   );
+// %TODO check with Michele we don't need the value mux
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_forwarding
+    // Same-bundle operands must not consume old ROB/CDB/buffer contents.
+    assign comm_rs1_rob_idx_o[i] = rs1_resolved[i].rob_idx;
+    assign rs1_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs1_resolved[i].ready && !rs1_bundle[i];
 
-  assign rs1_ready = rs1_resolved_unused[0].ready;
-  assign rs1_value = rs1_resolved_unused[0].value;
+    always_comb begin : forward_rs1
+      rs1_forwarded_unused[i] = rs1_resolved[i];
+      if (rs1_fwd_en[i]) begin
+        rs1_forwarded_unused[i].ready = comm_rs1_ready_i[i];
+        rs1_forwarded_unused[i].value = comm_rs1_ready_i[i] ? comm_rs1_value_i[i] : '0;
+      end
+    end
+
+    assign comm_rs2_rob_idx_o[i] = rs2_resolved[i].rob_idx;
+    assign rs2_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs2_resolved[i].ready && !rs2_bundle[i];
+
+    always_comb begin : forward_rs2
+      rs2_forwarded_unused[i] = rs2_resolved[i];
+      if (rs2_fwd_en[i]) begin
+        rs2_forwarded_unused[i].ready = comm_rs2_ready_i[i];
+        rs2_forwarded_unused[i].value = comm_rs2_ready_i[i] ? comm_rs2_value_i[i] : '0;
+      end
+    end
+
+    assign comm_rs3_rob_idx_o[i] = rs3_resolved[i].rob_idx;
+    assign rs3_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs3_resolved[i].ready && !rs3_bundle[i];
+
+    always_comb begin : forward_rs3
+      rs3_forwarded_unused[i] = rs3_resolved[i];
+      if (rs3_fwd_en[i]) begin
+        rs3_forwarded_unused[i].ready = comm_rs3_ready_i[i];
+        rs3_forwarded_unused[i].value = comm_rs3_ready_i[i] ? comm_rs3_value_i[i] : '0;
+      end
+    end
+
+  end
+
+  assign rs1_ready = rs1_forwarded_unused[0].ready;
+  assign rs1_value = rs1_forwarded_unused[0].value;
   assign rs1_rob_idx = (ireg_data_out_unused.rs1_sel == RS1_SEL_FP) ?
       fp_regstat_rs1_rob_idx_i[0] : int_regstat_rs1_rob_idx_i[0];
-  assign rs2_ready = rs2_resolved_unused[0].ready;
-  assign rs2_value = rs2_resolved_unused[0].value;
+  assign rs2_ready = rs2_forwarded_unused[0].ready;
+  assign rs2_value = rs2_forwarded_unused[0].value;
   assign rs2_rob_idx = (ireg_data_out_unused.rs2_sel == RS2_SEL_FP) ?
       fp_regstat_rs2_rob_idx_i[0] : int_regstat_rs2_rob_idx_i[0];
-  assign rs3_ready = rs3_resolved_unused[0].ready;
-  assign rs3_value = rs3_resolved_unused[0].value;
+  assign rs3_ready = rs3_forwarded_unused[0].ready;
+  assign rs3_value = rs3_forwarded_unused[0].value;
   assign rs3_rob_idx = fp_regstat_rs3_rob_idx_i[0];
 
   // -----------------
@@ -653,9 +681,6 @@ module issue_stage #(
   assign comm_data_o.except_code   = ireg_data_out_unused.except_code;
   assign comm_data_o.mem_clear     = 1'b0;
   assign comm_data_o.flags.raw     = '0;
-  assign comm_rs1_rob_idx_o        = rs1_rob_idx;
-  assign comm_rs2_rob_idx_o        = rs2_rob_idx;
-  assign comm_rs3_rob_idx_o        = rs3_rob_idx;
 
   // ----------
   // DEBUG CODE

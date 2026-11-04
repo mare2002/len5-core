@@ -35,15 +35,16 @@ module commit_stage #(
     output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
     input  expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_data_i,
     output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_tail_idx_o,
-    input  rob_idx_t                                    issue_rs1_rob_idx_i,
-    output logic                                        issue_rs1_ready_o,
-    output logic                   [len5_pkg::XLEN-1:0] issue_rs1_value_o,
-    input  rob_idx_t                                    issue_rs2_rob_idx_i,
-    output logic                                        issue_rs2_ready_o,
-    output logic                   [len5_pkg::XLEN-1:0] issue_rs2_value_o,
-    input  rob_idx_t                                    issue_rs3_rob_idx_i,
-    output logic                                        issue_rs3_ready_o,
-    output logic                   [len5_pkg::XLEN-1:0] issue_rs3_value_o,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_ready_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs1_value_o,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_ready_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs2_value_o,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_ready_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs3_value_o,
+
     // resume execution after stall
     output logic                                        issue_resume_o,
 
@@ -109,15 +110,12 @@ module commit_stage #(
   rob_idx_t               rob_reg_idx;
 
   // ROB <--> Operands forwarding logic
-  logic                   rob_opfwd_rs1_valid;
-  logic                   rob_opfwd_rs1_ready;
-  logic        [XLEN-1:0] rob_opfwd_rs1_value;
-  logic                   rob_opfwd_rs2_valid;
-  logic                   rob_opfwd_rs2_ready;
-  logic        [XLEN-1:0] rob_opfwd_rs2_value;
-  logic                   rob_opfwd_rs3_valid;
-  logic                   rob_opfwd_rs3_ready;
-  logic        [XLEN-1:0] rob_opfwd_rs3_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs1_valid, rob_opfwd_rs1_ready;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] rob_opfwd_rs1_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs2_valid, rob_opfwd_rs2_ready;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] rob_opfwd_rs2_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs3_valid, rob_opfwd_rs3_ready;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] rob_opfwd_rs3_value;
 
   // Input register <--> commit CU
   logic                   inreg_cu_mispredicted;
@@ -173,18 +171,18 @@ module commit_stage #(
       .issue_ready_o      (issue_ready_o),
       .issue_data_i       (issue_data_i),
       .issue_tail_idx_o   (issue_tail_idx_o),
-      .issue_rs1_rob_idx_i(issue_rs1_rob_idx_i),
-      .issue_rs2_rob_idx_i(issue_rs2_rob_idx_i),
-      .issue_rs3_rob_idx_i(issue_rs3_rob_idx_i),
-      .opfwd_rs1_valid_o  (rob_opfwd_rs1_valid),
-      .opfwd_rs1_ready_o  (rob_opfwd_rs1_ready),
-      .opfwd_rs1_value_o  (rob_opfwd_rs1_value),
-      .opfwd_rs2_valid_o  (rob_opfwd_rs2_valid),
-      .opfwd_rs2_ready_o  (rob_opfwd_rs2_ready),
-      .opfwd_rs2_value_o  (rob_opfwd_rs2_value),
-      .opfwd_rs3_valid_o  (rob_opfwd_rs3_valid),
-      .opfwd_rs3_ready_o  (rob_opfwd_rs3_ready),
-      .opfwd_rs3_value_o  (rob_opfwd_rs3_value),
+      .issue_rs1_rob_idx_i     (issue_rs1_rob_idx_i),
+      .opfwd_rs1_valid_o       (rob_opfwd_rs1_valid),
+      .opfwd_rs1_ready_o       (rob_opfwd_rs1_ready),
+      .opfwd_rs1_value_o       (rob_opfwd_rs1_value),
+      .issue_rs2_rob_idx_i     (issue_rs2_rob_idx_i),
+      .opfwd_rs2_valid_o       (rob_opfwd_rs2_valid),
+      .opfwd_rs2_ready_o       (rob_opfwd_rs2_ready),
+      .opfwd_rs2_value_o       (rob_opfwd_rs2_value),
+      .issue_rs3_rob_idx_i     (issue_rs3_rob_idx_i),
+      .opfwd_rs3_valid_o       (rob_opfwd_rs3_valid),
+      .opfwd_rs3_ready_o       (rob_opfwd_rs3_ready),
+      .opfwd_rs3_value_o       (rob_opfwd_rs3_value),
       .sb_mem_idx_i       (sb_mem_idx_i),
       .sb_mem_clear_o     (sb_mem_clear_o),
       .comm_valid_o       (rob_reg_valid),
@@ -221,76 +219,38 @@ module commit_stage #(
       .buff_data_o(inreg_buff_data)
   );
 
-  // OPERANDS FORWARDING LOGIC
-  // -------------------------
-  // The operands required by the issuing instruction are searched for in
-  // the following order (from the most recent to the oldest).
-  // 1) ROB -- most recent
-  // 2) Commit stage buffer 0 (spill register)
-  // 3) Commit stage buffer 1
-  // 4) Commit stage committing instruction buffer -- oldest
-  always_comb begin : op_fwd_logic
-    // RS1
-    if (cdb_valid_i && cdb_data_i.rob_idx == issue_rs1_rob_idx_i) begin
-      issue_rs1_value_o = cdb_data_i.res_value;
-      issue_rs1_ready_o = 1'b1;
-    end else if (rob_opfwd_rs1_valid) begin
-      issue_rs1_ready_o = rob_opfwd_rs1_ready;
-      issue_rs1_value_o = rob_opfwd_rs1_value;
-    end else if (inreg_buff_full && inreg_buff_data.rob_idx == issue_rs1_rob_idx_i) begin
-      issue_rs1_ready_o = 1'b1;
-      issue_rs1_value_o = inreg_buff_data.data.res_value;
-    end else if (inreg_cu_valid && inreg_data_out.rob_idx == issue_rs1_rob_idx_i) begin
-      issue_rs1_ready_o = 1'b1;
-      issue_rs1_value_o = inreg_data_out.data.res_value;
-    end else if (comm_reg_valid && comm_reg_data.rob_idx == issue_rs1_rob_idx_i) begin
-      issue_rs1_ready_o = 1'b1;
-      issue_rs1_value_o = comm_reg_data.data.res_value;
-    end else begin
-      issue_rs1_ready_o = 1'b0;
-      issue_rs1_value_o = '0;
-    end
-    // RS2
-    if (cdb_valid_i && cdb_data_i.rob_idx == issue_rs2_rob_idx_i) begin
-      issue_rs2_value_o = cdb_data_i.res_value;
-      issue_rs2_ready_o = 1'b1;
-    end else if (rob_opfwd_rs2_valid) begin
-      issue_rs2_ready_o = rob_opfwd_rs2_ready;
-      issue_rs2_value_o = rob_opfwd_rs2_value;
-    end else if (inreg_buff_full && inreg_buff_data.rob_idx == issue_rs2_rob_idx_i) begin
-      issue_rs2_ready_o = 1'b1;
-      issue_rs2_value_o = inreg_buff_data.data.res_value;
-    end else if (inreg_cu_valid && inreg_data_out.rob_idx == issue_rs2_rob_idx_i) begin
-      issue_rs2_ready_o = 1'b1;
-      issue_rs2_value_o = inreg_data_out.data.res_value;
-    end else if (comm_reg_valid && comm_reg_data.rob_idx == issue_rs2_rob_idx_i) begin
-      issue_rs2_ready_o = 1'b1;
-      issue_rs2_value_o = comm_reg_data.data.res_value;
-    end else begin
-      issue_rs2_ready_o = 1'b0;
-      issue_rs2_value_o = '0;
-    end
-    // RS3 - RV64D-RV64F
-    if (cdb_valid_i && cdb_data_i.rob_idx == issue_rs3_rob_idx_i) begin
-      issue_rs3_value_o = cdb_data_i.res_value;
-      issue_rs3_ready_o = 1'b1;
-    end else if (rob_opfwd_rs3_valid) begin
-      issue_rs3_ready_o = rob_opfwd_rs3_ready;
-      issue_rs3_value_o = rob_opfwd_rs3_value;
-    end else if (inreg_buff_full && inreg_buff_data.rob_idx == issue_rs3_rob_idx_i) begin
-      issue_rs3_ready_o = 1'b1;
-      issue_rs3_value_o = inreg_buff_data.data.res_value;
-    end else if (inreg_cu_valid && inreg_data_out.rob_idx == issue_rs3_rob_idx_i) begin
-      issue_rs3_ready_o = 1'b1;
-      issue_rs3_value_o = inreg_data_out.data.res_value;
-    end else if (comm_reg_valid && comm_reg_data.rob_idx == issue_rs3_rob_idx_i) begin
-      issue_rs3_ready_o = 1'b1;
-      issue_rs3_value_o = comm_reg_data.data.res_value;
-    end else begin
-      issue_rs3_ready_o = 1'b0;
-      issue_rs3_value_o = '0;
-    end
-  end
+  operand_forwarding #(.Len5Cfg(Len5Cfg)) u_operand_forwarding (
+      .issue_rs1_rob_idx_i     (issue_rs1_rob_idx_i),
+      .issue_rs1_ready_o       (issue_rs1_ready_o),
+      .issue_rs1_value_o       (issue_rs1_value_o),
+      .issue_rs2_rob_idx_i     (issue_rs2_rob_idx_i),
+      .issue_rs2_ready_o       (issue_rs2_ready_o),
+      .issue_rs2_value_o       (issue_rs2_value_o),
+      .issue_rs3_rob_idx_i     (issue_rs3_rob_idx_i),
+      .issue_rs3_ready_o       (issue_rs3_ready_o),
+      .issue_rs3_value_o       (issue_rs3_value_o),
+      .rob_opfwd_rs1_valid_i   (rob_opfwd_rs1_valid),
+      .rob_opfwd_rs1_ready_i   (rob_opfwd_rs1_ready),
+      .rob_opfwd_rs1_value_i   (rob_opfwd_rs1_value),
+      .rob_opfwd_rs2_valid_i   (rob_opfwd_rs2_valid),
+      .rob_opfwd_rs2_ready_i   (rob_opfwd_rs2_ready),
+      .rob_opfwd_rs2_value_i   (rob_opfwd_rs2_value),
+      .rob_opfwd_rs3_valid_i   (rob_opfwd_rs3_valid),
+      .rob_opfwd_rs3_ready_i   (rob_opfwd_rs3_ready),
+      .rob_opfwd_rs3_value_i   (rob_opfwd_rs3_value),
+      .cdb_valid_i             (cdb_valid_i),
+      .cdb_rob_idx_i           (cdb_data_i.rob_idx),
+      .cdb_value_i             (cdb_data_i.res_value),
+      .inreg_buff_full_i       (inreg_buff_full),
+      .inreg_buff_rob_idx_i    (inreg_buff_data.rob_idx),
+      .inreg_buff_value_i      (inreg_buff_data.data.res_value),
+      .inreg_cu_valid_i        (inreg_cu_valid),
+      .inreg_rob_idx_i         (inreg_data_out.rob_idx),
+      .inreg_value_i           (inreg_data_out.data.res_value),
+      .comm_reg_valid_i        (comm_reg_valid),
+      .comm_reg_rob_idx_i      (comm_reg_data.rob_idx),
+      .comm_reg_value_i        (comm_reg_data.data.res_value)
+  );
 
   // COMMITTING INSTRUCTION REGISTER
   // -------------------------------

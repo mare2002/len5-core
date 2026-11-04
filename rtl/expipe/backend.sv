@@ -150,15 +150,15 @@ module backend #(
   logic                                   comm_issue_resume;
   rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_issue_rob_tail_idx;
   rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0]    issue_comm_rob_data;
-  rob_idx_t                               issue_comm_rs1_rob_idx;
-  logic                                   comm_issue_rs1_ready;
-  logic            [            XLEN-1:0] comm_issue_rs1_value;
-  rob_idx_t                               issue_comm_rs2_rob_idx;
-  logic                                   comm_issue_rs2_ready;
-  logic            [            XLEN-1:0] comm_issue_rs2_value;
-  rob_idx_t                               issue_comm_rs3_rob_idx;
-  logic                                   comm_issue_rs3_ready;
-  logic            [            XLEN-1:0] comm_issue_rs3_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_issue_rs1_ready;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_comm_rs1_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] comm_issue_rs1_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_issue_rs2_ready;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_comm_rs2_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] comm_issue_rs2_value;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_issue_rs3_ready;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_comm_rs3_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] comm_issue_rs3_value;
 
   // Issue stage <--> execution units
   // --------------------------------
@@ -313,16 +313,15 @@ module backend #(
       .comm_resume_i     (comm_issue_resume),
       .comm_tail_idx_i   (comm_issue_rob_tail_idx),
       .comm_data_o       (issue_comm_rob_data[0]),
-      .comm_rs1_rob_idx_o(issue_comm_rs1_rob_idx),
-      .comm_rs1_ready_i  (comm_issue_rs1_ready),
-      .comm_rs1_value_i  (comm_issue_rs1_value),
-      .comm_rs2_rob_idx_o(issue_comm_rs2_rob_idx),
-      .comm_rs2_ready_i  (comm_issue_rs2_ready),
-      .comm_rs2_value_i  (comm_issue_rs2_value),
-      .comm_rs3_rob_idx_o(issue_comm_rs3_rob_idx),
-      .comm_rs3_ready_i  (comm_issue_rs3_ready),
-      .comm_rs3_value_i  (comm_issue_rs3_value),
-
+      .comm_rs1_rob_idx_o      (issue_comm_rs1_rob_idx),
+      .comm_rs1_ready_i        (comm_issue_rs1_ready),
+      .comm_rs1_value_i        (comm_issue_rs1_value),
+      .comm_rs2_rob_idx_o      (issue_comm_rs2_rob_idx),
+      .comm_rs2_ready_i        (comm_issue_rs2_ready),
+      .comm_rs2_value_i        (comm_issue_rs2_value),
+      .comm_rs3_rob_idx_o      (issue_comm_rs3_rob_idx),
+      .comm_rs3_ready_i        (comm_issue_rs3_ready),
+      .comm_rs3_value_i        (comm_issue_rs3_value),
 
       .csr_priv_mode_i (csr_il_priv_mode),
       .csr_fp_enabled_i(csr_il_fp_enabled)
@@ -555,15 +554,15 @@ module backend #(
       .issue_ready_o      (comm_issue_ready_unused),
       .issue_data_i       (issue_comm_rob_data),
       .issue_tail_idx_o   (comm_issue_rob_tail_idx),
-      .issue_rs1_rob_idx_i(issue_comm_rs1_rob_idx),
-      .issue_rs1_ready_o  (comm_issue_rs1_ready),
-      .issue_rs1_value_o  (comm_issue_rs1_value),
-      .issue_rs2_rob_idx_i(issue_comm_rs2_rob_idx),
-      .issue_rs2_ready_o  (comm_issue_rs2_ready),
-      .issue_rs2_value_o  (comm_issue_rs2_value),
-      .issue_rs3_rob_idx_i(issue_comm_rs3_rob_idx),
-      .issue_rs3_ready_o  (comm_issue_rs3_ready),
-      .issue_rs3_value_o  (comm_issue_rs3_value),
+      .issue_rs1_rob_idx_i     (issue_comm_rs1_rob_idx),
+      .issue_rs1_ready_o       (comm_issue_rs1_ready),
+      .issue_rs1_value_o       (comm_issue_rs1_value),
+      .issue_rs2_rob_idx_i     (issue_comm_rs2_rob_idx),
+      .issue_rs2_ready_o       (comm_issue_rs2_ready),
+      .issue_rs2_value_o       (comm_issue_rs2_value),
+      .issue_rs3_rob_idx_i     (issue_comm_rs3_rob_idx),
+      .issue_rs3_ready_o       (comm_issue_rs3_ready),
+      .issue_rs3_value_o       (comm_issue_rs3_value),
       .issue_resume_o     (comm_issue_resume),
 
       .cdb_valid_i(cdb_others_valid),

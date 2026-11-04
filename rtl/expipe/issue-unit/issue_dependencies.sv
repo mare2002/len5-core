@@ -26,7 +26,10 @@ module issue_dependencies #(
     output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_o,
     output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs2_o,
     output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs3_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] dependency_stall_o
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] dependency_stall_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_bundle_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] rs2_bundle_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] rs3_bundle_o
 );
   import expipe_pkg::*;
 
@@ -125,6 +128,9 @@ module issue_dependencies #(
     end
 
     // Mask invalid consumers; CSR producers return at commit without a CDB wakeup.
+    assign rs1_bundle_o[i] = issue_valid_i[i] && rs1_producer_valid;
+    assign rs2_bundle_o[i] = issue_valid_i[i] && rs2_producer_valid;
+    assign rs3_bundle_o[i] = issue_valid_i[i] && rs3_producer_valid;
     assign dependency_stall_o[i] = issue_valid_i[i] && ((rs1_producer_valid && issue_csr_i[rs1_producer_idx]) || (rs2_producer_valid && issue_csr_i[rs2_producer_idx]) || (rs3_producer_valid && issue_csr_i[rs3_producer_idx]));
   end
 endmodule

@@ -36,21 +36,19 @@ module rob #(
     output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,  // available prefix, independent of requests
     input expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_data_i,
     output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_tail_idx_o,
-    input rob_idx_t issue_rs1_rob_idx_i,
-    input rob_idx_t issue_rs2_rob_idx_i,
-    input rob_idx_t issue_rs3_rob_idx_i,
-
-    // Operands forwarding logic
-    output logic                      opfwd_rs1_valid_o,
-    output logic                      opfwd_rs1_ready_o,
-    output logic [len5_pkg::XLEN-1:0] opfwd_rs1_value_o,
-    output logic                      opfwd_rs2_valid_o,
-    output logic                      opfwd_rs2_ready_o,
-    output logic [len5_pkg::XLEN-1:0] opfwd_rs2_value_o,
-    output logic                      opfwd_rs3_valid_o,
-    output logic                      opfwd_rs3_ready_o,
-    output logic [len5_pkg::XLEN-1:0] opfwd_rs3_value_o,
-
+    // Parallel operand lookups
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs1_valid_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs1_ready_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs1_value_o,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs2_valid_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs2_ready_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs2_value_o,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs3_valid_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs3_ready_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs3_value_o,
 
     // Store buffer
     input  rob_idx_t sb_mem_idx_i,   // executing store ROB index
@@ -315,15 +313,20 @@ module rob #(
   assign comm_valid_o = commit_valid;
   assign comm_data_o = comm_valid_in_order ? data[head_idx] :  data[work_idx] ;  // Give higher priority to in-order commit
   assign comm_idx_o = commit_idx;
-  assign opfwd_rs1_valid_o = data_valid[issue_rs1_rob_idx_i];
-  assign opfwd_rs1_ready_o = data[issue_rs1_rob_idx_i].res_ready;
-  assign opfwd_rs1_value_o = data[issue_rs1_rob_idx_i].res_value;
-  assign opfwd_rs2_valid_o = data_valid[issue_rs2_rob_idx_i];
-  assign opfwd_rs2_ready_o = data[issue_rs2_rob_idx_i].res_ready;
-  assign opfwd_rs2_value_o = data[issue_rs2_rob_idx_i].res_value;
-  assign opfwd_rs3_valid_o = data_valid[issue_rs3_rob_idx_i];
-  assign opfwd_rs3_ready_o = data[issue_rs3_rob_idx_i].res_ready;
-  assign opfwd_rs3_value_o = data[issue_rs3_rob_idx_i].res_value;
+  // Power-of-two ROB depth makes every encoded tag a valid array index.
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_lookup_lanes
+    assign opfwd_rs1_valid_o[i] = data_valid[issue_rs1_rob_idx_i[i]];
+    assign opfwd_rs1_ready_o[i] = data[issue_rs1_rob_idx_i[i]].res_ready;
+    assign opfwd_rs1_value_o[i] = data[issue_rs1_rob_idx_i[i]].res_value;
+
+    assign opfwd_rs2_valid_o[i] = data_valid[issue_rs2_rob_idx_i[i]];
+    assign opfwd_rs2_ready_o[i] = data[issue_rs2_rob_idx_i[i]].res_ready;
+    assign opfwd_rs2_value_o[i] = data[issue_rs2_rob_idx_i[i]].res_value;
+
+    assign opfwd_rs3_valid_o[i] = data_valid[issue_rs3_rob_idx_i[i]];
+    assign opfwd_rs3_ready_o[i] = data[issue_rs3_rob_idx_i[i]].res_ready;
+    assign opfwd_rs3_value_o[i] = data[issue_rs3_rob_idx_i[i]].res_value;
+  end
 
   // ----------
   // ASSERTIONS
