@@ -140,7 +140,7 @@ module tb_with_l2cemu #(
   // LEN5 Datapath
   // --------------
 
-  len5_datapath #(.Len5Cfg(Len5Cfg)) i_len5_datapath (
+  len5_top #(.Len5Cfg(Len5Cfg)) i_len5_datapath (
     .clk_i              (clk),
     .rst_ni            (rst_n),
     .l2c_l2arb_req_rdy_i(l2c_l2arb_req_rdy),

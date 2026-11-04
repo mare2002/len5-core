@@ -443,7 +443,7 @@ module tb_bare #(
 
   // LEN5 BAREMETAL DATAPATH
   // -----------------------
-  len5_datapath #(
+  len5_top #(
       .Len5Cfg(Len5Cfg)
   ) i_len5_datapath (
       .clk_i                     (clk_i),

@@ -22,6 +22,7 @@ package len5_config_pkg;
     SV39,
     SV48
   } boot_mode_t;
+
   typedef struct packed {
     boot_mode_t BOOT_VM_MODE;  // BARE|SV39|SV48
 

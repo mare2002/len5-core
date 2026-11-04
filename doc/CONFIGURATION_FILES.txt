@@ -72,7 +72,7 @@ rtl/frontend/gshare.sv
 rtl/frontend/instr_mixer.sv
 rtl/frontend/pc_gen.sv
 rtl/frontend/ras.sv
-rtl/len5_datapath.sv
+rtl/len5_top.sv
 rtl/misc/common-waivers.vlt
 rtl/misc/datapath-waivers.vlt
 rtl/misc/expipe-waivers.vlt

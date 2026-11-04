@@ -140,7 +140,7 @@ targets:
     - rtl-bare
     - bare_tb ? (rtl-bare-tb)
     - tool_verilator ? (verilator-waivers)
-    toplevel: len5_datapath
+    toplevel: len5_top
 
   # RTL simulation
   sim: &sim
@@ -311,7 +311,7 @@ targets:
     filesets:
     - rtl-bare
     - rtl-bare-tb
-    toplevel: len5_datapath
+    toplevel: len5_top
     description: Format source files using verible-verilog-format
     default_tool: veribleformat
     tools:
@@ -335,7 +335,7 @@ targets:
     filesets:
     - rtl-bare
     - rtl-bare-tb
-    toplevel: len5_datapath
+    toplevel: len5_top
     description: Perform static analysis using Verible
     default_tool: veriblelint
     tools:
