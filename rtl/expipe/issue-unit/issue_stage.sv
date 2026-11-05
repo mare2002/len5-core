@@ -73,20 +73,21 @@ module issue_stage #(
     output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs2_idx_o,  // RF address of the second operand
     output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs3_idx_o,  // RF address of the third operand
 
-    // Execution pipeline
-    input logic [Len5Cfg.MAX_EU_N-1:0] ex_ready_i,  // ready signal from each reservation station
-    input logic ex_mis_i,  // misprediction from the branch unit
-    output logic [Len5Cfg.MAX_EU_N-1:0] ex_valid_o,  // valid signal to each reservation station
-    output expipe_pkg::eu_ctl_t ex_eu_ctl_o,  // controls for the associated EU
-    output logic [csr_pkg::FCSR_FRM_LEN-1:0] ex_frm_o,  // rounding mode for the FPU
-    output op_data_t ex_rs1_o,
-    output op_data_t ex_rs2_o,
-    output op_data_t ex_rs3_o,  //TODO: include this as an input in the exe stage and manage it
-    output logic [len5_pkg::XLEN-1:0] ex_imm_value_o,  // the value of the immediate field (for st and branches)
-    output rob_idx_t ex_rob_idx_o,  // the location of the ROB assigned to the instruction
-    output logic [len5_pkg::XLEN-1:0] ex_curr_pc_o,  // the PC of the current issuing instr (branches only)
-    output logic [len5_pkg::XLEN-1:0] ex_pred_target_o,  // predicted target of the current issuing branch instr
-    output logic ex_pred_taken_o,  // predicted taken bit of the current issuing branch instr
+    // Execution pipeline: per-RS insertion capacity and per-lane payloads.
+    input logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] ex_ready_i,
+    input logic ex_mis_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_valid_o,
+    output expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_assigned_eu_o,
+    output expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_eu_ctl_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] ex_frm_o,
+    output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs1_o,
+    output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs2_o,
+    output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs3_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_imm_value_o,
+    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rob_idx_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_curr_pc_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_pred_target_o,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_pred_taken_o,
 
     // Commit stage
     input logic comm_ready_i,  // the ROB has an empty entry available
@@ -172,11 +173,7 @@ module issue_stage #(
   logic                                cu_il_ex_valid;
   logic                                il_cu_ex_ready;
 
-  // CU <--> execution stage
-  logic         [Len5Cfg.MAX_EU_N-1:0] ex_valid;
-
   // Operand fetch
-  rob_idx_t rs1_rob_idx, rs2_rob_idx, rs3_rob_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_grant, ireg_valid;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] operand_csr, dependency_stall_unused;
   issue_dispatch_t [Len5Cfg.ISSUE_WIDTH-1:0] operand_dispatch;
@@ -189,10 +186,10 @@ module issue_stage #(
   op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_resolved, rs2_resolved, rs3_resolved;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_bundle, rs2_bundle, rs3_bundle;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_fwd_en, rs2_fwd_en, rs3_fwd_en;
-  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_forwarded_unused, rs2_forwarded_unused, rs3_forwarded_unused;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_forwarded, rs2_forwarded, rs3_forwarded;
   logic unused_int_regstat_valid, unused_fp_regstat_valid;
-  logic rs1_ready, rs2_ready, rs3_ready;
-  logic [XLEN-1:0] rs1_value, rs2_value, rs3_value;
+  logic rs1_ready;
+  logic [XLEN-1:0] rs1_value;
 
   // -------
   // MODULES
@@ -404,7 +401,7 @@ module issue_stage #(
   // ISSUE CU
   // --------
   // Handshaking signals arbiter
-  assign il_cu_ex_ready = ex_ready_i[ireg_data_out_unused.assigned_eu] | ireg_data_out_unused.skip_eu;
+  assign il_cu_ex_ready = ex_ready_i[ireg_data_out_unused.assigned_eu][0] || ireg_data_out_unused.skip_eu;
 
   // CU
   issue_cu u_issue_cu (
@@ -430,12 +427,6 @@ module issue_stage #(
       .comm_valid_o       (comm_valid_o),
       .comm_resume_i      (comm_resume_i)
   );
-
-  // Execution stage valid encoding
-  always_comb begin : ex_valid_enc
-    foreach (ex_valid[i]) ex_valid[i] = 1'b0;
-    ex_valid[ireg_data_out_unused.assigned_eu] = cu_il_ex_valid;
-  end
 
   // OPERANDS FETCH
   // --------------
@@ -598,10 +589,10 @@ module issue_stage #(
     assign rs1_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs1_resolved[i].ready && !rs1_bundle[i];
 
     always_comb begin : forward_rs1
-      rs1_forwarded_unused[i] = rs1_resolved[i];
+      rs1_forwarded[i] = rs1_resolved[i];
       if (rs1_fwd_en[i]) begin
-        rs1_forwarded_unused[i].ready = comm_rs1_ready_i[i];
-        rs1_forwarded_unused[i].value = comm_rs1_ready_i[i] ? comm_rs1_value_i[i] : '0;
+        rs1_forwarded[i].ready = comm_rs1_ready_i[i];
+        rs1_forwarded[i].value = comm_rs1_ready_i[i] ? comm_rs1_value_i[i] : '0;
       end
     end
 
@@ -609,10 +600,10 @@ module issue_stage #(
     assign rs2_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs2_resolved[i].ready && !rs2_bundle[i];
 
     always_comb begin : forward_rs2
-      rs2_forwarded_unused[i] = rs2_resolved[i];
+      rs2_forwarded[i] = rs2_resolved[i];
       if (rs2_fwd_en[i]) begin
-        rs2_forwarded_unused[i].ready = comm_rs2_ready_i[i];
-        rs2_forwarded_unused[i].value = comm_rs2_ready_i[i] ? comm_rs2_value_i[i] : '0;
+        rs2_forwarded[i].ready = comm_rs2_ready_i[i];
+        rs2_forwarded[i].value = comm_rs2_ready_i[i] ? comm_rs2_value_i[i] : '0;
       end
     end
 
@@ -620,27 +611,17 @@ module issue_stage #(
     assign rs3_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs3_resolved[i].ready && !rs3_bundle[i];
 
     always_comb begin : forward_rs3
-      rs3_forwarded_unused[i] = rs3_resolved[i];
+      rs3_forwarded[i] = rs3_resolved[i];
       if (rs3_fwd_en[i]) begin
-        rs3_forwarded_unused[i].ready = comm_rs3_ready_i[i];
-        rs3_forwarded_unused[i].value = comm_rs3_ready_i[i] ? comm_rs3_value_i[i] : '0;
+        rs3_forwarded[i].ready = comm_rs3_ready_i[i];
+        rs3_forwarded[i].value = comm_rs3_ready_i[i] ? comm_rs3_value_i[i] : '0;
       end
     end
 
   end
 
-  assign rs1_ready = rs1_forwarded_unused[0].ready;
-  assign rs1_value = rs1_forwarded_unused[0].value;
-  assign rs1_rob_idx = (ireg_data_out_unused.rs1_sel == RS1_SEL_FP) ?
-      fp_regstat_rs1_rob_idx_i[0] : int_regstat_rs1_rob_idx_i[0];
-  assign rs2_ready = rs2_forwarded_unused[0].ready;
-  assign rs2_value = rs2_forwarded_unused[0].value;
-  assign rs2_rob_idx = (ireg_data_out_unused.rs2_sel == RS2_SEL_FP) ?
-      fp_regstat_rs2_rob_idx_i[0] : int_regstat_rs2_rob_idx_i[0];
-  assign rs3_ready = rs3_forwarded_unused[0].ready;
-  assign rs3_value = rs3_forwarded_unused[0].value;
-  assign rs3_rob_idx = fp_regstat_rs3_rob_idx_i[0];
-
+  assign rs1_ready = rs1_forwarded[0].ready;
+  assign rs1_value = rs1_forwarded[0].value;
   // -----------------
   // OUTPUT EVALUATION
   // -----------------
@@ -648,24 +629,21 @@ module issue_stage #(
   // Fetch stage
   assign fetch_mis_flush_o         = cu_mis_flush;
 
-  // Data to the execution pipeline
-  assign ex_valid_o                = ex_valid;
-  assign ex_eu_ctl_o               = ireg_data_out_unused.eu_ctl;
-  assign ex_frm_o                  = ireg_data_out_unused.frm;
-  assign ex_rs1_o.ready            = rs1_ready;
-  assign ex_rs1_o.rob_idx          = rs1_rob_idx;
-  assign ex_rs1_o.value            = rs1_value;
-  assign ex_rs2_o.ready            = rs2_ready;
-  assign ex_rs2_o.rob_idx          = rs2_rob_idx;
-  assign ex_rs2_o.value            = rs2_value;
-  assign ex_rs3_o.ready            = rs3_ready;
-  assign ex_rs3_o.rob_idx          = rs3_rob_idx;
-  assign ex_rs3_o.value            = rs3_value;
-  assign ex_imm_value_o            = ireg_data_out_unused.imm_value;
-  assign ex_rob_idx_o              = comm_tail_idx_i[0];
-  assign ex_curr_pc_o              = ireg_data_out_unused.curr_pc;
-  assign ex_pred_target_o          = ireg_data_out_unused.pred_target;
-  assign ex_pred_taken_o           = ireg_data_out_unused.pred_taken;
+  // Only lane zero is dispatched until the ordered multi-lane controller is added.
+  assign ex_valid_o = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, cu_il_ex_valid};
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_dispatch_data
+    assign ex_assigned_eu_o[i] = ireg_data_q[i].assigned_eu;
+    assign ex_eu_ctl_o[i] = ireg_data_q[i].eu_ctl;
+    assign ex_frm_o[i] = ireg_data_q[i].frm;
+    assign ex_rs1_o[i] = rs1_forwarded[i];
+    assign ex_rs2_o[i] = rs2_forwarded[i];
+    assign ex_rs3_o[i] = rs3_forwarded[i];
+    assign ex_imm_value_o[i] = ireg_data_q[i].imm_value;
+    assign ex_rob_idx_o[i] = comm_tail_idx_i[i];
+    assign ex_curr_pc_o[i] = ireg_data_q[i].curr_pc;
+    assign ex_pred_target_o[i] = ireg_data_q[i].pred_target;
+    assign ex_pred_taken_o[i] = ireg_data_q[i].pred_taken;
+  end
 
   // Data to commit stage
   assign comm_data_o.instruction   = ireg_data_out_unused.instr;

@@ -24,6 +24,7 @@ filesets:
     - common/one_hot_shift_reg.sv
     - common/prio_2way_arbiter.sv
     - common/prio_enc.sv
+    - common/prio_enc_multi.sv
     - common/rr_arbiter.sv
     - common/sign_extender.sv
     - common/spill_cell_cu.sv
@@ -42,6 +43,7 @@ filesets:
     - polito:len5:packages
     files:
     - common/prio_enc.sv
+    - common/prio_enc_multi.sv
     file_type: systemVerilogSource
   fetch-memory-rtl:
     depend:

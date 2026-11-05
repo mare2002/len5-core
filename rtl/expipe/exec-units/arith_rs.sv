@@ -31,13 +31,13 @@ module arith_rs #(
     input logic flush_i,
 
 
-    // Issue Stage
-    input  logic                      issue_valid_i,
-    output logic                      issue_ready_o,
-    input  logic     [EU_CTL_LEN-1:0] issue_eu_ctl_i,
-    input  op_data_t                  issue_rs1_i,
-    input  op_data_t                  issue_rs2_i,
-    input  rob_idx_t                  issue_dest_rob_idx_i,
+    // Ordered insertion prefix; readiness reports the available free-entry prefix.
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][EU_CTL_LEN-1:0] issue_eu_ctl_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
 
     // CDB
     input  logic      cdb_ready_i,
@@ -97,12 +97,9 @@ module arith_rs #(
   } arith_state_t;
 
   // Arithmetic unit operations
-  typedef enum logic [3:0] {
+  typedef enum logic [2:0] {
     ARITH_OP_NONE,
     ARITH_OP_INSERT,
-    ARITH_OP_INSERT_RS12,
-    ARITH_OP_INSERT_RS1,
-    ARITH_OP_INSERT_RS2,
     ARITH_OP_SAVE_RS12,
     ARITH_OP_SAVE_RS1,
     ARITH_OP_SAVE_RS2,
@@ -112,25 +109,32 @@ module arith_rs #(
   // INTERNAL SIGNALS
   // ----------------
   // New, execution, and CDB write pointers
-  logic [RsIdxLen-1:0] new_idx, ex_idx, cdb_idx;
-  logic [DEPTH-1:0] ready_ex, ready_cdb;
+  logic [RsIdxLen-1:0] ex_idx, cdb_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][RsIdxLen-1:0] new_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] alloc_valid, issue_accept;
+  logic [DEPTH-1:0][EU_CTL_LEN-1:0] insert_eu_ctl;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_fwd, issue_rs2_fwd;
+  op_data_t [DEPTH-1:0] insert_rs1;
+  op_data_t [DEPTH-1:0] insert_rs2;
+  rob_idx_t [DEPTH-1:0] insert_dest_rob_idx;
+  logic [DEPTH-1:0] empty, ready_ex, ready_cdb;
 
   // Arithmetic reservation station data
   arith_rs_data_t [DEPTH-1:0] data;
   arith_state_t [DEPTH-1:0] curr_state, next_state;
 
   // Reservation station control
-  logic insert, remove, ex_accepted, save_res;
+  logic [DEPTH-1:0] insert;
+  logic remove, ex_accepted, save_res;
   logic [DEPTH-1:0] fwd_rs1_eu, fwd_rs2_eu;
   logic [DEPTH-1:0] fwd_rs1_cdb, fwd_rs2_cdb;
   logic [DEPTH-1:0] fwd_rs1, fwd_rs2;
-  logic insert_fwd_rs1, insert_fwd_rs2;
   arith_op_t [DEPTH-1:0] arith_op;
 
   // Ready signals for the selectors
   always_comb begin : p_enc_signals
     foreach (curr_state[i]) begin
-      //empty[i]     = curr_state[i] == ARITH_S_EMPTY;
+      empty[i]     = curr_state[i] == ARITH_S_EMPTY;
       ready_ex[i]  = curr_state[i] == ARITH_S_EX_REQ;
       ready_cdb[i] = curr_state[i] == ARITH_S_COMPLETED;
     end
@@ -141,15 +145,50 @@ module arith_rs #(
   // -------------------------------------------
 
   // Control signals
-  assign insert      = issue_valid_i & issue_ready_o;
+  for (genvar k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_accept
+    assign issue_accept[k] = issue_valid_i[k] && issue_ready_o[k];
+  end
+
+  // Ready issue operands retain priority over the local EU result.
+  always_comb begin : p_insert_fwd
+    issue_rs1_fwd = issue_rs1_i;
+    issue_rs2_fwd = issue_rs2_i;
+    foreach (issue_rs1_fwd[k]) begin
+      if (!issue_rs1_i[k].ready && eu_valid_i && eu_rob_idx_i == issue_rs1_i[k].rob_idx) begin
+        issue_rs1_fwd[k].ready = 1'b1;
+        issue_rs1_fwd[k].value = eu_result_i;
+      end
+      if (!issue_rs2_i[k].ready && eu_valid_i && eu_rob_idx_i == issue_rs2_i[k].rob_idx) begin
+        issue_rs2_fwd[k].ready = 1'b1;
+        issue_rs2_fwd[k].value = eu_result_i;
+      end
+    end
+  end
+
+  always_comb begin : gen_insert
+    insert = '0;
+    insert_eu_ctl = '0;
+    insert_rs1 = '0;
+    insert_rs2 = '0;
+    insert_dest_rob_idx = '0;
+
+    // Unused encoder outputs may repeat a valid entry's index.
+    foreach (new_idx[k]) begin
+      if (alloc_valid[k]) begin
+        insert[new_idx[k]] = issue_accept[k];
+        insert_eu_ctl[new_idx[k]] = issue_eu_ctl_i[k];
+        insert_rs1[new_idx[k]] = issue_rs1_fwd[k];
+        insert_rs2[new_idx[k]] = issue_rs2_fwd[k];
+        insert_dest_rob_idx[new_idx[k]] = issue_dest_rob_idx_i[k];
+      end
+    end
+  end
   assign remove      = cdb_valid_o & cdb_ready_i;
   assign ex_accepted = eu_valid_o & eu_ready_i;
   assign save_res    = eu_valid_i & eu_ready_o;
 
   // Forward operands flags
   always_comb begin : p_fwd_rs
-    insert_fwd_rs1 = eu_valid_i & (eu_rob_idx_i == issue_rs1_i.rob_idx);
-    insert_fwd_rs2 = eu_valid_i & (eu_rob_idx_i == issue_rs2_i.rob_idx);
     foreach (data[i]) begin
       fwd_rs1_eu[i]  = eu_valid_i & (eu_rob_idx_i == data[i].rs1_rob_idx);
       fwd_rs2_eu[i]  = eu_valid_i & (eu_rob_idx_i == data[i].rs2_rob_idx);
@@ -169,35 +208,14 @@ module arith_rs #(
     foreach (curr_state[i]) begin
       unique case (curr_state[i])
         ARITH_S_EMPTY: begin  // insert a new instruction
-          if (insert && new_idx == i[RsIdxLen-1:0]) begin
-            if (issue_rs1_i.ready && issue_rs2_i.ready) begin
-              next_state[i] = ARITH_S_EX_REQ;
-              arith_op[i]   = ARITH_OP_INSERT;
-            end else if (!issue_rs1_i.ready && issue_rs2_i.ready) begin
-              if (insert_fwd_rs1) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS1;
-              end else begin
-                next_state[i] = ARITH_S_RS1_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end else if (issue_rs1_i.ready && !issue_rs2_i.ready) begin
-              if (insert_fwd_rs2) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS2;
-              end else begin
-                next_state[i] = ARITH_S_RS2_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end else begin
-              if (insert_fwd_rs1 & insert_fwd_rs2) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS12;
-              end else begin
-                next_state[i] = ARITH_S_RS12_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end
+          if (insert[i]) begin
+            arith_op[i] = ARITH_OP_INSERT;
+            case ({insert_rs1[i].ready, insert_rs2[i].ready})
+              2'b11: next_state[i] = ARITH_S_EX_REQ;
+              2'b01: next_state[i] = ARITH_S_RS1_PENDING;
+              2'b10: next_state[i] = ARITH_S_RS2_PENDING;
+              default: next_state[i] = ARITH_S_RS12_PENDING;
+            endcase
           end else next_state[i] = ARITH_S_EMPTY;
         end
         ARITH_S_RS12_PENDING: begin  // save rs1 and/or rs2 value from CDB
@@ -266,36 +284,12 @@ module arith_rs #(
       foreach (arith_op[i]) begin
         unique case (arith_op[i])
           ARITH_OP_INSERT: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS12: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= eu_result_i;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= eu_result_i;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS1: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= eu_result_i;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS2: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= eu_result_i;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
+            data[i].eu_ctl       <= insert_eu_ctl[i];
+            data[i].rs1_rob_idx  <= insert_rs1[i].rob_idx;
+            data[i].rs1_value    <= insert_rs1[i].value;
+            data[i].rs2_rob_idx  <= insert_rs2[i].rob_idx;
+            data[i].rs2_value    <= insert_rs2[i].value;
+            data[i].dest_rob_idx <= insert_dest_rob_idx[i];
           end
           ARITH_OP_SAVE_RS12: begin
             if (fwd_rs1_eu[i]) begin  // fetch rs1
@@ -339,7 +333,7 @@ module arith_rs #(
   // -----------------
 
   // Issue Stage
-  assign issue_ready_o            = curr_state[new_idx] == ARITH_S_EMPTY;
+  assign issue_ready_o = alloc_valid & {Len5Cfg.ISSUE_WIDTH{!flush_i}};
 
   // CDB
   assign cdb_data_o.rob_idx       = data[cdb_idx].dest_rob_idx;
@@ -360,25 +354,15 @@ module arith_rs #(
   // ---------------
   // NOTE: round-robin arbiters mitigate starvation at increased area cost
 
-  // New entry
-  modn_counter #(
-      .N(DEPTH)
+  // Free-entry allocation; execution and CDB selection below are unchanged.
+  prio_enc_multi #(
+      .N(DEPTH),
+      .NUM_RESULTS(Len5Cfg.ISSUE_WIDTH)
   ) new_sel (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (insert),
-      .clr_i  (flush_i),
-      .count_o(new_idx),
-      .tc_o   ()          // not needed
+      .lines_i(empty),
+      .enc_o(new_idx),
+      .valid_o(alloc_valid)
   );
-
-  // prio_enc #(
-  //   .N(DEPTH)
-  // ) new_sel (
-  //   .lines_i(empty),
-  //   .enc_o  (new_idx),
-  //   .valid_o()
-  // );
 
   generate
     if (RR_ARBITER) begin : gen_rr_arbiters

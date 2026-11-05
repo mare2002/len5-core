@@ -28,15 +28,15 @@ module arith_rs_fpu #(
     input logic flush_i,
 
 
-    // Issue Stage
-    input  logic                                 issue_valid_i,
-    output logic                                 issue_ready_o,
-    input  logic     [           EU_CTL_LEN-1:0] issue_eu_ctl_i,
-    input  logic     [csr_pkg::FCSR_FRM_LEN-1:0] issue_frm_i,
-    input  op_data_t                             issue_rs1_i,
-    input  op_data_t                             issue_rs2_i,
-    input  op_data_t                             issue_rs3_i,
-    input  rob_idx_t                             issue_dest_rob_idx_i,
+    // Ordered insertion prefix; readiness reports the available free-entry prefix.
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][EU_CTL_LEN-1:0] issue_eu_ctl_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] issue_frm_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_i,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
 
     // CDB
     input  logic      cdb_ready_i,
@@ -104,16 +104,9 @@ module arith_rs_fpu #(
   } arith_state_t;
 
   // Arithmetic unit operations
-  typedef enum logic [4:0] {
+  typedef enum logic [3:0] {
     ARITH_OP_NONE,
-    ARITH_OP_INSERT,        // all three ready
-    ARITH_OP_INSERT_RS12,   // forward rs1-2, rs3 ready
-    ARITH_OP_INSERT_RS13,   // forward rs1-3, rs2 ready
-    ARITH_OP_INSERT_RS23,   // forward rs2-3, rs1 ready
-    ARITH_OP_INSERT_RS123,  //TODO: check if 123 requred
-    ARITH_OP_INSERT_RS1,    // rs2-3 ready, rs1 forwarded
-    ARITH_OP_INSERT_RS2,    // rs1-3 ready, rs2 forwarded
-    ARITH_OP_INSERT_RS3,    // rs1-2 ready, rs3 forwarded
+    ARITH_OP_INSERT,
     ARITH_OP_SAVE_RS123,    // save rs1, rs2, rs3 values from CDB or EU
     ARITH_OP_SAVE_RS12,
     ARITH_OP_SAVE_RS13,
@@ -127,7 +120,16 @@ module arith_rs_fpu #(
   // INTERNAL SIGNALS
   // ----------------
   // New, execution, and CDB write pointers
-  logic [RsIdxLen-1:0] new_idx, ex_idx, cdb_idx;
+  logic [RsIdxLen-1:0] ex_idx, cdb_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][RsIdxLen-1:0] new_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] alloc_valid, issue_accept;
+  logic [DEPTH-1:0][EU_CTL_LEN-1:0] insert_eu_ctl;
+  logic [DEPTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] insert_frm;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_fwd, issue_rs2_fwd, issue_rs3_fwd;
+  op_data_t [DEPTH-1:0] insert_rs1;
+  op_data_t [DEPTH-1:0] insert_rs2;
+  op_data_t [DEPTH-1:0] insert_rs3;
+  rob_idx_t [DEPTH-1:0] insert_dest_rob_idx;
   logic [DEPTH-1:0] empty, ready_ex, ready_cdb;
 
   // Arithmetic reservation station data
@@ -135,11 +137,11 @@ module arith_rs_fpu #(
   arith_state_t [DEPTH-1:0] curr_state, next_state;
 
   // Reservation station control
-  logic insert, remove, ex_accepted, save_res;
+  logic [DEPTH-1:0] insert;
+  logic remove, ex_accepted, save_res;
   logic [DEPTH-1:0] fwd_rs1_eu, fwd_rs2_eu, fwd_rs3_eu;
   logic [DEPTH-1:0] fwd_rs1_cdb, fwd_rs2_cdb, fwd_rs3_cdb;
   logic [DEPTH-1:0] fwd_rs1, fwd_rs2, fwd_rs3;
-  logic insert_fwd_rs1, insert_fwd_rs2, insert_fwd_rs3;
   arith_op_t [DEPTH-1:0] arith_op;
 
   // Ready signals for the selectors
@@ -156,16 +158,59 @@ module arith_rs_fpu #(
   // -------------------------------------------
 
   // Control signals
-  assign insert      = issue_valid_i & issue_ready_o;
+  for (genvar k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_accept
+    assign issue_accept[k] = issue_valid_i[k] && issue_ready_o[k];
+  end
+
+  // Ready issue operands retain priority over the local EU result.
+  always_comb begin : p_insert_fwd
+    issue_rs1_fwd = issue_rs1_i;
+    issue_rs2_fwd = issue_rs2_i;
+    issue_rs3_fwd = issue_rs3_i;
+    foreach (issue_rs1_fwd[k]) begin
+      if (!issue_rs1_i[k].ready && eu_valid_i && eu_rob_idx_i == issue_rs1_i[k].rob_idx) begin
+        issue_rs1_fwd[k].ready = 1'b1;
+        issue_rs1_fwd[k].value = eu_result_i;
+      end
+      if (!issue_rs2_i[k].ready && eu_valid_i && eu_rob_idx_i == issue_rs2_i[k].rob_idx) begin
+        issue_rs2_fwd[k].ready = 1'b1;
+        issue_rs2_fwd[k].value = eu_result_i;
+      end
+      if (!issue_rs3_i[k].ready && eu_valid_i && eu_rob_idx_i == issue_rs3_i[k].rob_idx) begin
+        issue_rs3_fwd[k].ready = 1'b1;
+        issue_rs3_fwd[k].value = eu_result_i;
+      end
+    end
+  end
+
+  always_comb begin : gen_insert
+    insert = '0;
+    insert_eu_ctl = '0;
+    insert_frm = '0;
+    insert_rs1 = '0;
+    insert_rs2 = '0;
+    insert_rs3 = '0;
+    insert_dest_rob_idx = '0;
+
+    // Unused encoder outputs may repeat a valid entry's index.
+    foreach (new_idx[k]) begin
+      if (alloc_valid[k]) begin
+        insert[new_idx[k]] = issue_accept[k];
+        insert_eu_ctl[new_idx[k]] = issue_eu_ctl_i[k];
+        insert_frm[new_idx[k]] = issue_frm_i[k];
+        insert_rs1[new_idx[k]] = issue_rs1_fwd[k];
+        insert_rs2[new_idx[k]] = issue_rs2_fwd[k];
+        insert_rs3[new_idx[k]] = issue_rs3_fwd[k];
+        insert_dest_rob_idx[new_idx[k]] = issue_dest_rob_idx_i[k];
+      end
+    end
+  end
   assign remove      = cdb_valid_o & cdb_ready_i;
   assign ex_accepted = eu_valid_o & eu_ready_i;
   assign save_res    = eu_valid_i & eu_ready_o;
 
   // Forward operands flags
   always_comb begin : p_fwd_rs
-    insert_fwd_rs1 = eu_valid_i & (eu_rob_idx_i == issue_rs1_i.rob_idx);
-    insert_fwd_rs2 = eu_valid_i & (eu_rob_idx_i == issue_rs2_i.rob_idx);
-    insert_fwd_rs3 = eu_valid_i & (eu_rob_idx_i == issue_rs3_i.rob_idx);
     foreach (data[i]) begin
       fwd_rs1_eu[i]  = eu_valid_i & (eu_rob_idx_i == data[i].rs1_rob_idx);
       fwd_rs2_eu[i]  = eu_valid_i & (eu_rob_idx_i == data[i].rs2_rob_idx);
@@ -188,85 +233,18 @@ module arith_rs_fpu #(
     foreach (curr_state[i]) begin
       unique case (curr_state[i])
         ARITH_S_EMPTY: begin  // insert a new instruction
-          if (insert && new_idx == i[RsIdxLen-1:0]) begin
-            if (issue_rs1_i.ready && issue_rs2_i.ready && issue_rs3_i.ready) begin
-              next_state[i] = ARITH_S_EX_REQ;
-              arith_op[i]   = ARITH_OP_INSERT;
-            end else if (!issue_rs1_i.ready && issue_rs2_i.ready && issue_rs3_i.ready) begin
-              if (insert_fwd_rs1) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS1;
-              end else begin
-                next_state[i] = ARITH_S_RS1_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end else if (issue_rs1_i.ready && !issue_rs2_i.ready && issue_rs3_i.ready) begin
-              if (insert_fwd_rs2) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS2;
-              end else begin
-                next_state[i] = ARITH_S_RS2_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end else if (issue_rs1_i.ready && issue_rs2_i.ready && !issue_rs3_i.ready) begin
-              if (insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS3;  // TODO: create state
-              end else begin
-                next_state[i] = ARITH_S_RS3_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end else if (issue_rs1_i.ready && !issue_rs2_i.ready && !issue_rs3_i.ready) begin //rs3 ready
-              if (insert_fwd_rs2 && insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS23;
-              end else if (insert_fwd_rs2 && !insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_RS3_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT_RS2;
-              end else if (!insert_fwd_rs2 && insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_RS2_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT_RS3;
-              end else begin
-                next_state[i] = ARITH_S_RS23_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end else if (!issue_rs1_i.ready && issue_rs2_i.ready && !issue_rs3_i.ready) begin //rs2 ready
-              if (insert_fwd_rs1 && insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS13;
-              end else if (insert_fwd_rs1 && !insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_RS3_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT_RS1;
-              end else if (!insert_fwd_rs1 && insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_RS1_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT_RS3;
-              end else begin
-                next_state[i] = ARITH_S_RS13_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end else if (!issue_rs1_i.ready && !issue_rs2_i.ready && issue_rs3_i.ready) begin
-              if (insert_fwd_rs1 && insert_fwd_rs2) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS12;
-              end else if (insert_fwd_rs1 && !insert_fwd_rs2) begin
-                next_state[i] = ARITH_S_RS2_PENDING;  //wait for rs2, then start execution
-                arith_op[i]   = ARITH_OP_INSERT_RS1; // meanwhile, forward rs2 and save rs3 value, rs2 will be updated when ready
-              end else if (!insert_fwd_rs1 && insert_fwd_rs2) begin
-                next_state[i] = ARITH_S_RS1_PENDING;
-                arith_op[i] = ARITH_OP_INSERT_RS2;  // TODO: check this combination of states works
-              end else begin
-                next_state[i] = ARITH_S_RS12_PENDING;
-                arith_op[i]   = ARITH_OP_INSERT;  // TODO: check this combination of states works
-              end
-            end else begin  // none of the operands is ready
-              if (insert_fwd_rs1 & insert_fwd_rs2 & insert_fwd_rs3) begin
-                next_state[i] = ARITH_S_EX_REQ;
-                arith_op[i]   = ARITH_OP_INSERT_RS123;
-              end else begin
-                next_state[i] = ARITH_S_RS123_PENDING;  // TODO:check
-                arith_op[i]   = ARITH_OP_INSERT;
-              end
-            end
+          if (insert[i]) begin
+            arith_op[i] = ARITH_OP_INSERT;
+            case ({insert_rs1[i].ready, insert_rs2[i].ready, insert_rs3[i].ready})
+              3'b111: next_state[i] = ARITH_S_EX_REQ;
+              3'b011: next_state[i] = ARITH_S_RS1_PENDING;
+              3'b101: next_state[i] = ARITH_S_RS2_PENDING;
+              3'b110: next_state[i] = ARITH_S_RS3_PENDING;
+              3'b001: next_state[i] = ARITH_S_RS12_PENDING;
+              3'b010: next_state[i] = ARITH_S_RS13_PENDING;
+              3'b100: next_state[i] = ARITH_S_RS23_PENDING;
+              default: next_state[i] = ARITH_S_RS123_PENDING;
+            endcase
           end else next_state[i] = ARITH_S_EMPTY;
         end
         ARITH_S_RS123_PENDING: begin  // save rs1 and/or rs2 and/or r3 value from CDB
@@ -389,92 +367,15 @@ module arith_rs_fpu #(
       foreach (arith_op[i]) begin
         unique case (arith_op[i])
           ARITH_OP_INSERT: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS12: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= eu_result_i;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= eu_result_i;
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS13: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= eu_result_i;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= eu_result_i;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS23: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= eu_result_i;
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= eu_result_i;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS123: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= eu_result_i;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= eu_result_i;
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= eu_result_i;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS1: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= eu_result_i;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS2: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= eu_result_i;
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= issue_rs3_i.value[XLEN-1:0];
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-          end
-          ARITH_OP_INSERT_RS3: begin
-            data[i].eu_ctl       <= issue_eu_ctl_i;
-            data[i].frm_value    <= issue_frm_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value[XLEN-1:0];
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value[XLEN-1:0];
-            data[i].rs3_rob_idx  <= issue_rs3_i.rob_idx;
-            data[i].rs3_value    <= eu_result_i;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
+            data[i].eu_ctl       <= insert_eu_ctl[i];
+            data[i].frm_value    <= insert_frm[i];
+            data[i].rs1_rob_idx  <= insert_rs1[i].rob_idx;
+            data[i].rs1_value    <= insert_rs1[i].value[XLEN-1:0];
+            data[i].rs2_rob_idx  <= insert_rs2[i].rob_idx;
+            data[i].rs2_value    <= insert_rs2[i].value[XLEN-1:0];
+            data[i].rs3_rob_idx  <= insert_rs3[i].rob_idx;
+            data[i].rs3_value    <= insert_rs3[i].value[XLEN-1:0];
+            data[i].dest_rob_idx <= insert_dest_rob_idx[i];
           end
           ARITH_OP_SAVE_RS123: begin
             if (fwd_rs1_eu[i]) begin  // fetch rs1
@@ -567,7 +468,7 @@ module arith_rs_fpu #(
   // -----------------
 
   // Issue Stage
-  assign issue_ready_o            = curr_state[new_idx] == ARITH_S_EMPTY;
+  assign issue_ready_o = alloc_valid & {Len5Cfg.ISSUE_WIDTH{!flush_i}};
 
   // CDB
   assign cdb_data_o.rob_idx       = data[cdb_idx].dest_rob_idx;
@@ -591,13 +492,14 @@ module arith_rs_fpu #(
   // ---------------
   // NOTE: round-robin arbiters mitigate starvation at increased area cost
 
-  // New entry
-  prio_enc #(
-      .N(DEPTH)
+  // Free-entry allocation; execution and CDB selection below are unchanged.
+  prio_enc_multi #(
+      .N(DEPTH),
+      .NUM_RESULTS(Len5Cfg.ISSUE_WIDTH)
   ) new_sel (
       .lines_i(empty),
-      .enc_o  (new_idx),
-      .valid_o()
+      .enc_o(new_idx),
+      .valid_o(alloc_valid)
   );
 
   generate

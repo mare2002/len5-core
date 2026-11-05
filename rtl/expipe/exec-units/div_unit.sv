@@ -25,12 +25,13 @@ module div_unit #(
     input  logic                 rst_ni,
     input  logic                 flush_i,
     // Issue stage
-    input  logic                 issue_valid_i,
-    output logic                 issue_ready_o,
-    input  expipe_pkg::div_ctl_t issue_eu_ctl_i,
-    input  op_data_t             issue_rs1_i,
-    input  op_data_t             issue_rs2_i,
-    input  rob_idx_t             issue_dest_rob_idx_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+    input expipe_pkg::div_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_eu_ctl_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
+
     // CDB
     input  logic                 cdb_ready_i,
     input  logic                 cdb_valid_i,           // to know if the CDB is carrying valid data
@@ -72,7 +73,7 @@ module div_unit #(
       .issue_eu_ctl_i      (issue_eu_ctl_i),
       .issue_rs1_i         (issue_rs1_i),
       .issue_rs2_i         (issue_rs2_i),
-      .issue_dest_rob_idx_i(issue_dest_rob_idx_i),
+      .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
       .cdb_ready_i         (cdb_ready_i),
       .cdb_valid_i         (cdb_valid_i),
       .cdb_valid_o         (cdb_valid_o),

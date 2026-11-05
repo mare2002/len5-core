@@ -162,19 +162,20 @@ module backend #(
 
   // Issue stage <--> execution units
   // --------------------------------
-  logic            [Len5Cfg.MAX_EU_N-1:0] ex_issue_ready;
-  logic                                   ex_issue_mis;
-  logic            [Len5Cfg.MAX_EU_N-1:0] il_ex_valid;
-  logic            [  MAX_EU_CTL_LEN-1:0] issue_ex_eu_ctl;
-  logic            [    FCSR_FRM_LEN-1:0] issue_ex_frm;
-  op_data_t                               issue_ex_rs1;
-  op_data_t                               issue_ex_rs2;
-  op_data_t                               issue_ex_rs3;
-  logic            [            XLEN-1:0] issue_ex_imm_value;
-  rob_idx_t                               issue_ex_rob_idx;
-  logic            [            XLEN-1:0] issue_ex_curr_pc;
-  logic            [            XLEN-1:0] issue_ex_pred_target;
-  logic                                   issue_ex_pred_taken;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] ex_issue_ready;
+  logic ex_issue_mis;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] il_ex_valid;
+  expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_assigned_eu;
+  expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_eu_ctl;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] issue_ex_frm;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_rs1;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_rs2;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_rs3;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_ex_imm_value;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_rob_idx;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_ex_curr_pc;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_ex_pred_target;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_pred_taken;
 
   // Issue stage <--> CSRs
   // ---------------------
@@ -297,16 +298,17 @@ module backend #(
       .ex_ready_i      (ex_issue_ready),
       .ex_mis_i        (ex_issue_mis),
       .ex_valid_o      (il_ex_valid),
-      .ex_eu_ctl_o     (issue_ex_eu_ctl),
-      .ex_frm_o        (issue_ex_frm),
-      .ex_rs1_o        (issue_ex_rs1),
-      .ex_rs2_o        (issue_ex_rs2),
-      .ex_rs3_o        (issue_ex_rs3),
-      .ex_imm_value_o  (issue_ex_imm_value),
-      .ex_rob_idx_o    (issue_ex_rob_idx),
-      .ex_curr_pc_o    (issue_ex_curr_pc),
-      .ex_pred_target_o(issue_ex_pred_target),
-      .ex_pred_taken_o (issue_ex_pred_taken),
+      .ex_assigned_eu_o    (issue_ex_assigned_eu),
+      .ex_eu_ctl_o         (issue_ex_eu_ctl),
+      .ex_frm_o            (issue_ex_frm),
+      .ex_rs1_o            (issue_ex_rs1),
+      .ex_rs2_o            (issue_ex_rs2),
+      .ex_rs3_o            (issue_ex_rs3),
+      .ex_imm_value_o      (issue_ex_imm_value),
+      .ex_rob_idx_o        (issue_ex_rob_idx),
+      .ex_curr_pc_o        (issue_ex_curr_pc),
+      .ex_pred_target_o    (issue_ex_pred_target),
+      .ex_pred_taken_o     (issue_ex_pred_taken),
 
       .comm_ready_i      (comm_issue_ready_unused[0]),
       .comm_valid_o      (issue_comm_valid[0]),
@@ -457,16 +459,17 @@ module backend #(
 
       .issue_valid_i      (il_ex_valid),
       .issue_ready_o      (ex_issue_ready),
-      .issue_eu_ctl_i     (issue_ex_eu_ctl),
-      .issue_frm_i        (issue_ex_frm),
-      .issue_rs1_i        (issue_ex_rs1),
-      .issue_rs2_i        (issue_ex_rs2),
-      .issue_rs3_i        (issue_ex_rs3),
-      .issue_imm_value_i  (issue_ex_imm_value),
-      .issue_rob_idx_i    (issue_ex_rob_idx),
-      .issue_curr_pc_i    (issue_ex_curr_pc),
-      .issue_pred_target_i(issue_ex_pred_target),
-      .issue_pred_taken_i (issue_ex_pred_taken),
+      .issue_assigned_eu_i (issue_ex_assigned_eu),
+      .issue_eu_ctl_i      (issue_ex_eu_ctl),
+      .issue_frm_i         (issue_ex_frm),
+      .issue_rs1_i         (issue_ex_rs1),
+      .issue_rs2_i         (issue_ex_rs2),
+      .issue_rs3_i         (issue_ex_rs3),
+      .issue_imm_value_i   (issue_ex_imm_value),
+      .issue_rob_idx_i     (issue_ex_rob_idx),
+      .issue_curr_pc_i     (issue_ex_curr_pc),
+      .issue_pred_target_i (issue_ex_pred_target),
+      .issue_pred_taken_i  (issue_ex_pred_taken),
       .issue_mis_o        (ex_issue_mis),
 
       .cdb_ready_i(cdb_ex_ready),

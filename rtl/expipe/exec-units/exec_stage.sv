@@ -33,19 +33,21 @@ module exec_stage #(
     output logic                                        fe_ret_confirm_o,
     output logic                   [len5_pkg::ALEN-1:0] fe_link_addr_o,
 
-    // ISSUE STAGE
-    input logic [Len5Cfg.MAX_EU_N-1:0] issue_valid_i,  // valid to each RS
-    output logic [Len5Cfg.MAX_EU_N-1:0] issue_ready_o,  // ready from each RS
-    input expipe_pkg::eu_ctl_t issue_eu_ctl_i,  // controls for the associated EU
-    input logic [csr_pkg::FCSR_FRM_LEN-1:0] issue_frm_i,  // rounding mode for the FPU
-    input op_data_t issue_rs1_i,  // rs1 value, ROB index and availability
-    input op_data_t issue_rs2_i,  // rs1 value, ROB index and availability
-    input op_data_t issue_rs3_i,  // rs3 value, ROB index and availability
-    input  logic     [len5_pkg::XLEN-1:0] issue_imm_value_i,              // the value of the immediate field (for st and branches)
-    input rob_idx_t issue_rob_idx_i,  // the location of the ROB assigned to the instruction
-    input logic [len5_pkg::XLEN-1:0] issue_curr_pc_i,  // the PC of the current issuing instr (branches only)
-    input  logic     [len5_pkg::XLEN-1:0] issue_pred_target_i,// predicted target of the current issuing instr (branches only)
-    input  logic                issue_pred_taken_i, // predicted taken bit of the current issuing instr (branches only)
+    // Issue valid lanes are granted instructions, ordered oldest to youngest.
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+    input expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_assigned_eu_i,
+    input expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_eu_ctl_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] issue_frm_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
+    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_imm_value_i,
+    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rob_idx_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_curr_pc_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_pred_target_i,
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_pred_taken_i,
+    // Each RS reports its available insertion prefix, independently of grants.
+    output logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
     output logic issue_mis_o,
 
     // COMMON DATA BUS (CDB)
@@ -96,6 +98,83 @@ module exec_stage #(
   import fetch_pkg::*;
   import memory_pkg::*;
 
+  localparam int unsigned IssueIdxLen = Len5Cfg.ISSUE_WIDTH > 1 ? $clog2(Len5Cfg.ISSUE_WIDTH) : 1;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_valid;
+  expipe_pkg::eu_ctl_t [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_eu_ctl;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] rs_frm;
+  op_data_t [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs1;
+  op_data_t [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs2;
+  op_data_t [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs3;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rs_imm_value;
+  rob_idx_t [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_rob_idx;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rs_curr_pc;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rs_pred_target;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_pred_taken;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] memory_lane, older_memory;
+  logic lb_ready, sb_ready, branch_ready;
+  expipe_pkg::ldst_width_t memory_type;
+  op_data_t memory_rs1;
+  op_data_t memory_rs2;
+  logic [len5_pkg::XLEN-1:0] memory_imm;
+  rob_idx_t memory_rob_idx;
+
+//%TODO remove when redoing the LSU(LOAD AND STORE UNIT)
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_memory_order
+    assign memory_lane[i] = issue_valid_i[i] &&
+        (issue_assigned_eu_i[i] inside {EU_LOAD_BUFFER, EU_STORE_BUFFER});
+    if (i == 0) begin : gen_first
+      assign older_memory[i] = 1'b0;
+    end else begin : gen_younger
+      assign older_memory[i] = |memory_lane[i-1:0];
+    end
+  end
+
+  // Pack each RS's granted lanes in program order. This is routing only;
+  // the issue controller must check the reported capacity before granting.
+  for (genvar u = 0; u < Len5Cfg.MAX_EU_N; u++) begin : gen_route
+    logic [Len5Cfg.ISSUE_WIDTH-1:0] request;
+    logic [Len5Cfg.ISSUE_WIDTH-1:0][IssueIdxLen-1:0] lane_idx;
+
+    for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_requests
+      assign request[i] = issue_valid_i[i] && !mis_flush_i && int'(issue_assigned_eu_i[i]) == u &&
+          (!memory_lane[i] || !older_memory[i]);
+    end
+
+    // Lane zero is oldest, so select the lowest matching lane indices first.
+    prio_enc_multi #(
+        .N(Len5Cfg.ISSUE_WIDTH),
+        .NUM_RESULTS(Len5Cfg.ISSUE_WIDTH),
+        .INV(1'b1)
+    ) u_lane_sel (
+        .lines_i(request),
+        .enc_o(lane_idx),
+        .valid_o(rs_valid[u])
+    );
+
+    for (genvar k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_payload
+      assign rs_eu_ctl[u][k] = issue_eu_ctl_i[lane_idx[k]];
+      assign rs_frm[u][k] = issue_frm_i[lane_idx[k]];
+      assign rs1[u][k] = issue_rs1_i[lane_idx[k]];
+      assign rs2[u][k] = issue_rs2_i[lane_idx[k]];
+      assign rs3[u][k] = issue_rs3_i[lane_idx[k]];
+      assign rs_imm_value[u][k] = issue_imm_value_i[lane_idx[k]];
+      assign rs_rob_idx[u][k] = issue_rob_idx_i[lane_idx[k]];
+      assign rs_curr_pc[u][k] = issue_curr_pc_i[lane_idx[k]];
+      assign rs_pred_target[u][k] = issue_pred_target_i[lane_idx[k]];
+      assign rs_pred_taken[u][k] = issue_pred_taken_i[lane_idx[k]];
+    end
+  end
+
+  // Loads and stores share one insertion slot: their dependency snapshots
+  // must not observe simultaneous insertion of another memory instruction.
+  assign issue_ready_o[EU_LOAD_BUFFER] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, lb_ready && !mis_flush_i};
+  assign issue_ready_o[EU_STORE_BUFFER] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, sb_ready && !mis_flush_i};
+  assign memory_type = rs_valid[EU_STORE_BUFFER][0] ? rs_eu_ctl[EU_STORE_BUFFER][0].lsu : rs_eu_ctl[EU_LOAD_BUFFER][0].lsu;
+  assign memory_rs1 = rs_valid[EU_STORE_BUFFER][0] ? rs1[EU_STORE_BUFFER][0] : rs1[EU_LOAD_BUFFER][0];
+  assign memory_rs2 = rs_valid[EU_STORE_BUFFER][0] ? rs2[EU_STORE_BUFFER][0] : rs2[EU_LOAD_BUFFER][0];
+  assign memory_imm = rs_valid[EU_STORE_BUFFER][0] ? rs_imm_value[EU_STORE_BUFFER][0] : rs_imm_value[EU_LOAD_BUFFER][0];
+  assign memory_rob_idx = rs_valid[EU_STORE_BUFFER][0] ? rs_rob_idx[EU_STORE_BUFFER][0] : rs_rob_idx[EU_LOAD_BUFFER][0];
+
   // ---------------
   // LOAD/STORE UNIT
   // ---------------
@@ -106,15 +185,15 @@ module exec_stage #(
       .rst_ni              (rst_ni),
       .mis_flush_i         (mis_flush_i),
       .except_flush_i      (except_flush_i),
-      .issue_lb_valid_i    (issue_valid_i[EU_LOAD_BUFFER]),
-      .issue_sb_valid_i    (issue_valid_i[EU_STORE_BUFFER]),
-      .issue_lb_ready_o    (issue_ready_o[EU_LOAD_BUFFER]),
-      .issue_sb_ready_o    (issue_ready_o[EU_STORE_BUFFER]),
-      .issue_type_i        (issue_eu_ctl_i.lsu),
-      .issue_rs1_i         (issue_rs1_i),
-      .issue_rs2_i         (issue_rs2_i),
-      .issue_imm_i         (issue_imm_value_i),
-      .issue_dest_rob_idx_i(issue_rob_idx_i),
+      .issue_lb_valid_i    (rs_valid[EU_LOAD_BUFFER][0]),
+      .issue_sb_valid_i    (rs_valid[EU_STORE_BUFFER][0]),
+      .issue_lb_ready_o    (lb_ready),
+      .issue_sb_ready_o    (sb_ready),
+      .issue_type_i        (memory_type),
+      .issue_rs1_i         (memory_rs1),
+      .issue_rs2_i         (memory_rs2),
+      .issue_imm_i         (memory_imm),
+      .issue_dest_rob_idx_i (memory_rob_idx),
       .comm_sb_mem_clear_i (comm_sb_mem_clear_i),
       .comm_sb_mem_idx_o   (comm_sb_mem_idx_o),
       .cdb_valid_i         (cdb_valid_i),
@@ -156,6 +235,8 @@ module exec_stage #(
   // -----------
   // BRANCH UNIT
   // -----------
+  assign issue_ready_o[EU_BRANCH_UNIT] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, branch_ready && !mis_flush_i};
+
   branch_unit #(
       .Len5Cfg(Len5Cfg)
   ) u_branch_unit (
@@ -169,16 +250,16 @@ module exec_stage #(
       .fe_call_confirm_o   (fe_call_confirm_o),
       .fe_ret_confirm_o    (fe_ret_confirm_o),
       .fe_link_addr_o      (fe_link_addr_o),
-      .issue_valid_i       (issue_valid_i[EU_BRANCH_UNIT]),
-      .issue_ready_o       (issue_ready_o[EU_BRANCH_UNIT]),
-      .issue_branch_type_i (issue_eu_ctl_i.bu),
-      .issue_rs1_i         (issue_rs1_i),
-      .issue_rs2_i         (issue_rs2_i),
-      .issue_imm_value_i   (issue_imm_value_i),
-      .issue_dest_rob_idx_i(issue_rob_idx_i),
-      .issue_curr_pc_i     (issue_curr_pc_i),
-      .issue_pred_target_i (issue_pred_target_i),
-      .issue_pred_taken_i  (issue_pred_taken_i),
+      .issue_valid_i       (rs_valid[EU_BRANCH_UNIT][0]),
+      .issue_ready_o       (branch_ready),
+      .issue_branch_type_i (rs_eu_ctl[EU_BRANCH_UNIT][0].bu),
+      .issue_rs1_i         (rs1[EU_BRANCH_UNIT][0]),
+      .issue_rs2_i         (rs2[EU_BRANCH_UNIT][0]),
+      .issue_imm_value_i   (rs_imm_value[EU_BRANCH_UNIT][0]),
+      .issue_dest_rob_idx_i (rs_rob_idx[EU_BRANCH_UNIT][0]),
+      .issue_curr_pc_i     (rs_curr_pc[EU_BRANCH_UNIT][0]),
+      .issue_pred_target_i (rs_pred_target[EU_BRANCH_UNIT][0]),
+      .issue_pred_taken_i  (rs_pred_taken[EU_BRANCH_UNIT][0]),
       .issue_mis_o         (issue_mis_o),
       .cdb_ready_i         (cdb_ready_i[EU_BRANCH_UNIT]),
       .cdb_valid_i         (cdb_valid_i),
@@ -199,12 +280,12 @@ module exec_stage #(
       .clk_i               (clk_i),
       .rst_ni              (rst_ni),
       .flush_i             (mis_flush_i),
-      .issue_valid_i       (issue_valid_i[EU_INT_ALU]),
+      .issue_valid_i       (rs_valid[EU_INT_ALU]),
       .issue_ready_o       (issue_ready_o[EU_INT_ALU]),
-      .issue_eu_ctl_i      (issue_eu_ctl_i.alu),
-      .issue_rs1_i         (issue_rs1_i),
-      .issue_rs2_i         (issue_rs2_i),
-      .issue_dest_rob_idx_i(issue_rob_idx_i),
+      .issue_eu_ctl_i      (rs_eu_ctl[EU_INT_ALU]),
+      .issue_rs1_i         (rs1[EU_INT_ALU]),
+      .issue_rs2_i         (rs2[EU_INT_ALU]),
+      .issue_dest_rob_idx_i (rs_rob_idx[EU_INT_ALU]),
       .cdb_ready_i         (cdb_ready_i[EU_INT_ALU]),
       .cdb_valid_i         (cdb_valid_i),
       .cdb_valid_o         (cdb_valid_o[EU_INT_ALU]),
@@ -223,12 +304,12 @@ module exec_stage #(
           .clk_i               (clk_i),
           .rst_ni              (rst_ni),
           .flush_i             (mis_flush_i),
-          .issue_valid_i       (issue_valid_i[EU_INT_MULT]),
+          .issue_valid_i       (rs_valid[EU_INT_MULT]),
           .issue_ready_o       (issue_ready_o[EU_INT_MULT]),
-          .issue_eu_ctl_i      (issue_eu_ctl_i.mult),
-          .issue_rs1_i         (issue_rs1_i),
-          .issue_rs2_i         (issue_rs2_i),
-          .issue_dest_rob_idx_i(issue_rob_idx_i),
+          .issue_eu_ctl_i      (rs_eu_ctl[EU_INT_MULT]),
+          .issue_rs1_i         (rs1[EU_INT_MULT]),
+          .issue_rs2_i         (rs2[EU_INT_MULT]),
+          .issue_dest_rob_idx_i (rs_rob_idx[EU_INT_MULT]),
           .cdb_ready_i         (cdb_ready_i[EU_INT_MULT]),
           .cdb_valid_i         (cdb_valid_i),
           .cdb_valid_o         (cdb_valid_o[EU_INT_MULT]),
@@ -236,7 +317,7 @@ module exec_stage #(
           .cdb_data_o          (cdb_data_o[EU_INT_MULT])
       );
     end else begin : gen_no_mult_unit
-      assign issue_ready_o[EU_INT_MULT] = 1'b0;
+      assign issue_ready_o[EU_INT_MULT] = '0;
       assign cdb_valid_o[EU_INT_MULT]   = 1'b0;
       assign cdb_data_o[EU_INT_MULT]    = '0;
     end
@@ -251,12 +332,12 @@ module exec_stage #(
           .clk_i               (clk_i),
           .rst_ni              (rst_ni),
           .flush_i             (mis_flush_i),
-          .issue_valid_i       (issue_valid_i[EU_INT_DIV]),
+          .issue_valid_i       (rs_valid[EU_INT_DIV]),
           .issue_ready_o       (issue_ready_o[EU_INT_DIV]),
-          .issue_eu_ctl_i      (issue_eu_ctl_i.div),
-          .issue_rs1_i         (issue_rs1_i),
-          .issue_rs2_i         (issue_rs2_i),
-          .issue_dest_rob_idx_i(issue_rob_idx_i),
+          .issue_eu_ctl_i      (rs_eu_ctl[EU_INT_DIV]),
+          .issue_rs1_i         (rs1[EU_INT_DIV]),
+          .issue_rs2_i         (rs2[EU_INT_DIV]),
+          .issue_dest_rob_idx_i (rs_rob_idx[EU_INT_DIV]),
           .cdb_ready_i         (cdb_ready_i[EU_INT_DIV]),
           .cdb_valid_i         (cdb_valid_i),
           .cdb_valid_o         (cdb_valid_o[EU_INT_DIV]),
@@ -264,7 +345,7 @@ module exec_stage #(
           .cdb_data_o          (cdb_data_o[EU_INT_DIV])
       );
     end else begin : gen_no_div_unit
-      assign issue_ready_o[EU_INT_DIV] = 1'b0;
+      assign issue_ready_o[EU_INT_DIV] = '0;
       assign cdb_valid_o[EU_INT_DIV]   = 1'b0;
       assign cdb_data_o[EU_INT_DIV]    = '0;
     end
@@ -281,14 +362,14 @@ module exec_stage #(
           .clk_i               (clk_i),
           .rst_ni              (rst_ni),
           .flush_i             (mis_flush_i),
-          .issue_valid_i       (issue_valid_i[EU_FPU]),
+          .issue_valid_i       (rs_valid[EU_FPU]),
           .issue_ready_o       (issue_ready_o[EU_FPU]),
-          .issue_eu_ctl_i      (issue_eu_ctl_i.fpu),
-          .issue_frm_i         (issue_frm_i),
-          .issue_rs1_i         (issue_rs1_i),
-          .issue_rs2_i         (issue_rs2_i),
-          .issue_rs3_i         (issue_rs3_i),
-          .issue_dest_rob_idx_i(issue_rob_idx_i),
+          .issue_eu_ctl_i      (rs_eu_ctl[EU_FPU]),
+          .issue_frm_i         (rs_frm[EU_FPU]),
+          .issue_rs1_i         (rs1[EU_FPU]),
+          .issue_rs2_i         (rs2[EU_FPU]),
+          .issue_rs3_i         (rs3[EU_FPU]),
+          .issue_dest_rob_idx_i (rs_rob_idx[EU_FPU]),
           .cdb_ready_i         (cdb_ready_i[EU_FPU]),
           .cdb_valid_i         (cdb_valid_i),
           .cdb_valid_o         (cdb_valid_o[EU_FPU]),
@@ -297,7 +378,7 @@ module exec_stage #(
           .csr_frm_i           (csr_frm_i)
       );
     end else begin : gen_no_fpu_unit
-      assign issue_ready_o[EU_FPU] = 1'b0;
+      assign issue_ready_o[EU_FPU] = '0;
       assign cdb_valid_o[EU_FPU]   = 1'b0;
       assign cdb_data_o[EU_FPU]    = '0;
     end

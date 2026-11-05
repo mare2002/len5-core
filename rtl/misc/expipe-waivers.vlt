@@ -8,6 +8,19 @@
 // Description: Verilator waivers 
 
 `verilator_config
+// Routed metadata is consumed only by its associated execution units.
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "*not used: 'rs_frm'*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "*not used: 'rs3'*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs_imm_value'[*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs_curr_pc'[*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs_pred_target'[*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs_pred_taken'[*"
+// Disabled optional execution units do not consume their routed input lanes.
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs_valid'[*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs_eu_ctl'[*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs1'[*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs2'[*"
+lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'rs_rob_idx'[*"
 // Warnings due to MAX_EU_N, in future version EU_N will be evualated by python template
 lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'issue_valid_i'[*"
 lint_off -rule UNUSED -file "*/exec_stage.sv" -match "Bits of signal are not used: 'cdb_ready_i'[*"
