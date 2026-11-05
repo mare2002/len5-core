@@ -1,6 +1,6 @@
 # LEN5 configuration migration
 
-The production entry point is `rtl/len5_datapath.sv`, module `len5_datapath`, with typed `Len5Cfg`. This checkout had no `len5_core.sv`. The simulation instance is `i_len5_datapath`; the FuseSoC dependency identity `polito:len5:datapath` stays stable.
+The production entry point is `rtl/len5_top.sv`, module `len5_top`, with typed `Len5Cfg`. This checkout had no `len5_core.sv`. The simulation instance is `i_len5_datapath`; the FuseSoC dependency identity `polito:len5:datapath` stays stable.
 
 `len5_config_pkg::len5_user_cfg_t` contains selectable settings. The SV constant function `build_config()` returns the complete packed `len5_cfg` (alias of `len5_cfg_t`), including derived widths and counts. `DEFAULT_LEN5_USER_CFG` preserves every original package value; `DEFAULT_LEN5_CFG` is built from it once. `tb_config_pkg::tb_user_cfg_t`, `build_config()` and the resolved `tb_cfg_t` do the same for TB memory configuration. The TB builder takes the resolved CPU instruction beat width; it does not derive that width again. Runtime counters, firmware filenames, queues and PRNG state remain runtime state. `SRAM_SIM_INIT` is an explicit string parameter because strings cannot be packed; its default is `DefaultSramSimInit`.
 

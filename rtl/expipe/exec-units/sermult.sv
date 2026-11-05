@@ -174,7 +174,7 @@ module sermult #(
   end
 
   ////////////////////////////////////////////
-  // MUL 64-bit multicycle len5_datapath control //
+  // MUL 64-bit multicycle len5_top control //
   ////////////////////////////////////////////
   always_comb begin : control_s
     mult_a        = rs1_l;
