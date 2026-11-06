@@ -65,7 +65,7 @@ module rob #(
     input  cdb_data_t cdb_data_i,
     output logic      cdb_ready_o
 );
-
+//%TODO redo it later on when redoing the commit unit
   import expipe_pkg::*;
   import len5_pkg::XLEN;
   import len5_pkg::REG_IDX_LEN;
@@ -93,6 +93,7 @@ module rob #(
 
   // Clear store instruction
   logic mem_instr_clear, entry_clear, cdb_clear;
+  logic [DEPTH-1:0] uncleared;
 
   // Out of order commit
   logic instr_waw;
@@ -122,7 +123,7 @@ module rob #(
     assign issue_tail_idx_o[i] = tail_idx + i[Len5Cfg.ROB_IDX_LEN-1:0];
     assign alloc_available[i] = !data_valid[issue_tail_idx_o[i]];
     assign issue_ready_o[i] = &alloc_available[i:0];
-    assign issue_accept[i] = issue_ready_o[i] && (&issue_valid_i[i:0]);
+    assign issue_accept[i] = issue_ready_o[i] && issue_valid_i[i];
   end
 
   lzc #(
@@ -164,8 +165,14 @@ module rob #(
                        cdb_data_i.rob_idx == clear_idx &
                        ~cdb_data_i.except_raised &
                        (cdb_data_i.except_code != E_MISPREDICTION); // check cdb is writing at clear_idx and 2),3)
+  for (genvar i = 0; i < DEPTH; i++) begin : gen_uncleared
+    assign uncleared[i] = data_valid[i] & ~data[i].mem_clear & (i[Len5Cfg.ROB_IDX_LEN-1:0] != clear_idx);
+  end
+
+  // Release an unfinished walk when its full-tail entry retires. A completed walk stays at the tail for reuse.
   assign mem_instr_clear = data_valid[clear_idx] & (~data[clear_idx].mem_crit | entry_clear | cdb_clear) &
-                           ((clear_idx != tail_idx) | ~rob_full | (commit_valid & comm_ready_i & fifo_push));
+                           ((clear_idx != tail_idx) | ~rob_full |
+                            (fifo_pop & (commit_idx == clear_idx) & (|uncleared)));
 
   // In-order commit slot
   // --------------------

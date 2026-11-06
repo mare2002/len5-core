@@ -33,7 +33,8 @@ module exec_stage #(
     output logic                                        fe_ret_confirm_o,
     output logic                   [len5_pkg::ALEN-1:0] fe_link_addr_o,
 
-    // Issue valid lanes are granted instructions, ordered oldest to youngest.
+    // Candidate requests determine routing/readiness; valid lanes are final grants.
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_req_i,
     input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
     input expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_assigned_eu_i,
     input expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_eu_ctl_i,
@@ -46,8 +47,8 @@ module exec_stage #(
     input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_curr_pc_i,
     input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_pred_target_i,
     input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_pred_taken_i,
-    // Each RS reports its available insertion prefix, independently of grants.
-    output logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+    // RS readiness mapped back to the original issue lanes, independently of grants.
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
     output logic issue_mis_o,
 
     // COMMON DATA BUS (CDB)
@@ -99,7 +100,7 @@ module exec_stage #(
   import memory_pkg::*;
 
   localparam int unsigned IssueIdxLen = Len5Cfg.ISSUE_WIDTH > 1 ? $clog2(Len5Cfg.ISSUE_WIDTH) : 1;
-  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_valid;
+  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_valid, rs_ready, mapped_ready;
   expipe_pkg::eu_ctl_t [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_eu_ctl;
   logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] rs_frm;
   op_data_t [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs1;
@@ -120,7 +121,7 @@ module exec_stage #(
 
 //%TODO remove when redoing the LSU(LOAD AND STORE UNIT)
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_memory_order
-    assign memory_lane[i] = issue_valid_i[i] &&
+    assign memory_lane[i] = issue_req_i[i] &&
         (issue_assigned_eu_i[i] inside {EU_LOAD_BUFFER, EU_STORE_BUFFER});
     if (i == 0) begin : gen_first
       assign older_memory[i] = 1'b0;
@@ -129,15 +130,13 @@ module exec_stage #(
     end
   end
 
-  // Pack each RS's granted lanes in program order. This is routing only;
-  // the issue controller must check the reported capacity before granting.
+  // Rank candidates before granting so readiness cannot feed back through grants.
   for (genvar u = 0; u < Len5Cfg.MAX_EU_N; u++) begin : gen_route
-    logic [Len5Cfg.ISSUE_WIDTH-1:0] request;
+    logic [Len5Cfg.ISSUE_WIDTH-1:0] request, route_valid;
     logic [Len5Cfg.ISSUE_WIDTH-1:0][IssueIdxLen-1:0] lane_idx;
 
     for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_requests
-      assign request[i] = issue_valid_i[i] && !mis_flush_i && int'(issue_assigned_eu_i[i]) == u &&
-          (!memory_lane[i] || !older_memory[i]);
+      assign request[i] = issue_req_i[i] && !mis_flush_i && int'(issue_assigned_eu_i[i]) == u;
     end
 
     // Lane zero is oldest, so select the lowest matching lane indices first.
@@ -148,10 +147,20 @@ module exec_stage #(
     ) u_lane_sel (
         .lines_i(request),
         .enc_o(lane_idx),
-        .valid_o(rs_valid[u])
+        .valid_o(route_valid)
     );
 
+    always_comb begin : ready_demux
+      mapped_ready[u] = '0;
+      foreach (lane_idx[k]) begin
+        if (route_valid[k]) mapped_ready[u][lane_idx[k]] = rs_ready[u][k];
+      end
+    end
+
+    // Ordered grants preserve candidate slots for every accepted instruction.
     for (genvar k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_payload
+      assign rs_valid[u][k] = route_valid[k] && issue_valid_i[lane_idx[k]] &&
+          (!memory_lane[lane_idx[k]] || !older_memory[lane_idx[k]]);
       assign rs_eu_ctl[u][k] = issue_eu_ctl_i[lane_idx[k]];
       assign rs_frm[u][k] = issue_frm_i[lane_idx[k]];
       assign rs1[u][k] = issue_rs1_i[lane_idx[k]];
@@ -165,10 +174,15 @@ module exec_stage #(
     end
   end
 
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_issue_ready
+    assign issue_ready_o[i] = mapped_ready[issue_assigned_eu_i[i]][i] &&
+        (!memory_lane[i] || !older_memory[i]);
+  end
+
   // Loads and stores share one insertion slot: their dependency snapshots
   // must not observe simultaneous insertion of another memory instruction.
-  assign issue_ready_o[EU_LOAD_BUFFER] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, lb_ready && !mis_flush_i};
-  assign issue_ready_o[EU_STORE_BUFFER] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, sb_ready && !mis_flush_i};
+  assign rs_ready[EU_LOAD_BUFFER] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, lb_ready && !mis_flush_i};
+  assign rs_ready[EU_STORE_BUFFER] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, sb_ready && !mis_flush_i};
   assign memory_type = rs_valid[EU_STORE_BUFFER][0] ? rs_eu_ctl[EU_STORE_BUFFER][0].lsu : rs_eu_ctl[EU_LOAD_BUFFER][0].lsu;
   assign memory_rs1 = rs_valid[EU_STORE_BUFFER][0] ? rs1[EU_STORE_BUFFER][0] : rs1[EU_LOAD_BUFFER][0];
   assign memory_rs2 = rs_valid[EU_STORE_BUFFER][0] ? rs2[EU_STORE_BUFFER][0] : rs2[EU_LOAD_BUFFER][0];
@@ -235,7 +249,7 @@ module exec_stage #(
   // -----------
   // BRANCH UNIT
   // -----------
-  assign issue_ready_o[EU_BRANCH_UNIT] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, branch_ready && !mis_flush_i};
+  assign rs_ready[EU_BRANCH_UNIT] = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, branch_ready && !mis_flush_i};
 
   branch_unit #(
       .Len5Cfg(Len5Cfg)
@@ -281,7 +295,7 @@ module exec_stage #(
       .rst_ni              (rst_ni),
       .flush_i             (mis_flush_i),
       .issue_valid_i       (rs_valid[EU_INT_ALU]),
-      .issue_ready_o       (issue_ready_o[EU_INT_ALU]),
+      .issue_ready_o       (rs_ready[EU_INT_ALU]),
       .issue_eu_ctl_i      (rs_eu_ctl[EU_INT_ALU]),
       .issue_rs1_i         (rs1[EU_INT_ALU]),
       .issue_rs2_i         (rs2[EU_INT_ALU]),
@@ -305,7 +319,7 @@ module exec_stage #(
           .rst_ni              (rst_ni),
           .flush_i             (mis_flush_i),
           .issue_valid_i       (rs_valid[EU_INT_MULT]),
-          .issue_ready_o       (issue_ready_o[EU_INT_MULT]),
+          .issue_ready_o       (rs_ready[EU_INT_MULT]),
           .issue_eu_ctl_i      (rs_eu_ctl[EU_INT_MULT]),
           .issue_rs1_i         (rs1[EU_INT_MULT]),
           .issue_rs2_i         (rs2[EU_INT_MULT]),
@@ -317,7 +331,7 @@ module exec_stage #(
           .cdb_data_o          (cdb_data_o[EU_INT_MULT])
       );
     end else begin : gen_no_mult_unit
-      assign issue_ready_o[EU_INT_MULT] = '0;
+      assign rs_ready[EU_INT_MULT] = '0;
       assign cdb_valid_o[EU_INT_MULT]   = 1'b0;
       assign cdb_data_o[EU_INT_MULT]    = '0;
     end
@@ -333,7 +347,7 @@ module exec_stage #(
           .rst_ni              (rst_ni),
           .flush_i             (mis_flush_i),
           .issue_valid_i       (rs_valid[EU_INT_DIV]),
-          .issue_ready_o       (issue_ready_o[EU_INT_DIV]),
+          .issue_ready_o       (rs_ready[EU_INT_DIV]),
           .issue_eu_ctl_i      (rs_eu_ctl[EU_INT_DIV]),
           .issue_rs1_i         (rs1[EU_INT_DIV]),
           .issue_rs2_i         (rs2[EU_INT_DIV]),
@@ -345,7 +359,7 @@ module exec_stage #(
           .cdb_data_o          (cdb_data_o[EU_INT_DIV])
       );
     end else begin : gen_no_div_unit
-      assign issue_ready_o[EU_INT_DIV] = '0;
+      assign rs_ready[EU_INT_DIV] = '0;
       assign cdb_valid_o[EU_INT_DIV]   = 1'b0;
       assign cdb_data_o[EU_INT_DIV]    = '0;
     end
@@ -363,7 +377,7 @@ module exec_stage #(
           .rst_ni              (rst_ni),
           .flush_i             (mis_flush_i),
           .issue_valid_i       (rs_valid[EU_FPU]),
-          .issue_ready_o       (issue_ready_o[EU_FPU]),
+          .issue_ready_o       (rs_ready[EU_FPU]),
           .issue_eu_ctl_i      (rs_eu_ctl[EU_FPU]),
           .issue_frm_i         (rs_frm[EU_FPU]),
           .issue_rs1_i         (rs1[EU_FPU]),
@@ -378,7 +392,7 @@ module exec_stage #(
           .csr_frm_i           (csr_frm_i)
       );
     end else begin : gen_no_fpu_unit
-      assign issue_ready_o[EU_FPU] = '0;
+      assign rs_ready[EU_FPU] = '0;
       assign cdb_valid_o[EU_FPU]   = 1'b0;
       assign cdb_data_o[EU_FPU]    = '0;
     end

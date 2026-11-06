@@ -11,7 +11,7 @@
 // File: issue_cu.sv
 // Author: Michele Caon, Flavia Guella
 // Date: 17/08/2022
-
+// %TODO needs a rework when doing the commit unit
 module issue_cu (
   input logic clk_i,
   input logic rst_ni,
@@ -27,22 +27,17 @@ module issue_cu (
 
   // Issue stage <--> CU
   input  expipe_pkg::issue_type_t issue_type_i,  // next head classification
-  input  logic                    issue_valid_i,  // current registered head
-  input  expipe_pkg::issue_dispatch_t issue_dispatch_i,
+  input  logic                    issue_valid_i,  // current head validity
+  input  logic                    issue_accepted_i,
   input  logic                    issue_rs1_ready_i,  // for CSR instructions
-  output logic                    issue_res_ready_o,
+  output logic                    issue_enable_o,  // ordinary dispatch
+  output logic                    issue_special_o,  // serialized head dispatch
   output logic                    issue_res_sel_rs1_o,
 
   // Execution stage <--> CU
-  input  logic ex_ready_i,
   input  logic ex_mis_i,
-  output logic ex_valid_o,
-  output logic int_regstat_valid_o,
-  output logic fp_regstat_valid_o,
 
   // Commit stage <--> CU
-  input  logic comm_ready_i,
-  output logic comm_valid_o,
   input  logic comm_resume_i
 );
 
@@ -63,24 +58,14 @@ module issue_cu (
   } cu_state_t;
   cu_state_t curr_state, v_next_state, next_state;
 
-  logic dispatch_ready, rd_update;
-  logic run_ready, run_comm_valid, run_ex_valid, run_res_ready;
+  logic run_ready;
 
   // ------------
   // CONTROL UNIT
   // ------------
-  // Direct results allocate only the ROB; other ordinary instructions also need an RS.
-  assign dispatch_ready = comm_ready_i && (issue_dispatch_i.direct_result || ex_ready_i);
-  assign run_ready = !issue_valid_i || dispatch_ready;
-  assign run_comm_valid = issue_valid_i && (issue_dispatch_i.direct_result || dispatch_ready);
-  assign run_ex_valid = issue_valid_i && !issue_dispatch_i.direct_result && dispatch_ready;
-  assign run_res_ready = issue_valid_i && issue_dispatch_i.direct_result;
-
-  // Exceptions allocate the ROB without changing register status.
-  assign rd_update = comm_valid_o && comm_ready_i &&
-      (curr_state inside {S_RUN, S_ISSUE_CSR});
-  assign int_regstat_valid_o = rd_update && issue_dispatch_i.int_rd_write;
-  assign fp_regstat_valid_o = rd_update && issue_dispatch_i.fp_rd_write;
+  assign issue_enable_o = (curr_state == S_RUN) && !flush_i && !ex_mis_i;
+  assign issue_special_o = (curr_state inside {S_ISSUE_CSR, S_ISSUE_EXCEPT}) && !flush_i && !ex_mis_i;
+  assign run_ready = !issue_valid_i || issue_accepted_i;
 
   // Next state decoder
   // NOTE: flush requests from the commit stage have priority
@@ -115,11 +100,11 @@ module issue_cu (
         else next_state = S_ISSUE_CSR;
       end
       S_ISSUE_CSR: begin
-        if (!comm_ready_i) next_state = S_ISSUE_CSR;
+        if (!issue_accepted_i) next_state = S_ISSUE_CSR;
         else next_state = S_STALL;
       end
       S_ISSUE_EXCEPT: begin
-        if (!comm_ready_i) next_state = S_ISSUE_EXCEPT;
+        if (!issue_accepted_i) next_state = S_ISSUE_EXCEPT;
         else next_state = S_STALL;
       end
       S_FLUSH: next_state = S_STALL;
@@ -134,34 +119,23 @@ module issue_cu (
     endcase
   end
 
-  // Ordinary dispatch uses only the registered head and downstream readiness.
+  // Only serialization and recovery require global state.
   always_comb begin : cu_out_eval
     // Default values
     iq_ready_o          = 1'b0;
     mis_flush_o         = 1'b0;
-    issue_res_ready_o   = 1'b0;
     issue_res_sel_rs1_o = 1'b0;
-    ex_valid_o          = 1'b0;
-    comm_valid_o        = 1'b0;
 
     case (curr_state)
       S_RESET:       ;  // use default values
       S_RUN: begin
         iq_ready_o        = run_ready;
-        comm_valid_o      = run_comm_valid;
-        ex_valid_o        = run_ex_valid;
-        issue_res_ready_o = run_res_ready;
       end
       S_CSR_WAIT_OP: ;
       S_ISSUE_CSR: begin
-        comm_valid_o        = 1'b1;
-        issue_res_ready_o   = 1'b1;
         issue_res_sel_rs1_o = 1'b1;
       end
-      S_ISSUE_EXCEPT: begin
-        comm_valid_o = 1'b1;
-        issue_res_ready_o = 1'b1;  // no execution unit will complete this instruction
-      end
+      S_ISSUE_EXCEPT: ;
       S_FLUSH: begin
         mis_flush_o = 1'b1;
       end
@@ -187,8 +161,8 @@ module issue_cu (
 `ifndef SYNTHESIS
 `ifndef VERILATOR
   always @(posedge clk_i) begin
-    $display("valid_i: %b | commit ready: %b | ex. ready: %d | type: %s | state: %s", iq_valid_i,
-             comm_ready_i, ex_ready_i, issue_type_i.name(), curr_state.name());
+    $display("valid_i: %b | accepted: %b | type: %s | state: %s", iq_valid_i,
+             issue_accepted_i, issue_type_i.name(), curr_state.name());
   end
 `endif  /* VERILATOR */
 `endif  /* SYNTHESIS */

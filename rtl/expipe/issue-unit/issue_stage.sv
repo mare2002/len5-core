@@ -73,9 +73,10 @@ module issue_stage #(
     output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs2_idx_o,  // RF address of the second operand
     output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs3_idx_o,  // RF address of the third operand
 
-    // Execution pipeline: per-RS insertion capacity and per-lane payloads.
-    input logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] ex_ready_i,
+    // Execution pipeline: candidate requests, per-lane readiness and granted payloads.
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_ready_i,
     input logic ex_mis_i,
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_req_o,
     output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_valid_o,
     output expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_assigned_eu_o,
     output expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_eu_ctl_o,
@@ -90,11 +91,11 @@ module issue_stage #(
     output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_pred_taken_o,
 
     // Commit stage
-    input logic comm_ready_i,  // the ROB has an empty entry available
-    output logic comm_valid_o,  // a new instruction can be issued
+    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_ready_i,  // the ROB has an empty entry available
+    output logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_valid_o,  // a new instruction can be issued
     input logic comm_resume_i,  // resume after stall
     input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_tail_idx_i,  // the entry of the ROB allocated for the new instr
-    output expipe_pkg::rob_entry_t comm_data_o,  // data to the ROB
+    output expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_data_o,  // data to the ROB
     // Operand forwarding after same-bundle dependency resolution
     output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_rob_idx_o,
     input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_ready_i,
@@ -152,7 +153,7 @@ module issue_stage #(
   logic [Len5Cfg.ISSUE_WIDTH-1:0] iq_valid, iq_accepted;
   issue_count_t iq_pop_count;
 
-  // Ordered decoded instructions; only lane zero dispatches in this stage.
+  // Ordered decoded instructions, oldest in lane zero.
   issue_reg_t [Len5Cfg.ISSUE_WIDTH-1:0] ireg_data_in, ireg_data_q, ireg_data_d;
   issue_reg_t ireg_data_out_unused;
   issue_count_t ireg_count_q, ireg_count_d, ireg_pop_count, retained_count;
@@ -168,10 +169,9 @@ module issue_stage #(
   logic                                iq_cu_valid;
   logic                                iq_flush;
   logic                                cu_mis_flush;
-  logic                                cu_il_res_ready;
+  logic                                cu_issue_enable, cu_issue_special, special_grant;
   logic                                cu_il_res_sel_rs1;
-  logic                                cu_il_ex_valid;
-  logic                                il_cu_ex_ready;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] operand_serializing, operand_skip_eu;
 
   // Operand fetch
   logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_grant, ireg_valid;
@@ -187,7 +187,6 @@ module issue_stage #(
   logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_bundle, rs2_bundle, rs3_bundle;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_fwd_en, rs2_fwd_en, rs3_fwd_en;
   op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_forwarded, rs2_forwarded, rs3_forwarded;
-  logic unused_int_regstat_valid, unused_fp_regstat_valid;
   logic rs1_ready;
   logic [XLEN-1:0] rs1_value;
 
@@ -340,9 +339,14 @@ module issue_stage #(
   // ---------------
   assign ireg_data_out_unused = ireg_data_q[0];
 
-  // Dispatch removes the head; FENCE/WFI also discard their stall token on resume.
-  assign ireg_pop_count = issue_count_t'((comm_valid_o && comm_ready_i) ||
-      (comm_resume_i && (ireg_count_q != '0) && (ireg_data_out_unused.issue_type == ISSUE_TYPE_STALL)));
+  // Remove the accepted prefix; a resumed FENCE discards its non-allocating stall token.
+  always_comb begin : dispatch_count
+    ireg_pop_count = '0;
+    for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++)
+      ireg_pop_count += issue_count_t'(issue_grant[i]);
+    if (comm_resume_i && (ireg_count_q != '0) && (ireg_data_out_unused.issue_type == ISSUE_TYPE_STALL))
+      ireg_pop_count = issue_count_t'(1);
+  end
 
   // Account for removal before admitting the next IQ entries.
   assign retained_count = ireg_count_q - ireg_pop_count;
@@ -400,10 +404,6 @@ module issue_stage #(
 
   // ISSUE CU
   // --------
-  // Handshaking signals arbiter
-  assign il_cu_ex_ready = ex_ready_i[ireg_data_out_unused.assigned_eu][0] || ireg_data_out_unused.skip_eu;
-
-  // CU
   issue_cu u_issue_cu (
       .clk_i              (clk_i),
       .rst_ni             (rst_ni),
@@ -413,20 +413,37 @@ module issue_stage #(
       .iq_ready_o         (cu_iq_ready),
       .iq_except_raised_i (iq_cu_except_raised),
       .issue_type_i       (ireg_data_d[0].issue_type),
-      .issue_valid_i      (ireg_count_q != '0),
-      .issue_dispatch_i   (ireg_data_out_unused.dispatch),
+      .issue_valid_i      (ireg_valid[0]),
+      .issue_accepted_i   (issue_grant[0]),
       .issue_rs1_ready_i  (rs1_ready),
-      .issue_res_ready_o  (cu_il_res_ready),
+      .issue_enable_o     (cu_issue_enable),
+      .issue_special_o    (cu_issue_special),
       .issue_res_sel_rs1_o(cu_il_res_sel_rs1),
-      .ex_ready_i         (il_cu_ex_ready),
       .ex_mis_i           (ex_mis_i),
-      .ex_valid_o         (cu_il_ex_valid),
-      .int_regstat_valid_o(unused_int_regstat_valid),
-      .fp_regstat_valid_o (unused_fp_regstat_valid),
-      .comm_ready_i       (comm_ready_i),
-      .comm_valid_o       (comm_valid_o),
       .comm_resume_i      (comm_resume_i)
   );
+
+  // ISSUE GRANTS
+  // ------------
+  // Only the head can use the CU's serialized dispatch path.
+  assign special_grant = cu_issue_special && ireg_valid[0] && comm_ready_i[0];
+
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_grants
+    logic lane_ready, granted;
+
+    assign lane_ready = ireg_valid[i] && comm_ready_i[i] && !operand_serializing[i] &&
+        (operand_dispatch[i].direct_result || operand_skip_eu[i] || ex_ready_i[i]);
+
+    // A blocked older lane prevents every younger grant.
+    if (i == 0) begin : gen_head
+      assign granted = (cu_issue_enable && lane_ready) || special_grant;
+    end else begin : gen_younger
+      assign granted = cu_issue_enable && gen_grants[i-1].granted && lane_ready;
+    end
+    assign issue_grant[i] = granted;
+    assign ex_valid_o[i] = granted && cu_issue_enable &&
+        !operand_dispatch[i].direct_result && !operand_skip_eu[i];
+  end
 
   // OPERANDS FETCH
   // --------------
@@ -443,14 +460,18 @@ module issue_stage #(
   // A busy source without an available result remains unresolved for RS wakeup.
   // issue_dependencies selects step 2 before the remaining forwarding queries.
 
-  // The scalar CU supplies the only actual grant until multi-lane arbitration is added.
-  assign issue_grant = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, comm_valid_o && comm_ready_i};
+  assign comm_valid_o = issue_grant;
 
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_operand_lookup
     logic rs1_busy, rs2_busy, rs3_busy;
     op_data_t rs1_selected, rs2_selected, rs3_selected;
 
     assign ireg_valid[i] = issue_count_t'(i) < ireg_count_q;
+    assign operand_serializing[i] = ireg_data_q[i].except_raised ||
+        (ireg_data_q[i].issue_type inside {ISSUE_TYPE_CSR, ISSUE_TYPE_STALL, ISSUE_TYPE_WFI, ISSUE_TYPE_EXCEPT});
+    assign operand_skip_eu[i] = ireg_data_q[i].skip_eu;
+    assign ex_req_o[i] = ireg_valid[i] && !operand_serializing[i] &&
+        !operand_dispatch[i].direct_result && !operand_skip_eu[i];
     assign operand_rs1_sel[i] = ireg_data_q[i].rs1_sel;
     assign operand_rs2_sel[i] = ireg_data_q[i].rs2_sel;
     assign operand_rs3_sel[i] = ireg_data_q[i].rs3_sel;
@@ -629,8 +650,6 @@ module issue_stage #(
   // Fetch stage
   assign fetch_mis_flush_o         = cu_mis_flush;
 
-  // Only lane zero is dispatched until the ordered multi-lane controller is added.
-  assign ex_valid_o = {{Len5Cfg.ISSUE_WIDTH-1{1'b0}}, cu_il_ex_valid};
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_dispatch_data
     assign ex_assigned_eu_o[i] = ireg_data_q[i].assigned_eu;
     assign ex_eu_ctl_o[i] = ireg_data_q[i].eu_ctl;
@@ -645,20 +664,22 @@ module issue_stage #(
     assign ex_pred_taken_o[i] = ireg_data_q[i].pred_taken;
   end
 
-  // Data to commit stage
-  assign comm_data_o.instruction   = ireg_data_out_unused.instr;
-  assign comm_data_o.instr_pc      = ireg_data_out_unused.curr_pc;
-  assign comm_data_o.res_ready     = cu_il_res_ready;
-  assign comm_data_o.res_value     = (cu_il_res_sel_rs1) ? rs1_value : ireg_data_out_unused.imm_value;
-  assign comm_data_o.rd_idx        = ireg_data_out_unused.rd_idx;
-  assign comm_data_o.rd_upd        = ireg_data_out_unused.rd_upd;
-  assign comm_data_o.mem_crit      = ireg_data_out_unused.mem_crit;
-  assign comm_data_o.order_crit    = ireg_data_out_unused.order_crit;
-  assign comm_data_o.except_raised = ireg_data_out_unused.except_raised ||
-      (ireg_data_out_unused.issue_type == ISSUE_TYPE_EXCEPT);
-  assign comm_data_o.except_code   = ireg_data_out_unused.except_code;
-  assign comm_data_o.mem_clear     = 1'b0;
-  assign comm_data_o.flags.raw     = '0;
+  // Each accepted lane initializes its own ROB entry. Only the head can be a CSR.
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_commit_data
+    assign comm_data_o[i].instruction   = ireg_data_q[i].instr;
+    assign comm_data_o[i].instr_pc      = ireg_data_q[i].curr_pc;
+    assign comm_data_o[i].res_ready     = operand_dispatch[i].direct_result || ((i == 0) && special_grant);
+    assign comm_data_o[i].res_value     = ((i == 0) && cu_il_res_sel_rs1) ? rs1_value : ireg_data_q[i].imm_value;
+    assign comm_data_o[i].rd_idx        = ireg_data_q[i].rd_idx;
+    assign comm_data_o[i].rd_upd        = ireg_data_q[i].rd_upd;
+    assign comm_data_o[i].mem_crit      = ireg_data_q[i].mem_crit;
+    assign comm_data_o[i].order_crit    = ireg_data_q[i].order_crit;
+    assign comm_data_o[i].except_raised = ireg_data_q[i].except_raised ||
+        (ireg_data_q[i].issue_type == ISSUE_TYPE_EXCEPT);
+    assign comm_data_o[i].except_code   = ireg_data_q[i].except_code;
+    assign comm_data_o[i].mem_clear     = 1'b0;
+    assign comm_data_o[i].flags.raw     = '0;
+  end
 
   // ----------
   // DEBUG CODE
@@ -668,7 +689,7 @@ module issue_stage #(
     if (rst_ni && !iq_flush) begin
       assert (ireg_pop_count <= ireg_count_q)
       else $error("issue-register removal count is invalid");
-      assert (!comm_valid_o || (ireg_count_q != '0))
+      assert ((issue_grant & ~ireg_valid) == '0)
       else $error("dispatch requires a registered instruction");
     end
   end
@@ -680,21 +701,24 @@ module issue_stage #(
       end
     end
   end
-`ifndef VERILATOR
-  always @(posedge clk_i) begin
-    if (comm_valid_o && comm_ready_i) begin
-      $display(comm_data_o.instruction.raw);
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_check_dispatch
+    always @(posedge clk_i) begin
+      if (rst_ni) begin
+        assert (!issue_grant[i] || (comm_ready_i[i] && !iq_flush && !ex_mis_i))
+        else $error("dispatch without ROB capacity or during recovery");
+        assert (!ex_valid_o[i] || issue_grant[i])
+        else $error("execution insertion without ROB allocation");
+      end
+    end
+    if (i > 0) begin : gen_check_prefix
+      always @(posedge clk_i) begin
+        if (rst_ni) begin
+          assert (!issue_grant[i] || issue_grant[i-1])
+          else $error("younger instruction bypassed a blocked issue lane");
+        end
+      end
     end
   end
-  // Instruction sent to at most one execution unit
-  property p_ex_valid;
-    @(posedge clk_i) disable iff (!rst_ni) comm_valid_o |-> $onehot0(
-        ex_valid_o
-    );
-  endproperty
-  a_ex_valid :
-  assert property (p_ex_valid);
-`endif  /* VERILATOR */
 `endif  /* SYNTHESIS */
 
 endmodule

@@ -144,8 +144,7 @@ module backend #(
 
   // Issue Stage <--> Commit Stage
   // -----------------------------
-  // Readiness above lane zero is unused until multi-dispatch is enabled.
-  logic [Len5Cfg.ISSUE_WIDTH-1:0]          comm_issue_ready_unused;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0]          comm_issue_ready;
   logic [Len5Cfg.ISSUE_WIDTH-1:0]          issue_comm_valid;
   logic                                   comm_issue_resume;
   rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_issue_rob_tail_idx;
@@ -162,9 +161,9 @@ module backend #(
 
   // Issue stage <--> execution units
   // --------------------------------
-  logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] ex_issue_ready;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_issue_ready;
   logic ex_issue_mis;
-  logic [Len5Cfg.ISSUE_WIDTH-1:0] il_ex_valid;
+  logic [Len5Cfg.ISSUE_WIDTH-1:0] il_ex_req, il_ex_valid;
   expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_assigned_eu;
   expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_ex_eu_ctl;
   logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] issue_ex_frm;
@@ -297,6 +296,7 @@ module backend #(
 
       .ex_ready_i      (ex_issue_ready),
       .ex_mis_i        (ex_issue_mis),
+      .ex_req_o        (il_ex_req),
       .ex_valid_o      (il_ex_valid),
       .ex_assigned_eu_o    (issue_ex_assigned_eu),
       .ex_eu_ctl_o         (issue_ex_eu_ctl),
@@ -310,11 +310,11 @@ module backend #(
       .ex_pred_target_o    (issue_ex_pred_target),
       .ex_pred_taken_o     (issue_ex_pred_taken),
 
-      .comm_ready_i      (comm_issue_ready_unused[0]),
-      .comm_valid_o      (issue_comm_valid[0]),
+      .comm_ready_i      (comm_issue_ready),
+      .comm_valid_o      (issue_comm_valid),
       .comm_resume_i     (comm_issue_resume),
       .comm_tail_idx_i   (comm_issue_rob_tail_idx),
-      .comm_data_o       (issue_comm_rob_data[0]),
+      .comm_data_o       (issue_comm_rob_data),
       .comm_rs1_rob_idx_o      (issue_comm_rs1_rob_idx),
       .comm_rs1_ready_i        (comm_issue_rs1_ready),
       .comm_rs1_value_i        (comm_issue_rs1_value),
@@ -457,6 +457,7 @@ module backend #(
       .fe_ret_confirm_o (fetch_ret_confirm_o),
       .fe_link_addr_o   (fetch_link_addr_o),
 
+      .issue_req_i        (il_ex_req),
       .issue_valid_i      (il_ex_valid),
       .issue_ready_o      (ex_issue_ready),
       .issue_assigned_eu_i (issue_ex_assigned_eu),
@@ -534,12 +535,6 @@ module backend #(
 
   // Commit logic
   // ------------
-  // Dispatch remains scalar until the issue-stage grant logic is widened.
-  for (genvar i = 1; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_unused_alloc_lanes
-    assign issue_comm_valid[i] = 1'b0;
-    assign issue_comm_rob_data[i] = '0;
-  end
-
   commit_stage #(
       .Len5Cfg(Len5Cfg)
   ) u_commit_stage (
@@ -554,7 +549,7 @@ module backend #(
       .fe_except_pc_o    (fetch_except_pc_o),
 
       .issue_valid_i      (issue_comm_valid),
-      .issue_ready_o      (comm_issue_ready_unused),
+      .issue_ready_o      (comm_issue_ready),
       .issue_data_i       (issue_comm_rob_data),
       .issue_tail_idx_o   (comm_issue_rob_tail_idx),
       .issue_rs1_rob_idx_i     (issue_comm_rs1_rob_idx),

@@ -110,8 +110,8 @@ unsigned access_size(uint64_t type) {
 }
 } // namespace
 struct Monitor::Impl {
-    Signals top_signals{top}, issue_signals{issue}, comm_signals{comm}, lb_signals{lb},
-        sb_signals{sb}, branch_signals{backend + "u_exec_stage.u_branch_unit."},
+    Signals top_signals{top}, issue_signals{issue}, comm_signals{comm}, rob_signals{comm + "u_rob."},
+        lb_signals{lb}, sb_signals{sb}, branch_signals{backend + "u_exec_stage.u_branch_unit."},
         csr_signals_{backend + "u_csrs."}, int_rf_signals{backend + "u_int_rf."},
         fp_rf_signals{backend + "gen_fp_rf.u_fp_rf."};
     SpikeReference spike;
@@ -209,20 +209,21 @@ struct Monitor::Impl {
             checker.load_response(top_signals.get("mem2dp_load_tag"),
                                   top_signals.get("mem2dp_load_rdata"),
                                   top_signals.get("mem2dp_load_except_raised"), t);
-        // Architectural identity passes through the IQ and issue register in FIFO order.
-        if (!front_flush && !back_flush && issue_signals.get("comm_valid_o") &&
-            issue_signals.get("comm_ready_i")) {
-            checker.dispatch(issue_signals.get("ex_rob_idx_o"),
-                             issue_signals.get("comm_data_o", "instr_pc"),
-                             issue_signals.get("comm_data_o", "instruction.raw"),
-                             issue_signals.get("ireg_data_out", "rs1_idx"),
-                             issue_signals.get("ireg_data_out", "rs2_idx"),
-                             issue_signals.get("comm_data_o", "rd_idx"),
-                             issue_signals.get("comm_data_o", "rd_upd"), t,
-                             issue_signals.get("ireg_data_out", "rs3_idx"));
-            if (decode(issue_signals.get("comm_data_o", "instruction.raw")).csr)
-                checker.source_at_dispatch(issue_signals.get("ex_rob_idx_o"),
-                                           issue_signals.get("comm_data_o", "res_value"), t);
+        // Observe every accepted dispatch in program order before ROB tag reuse.
+        if (!front_flush && !back_flush) {
+            const auto accepted = rob_signals.get("alloc_count");
+            for (unsigned lane = 0; lane < accepted; ++lane) {
+                const auto rob = issue_signals.get("ex_rob_idx_o", "", lane);
+                const auto insn = issue_signals.get("comm_data_o", "instruction.raw", lane);
+                checker.dispatch(rob, issue_signals.get("comm_data_o", "instr_pc", lane), insn,
+                                 issue_signals.get("ireg_data_q", "rs1_idx", lane),
+                                 issue_signals.get("ireg_data_q", "rs2_idx", lane),
+                                 issue_signals.get("comm_data_o", "rd_idx", lane),
+                                 issue_signals.get("comm_data_o", "rd_upd", lane), t,
+                                 issue_signals.get("ireg_data_q", "rs3_idx", lane));
+                if (decode(insn).csr)
+                    checker.source_at_dispatch(rob, issue_signals.get("comm_data_o", "res_value", lane), t);
+            }
         }
         if (!back_flush) {
             for (auto *p : {&lb_signals, &sb_signals})
