@@ -3,43 +3,43 @@
 // License, Version 2.0. See http://solderpad.org/licenses/SHL-2.0.
 
 module operand_forwarding #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg)
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg)
 ) (
-    // Issue-stage operand requests and results
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_ready_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs1_value_o,
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_ready_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs2_value_o,
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_ready_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs3_value_o,
+  // Issue-stage operand requests and results
+  input  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs1_rob_idx_i,
+  output logic     [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs1_ready_o,
+  output logic     [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs1_value_o,
+  input  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs2_rob_idx_i,
+  output logic     [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs2_ready_o,
+  output logic     [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs2_value_o,
+  input  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs3_rob_idx_i,
+  output logic     [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs3_ready_o,
+  output logic     [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs3_value_o,
 
-    // ROB operand lookups
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs1_valid_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs1_ready_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rob_opfwd_rs1_value_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs2_valid_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs2_ready_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rob_opfwd_rs2_value_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs3_valid_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs3_ready_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rob_opfwd_rs3_value_i,
+  // ROB operand lookups
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0]                     rob_opfwd_rs1_valid_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0]                     rob_opfwd_rs1_ready_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rob_opfwd_rs1_value_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0]                     rob_opfwd_rs2_valid_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0]                     rob_opfwd_rs2_ready_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rob_opfwd_rs2_value_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0]                     rob_opfwd_rs3_valid_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0]                     rob_opfwd_rs3_ready_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rob_opfwd_rs3_value_i,
 
-    input logic cdb_valid_i,
-    input rob_idx_t cdb_rob_idx_i,
-    input logic [len5_pkg::XLEN-1:0] cdb_value_i,
-    input logic inreg_buff_full_i,
-    input rob_idx_t inreg_buff_rob_idx_i,
-    input logic [len5_pkg::XLEN-1:0] inreg_buff_value_i,
-    input logic inreg_cu_valid_i,
-    input rob_idx_t inreg_rob_idx_i,
-    input logic [len5_pkg::XLEN-1:0] inreg_value_i,
-    input logic comm_reg_valid_i,
-    input rob_idx_t comm_reg_rob_idx_i,
-    input logic [len5_pkg::XLEN-1:0] comm_reg_value_i
+  input logic                          cdb_valid_i,
+  input rob_idx_t                      cdb_rob_idx_i,
+  input logic     [len5_pkg::XLEN-1:0] cdb_value_i,
+  input logic                          inreg_buff_full_i,
+  input rob_idx_t                      inreg_buff_rob_idx_i,
+  input logic     [len5_pkg::XLEN-1:0] inreg_buff_value_i,
+  input logic                          inreg_cu_valid_i,
+  input rob_idx_t                      inreg_rob_idx_i,
+  input logic     [len5_pkg::XLEN-1:0] inreg_value_i,
+  input logic                          comm_reg_valid_i,
+  input rob_idx_t                      comm_reg_rob_idx_i,
+  input logic     [len5_pkg::XLEN-1:0] comm_reg_value_i
 );
 
   // Operands are searched for in the following priority order:

@@ -46,20 +46,20 @@ module completion_fifo #(
 
   // Head consumes, fill completes, and tail reserves. Compare complete pointers,
   // since equal storage addresses can also describe a completely filled ring.
-  assign reserved_empty    = tail_q == head_q;
-  assign head_complete     = head_q != fill_q;
-  assign pending_result    = fill_q != tail_q;
+  assign reserved_empty = tail_q == head_q;
+  assign head_complete = head_q != fill_q;
+  assign pending_result = fill_q != tail_q;
 
-  assign active            = rst_ni && !flush_i;
-  assign clear_pointers    = flush_i && !DRAIN_ON_FLUSH;
-  assign allocate_entry    = active && allocate_i;
+  assign active = rst_ni && !flush_i;
+  assign clear_pointers = flush_i && !DRAIN_ON_FLUSH;
+  assign allocate_entry = active && allocate_i;
   // No pop lookahead: retain the full-queue recovery bubble.
-  assign credit_o          = active && !reserved_full;
-  assign result_accepted   = result_valid_i && result_ready_o;
-  assign head_has_result   = head_complete || result_accepted;
-  assign valid_o           = active && head_has_result && head_live;
+  assign credit_o = active && !reserved_full;
+  assign result_accepted = result_valid_i && result_ready_o;
+  assign head_has_result = head_complete || result_accepted;
+  assign valid_o = active && head_has_result && head_live;
   assign response_consumed = valid_o && ready_i;
-  assign advance_head      = response_consumed || discard_head;
+  assign advance_head = response_consumed || discard_head;
 
   if (DRAIN_ON_FLUSH) begin : gen_drain_entries
     logic [DEPTH-1:0] live_q;
@@ -72,19 +72,19 @@ module completion_fifo #(
     end
 
     // An empty-queue allocation can complete before its live bit is registered.
-    assign head_live = reserved_empty ? allocate_entry : live_q[head_addr];
+    assign head_live      = reserved_empty ? allocate_entry : live_q[head_addr];
     assign result_ready_o = rst_ni && (pending_result || allocate_entry);
-    assign discard_head = rst_ni && head_has_result && (flush_i || !head_live);
+    assign discard_head   = rst_ni && head_has_result && (flush_i || !head_live);
   end else begin : gen_cancel_entries
-    assign head_live = 1'b1;
+    assign head_live      = 1'b1;
     assign result_ready_o = active && (pending_result || allocate_i);
-    assign discard_head = 1'b0;
+    assign discard_head   = 1'b0;
   end
 
   // An arriving head bypasses storage; older completed entries always take priority.
-  assign metadata_o        = !reserved_empty ? metadata_q[head_addr] : metadata_i;
-  assign data_o            = head_complete ? data_q[head_addr] : result_i;
-  assign store_result      = result_accepted && !(!head_complete && advance_head);
+  assign metadata_o   = !reserved_empty ? metadata_q[head_addr] : metadata_i;
+  assign data_o       = head_complete ? data_q[head_addr] : result_i;
+  assign store_result = result_accepted && !(!head_complete && advance_head);
 
   // Payload banks need no reset; pointer ownership qualifies every read.
   always_ff @(posedge clk_i) begin : write_entries

@@ -159,6 +159,7 @@ targets:
     - BOOT_PC_LO
     - LEN5_MULTIPLE_ISSUES
     - ISSUE_WIDTH
+    - ISSUE_DECODE_SPILL_EN
     - LEN5_M_EN
     - LEN5_DIV_EN
     - LEN5_F_EN
@@ -417,7 +418,11 @@ parameters:
   ISSUE_WIDTH:
     datatype: int
     paramtype: vlogparam
-    description: Number of decoded issue-register slots (positive power of two).
+    description: Maximum dispatch width (positive power of two).
+  ISSUE_DECODE_SPILL_EN:
+    datatype: int
+    paramtype: vlogparam
+    description: Register decoded instruction bundles before the issue queue.
   LEN5_M_EN:
     datatype: int
     paramtype: vlogparam

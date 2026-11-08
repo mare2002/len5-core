@@ -120,7 +120,7 @@ module spill_cell_flush_cu (
         valid_o = 1'b1;
         b_sel_o = 1'b1;
       end
-      default: ;
+      default:               ;
     endcase
   end
 

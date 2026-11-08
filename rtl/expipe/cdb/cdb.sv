@@ -14,33 +14,33 @@
 // Date: 11/11/2019
 
 module cdb #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg)
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg)
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Handshake from/to the maximum priority EU
-    input  logic max_prio_valid_i,
-    output logic max_prio_ready_o,
+  // Handshake from/to the maximum priority EU
+  input  logic max_prio_valid_i,
+  output logic max_prio_ready_o,
 
-    // Data from the maximum priority EU
-    input cdb_data_t max_prio_data_i,
+  // Data from the maximum priority EU
+  input cdb_data_t max_prio_data_i,
 
-    // Handshake from/to the reservation stations
-    input  logic [Len5Cfg.MAX_EU_N-2:0] rs_valid_i,
-    output logic [Len5Cfg.MAX_EU_N-2:0] rs_ready_o,
+  // Handshake from/to the reservation stations
+  input  logic [Len5Cfg.MAX_EU_N-2:0] rs_valid_i,
+  output logic [Len5Cfg.MAX_EU_N-2:0] rs_ready_o,
 
-    // Data from the reservation stations or issue queue.
-    input cdb_data_t [Len5Cfg.MAX_EU_N-2:0] rs_data_i,
+  // Data from the reservation stations or issue queue.
+  input cdb_data_t [Len5Cfg.MAX_EU_N-2:0] rs_data_i,
 
-    // Handshake from/to the ROB
-    input logic rob_ready_i,
+  // Handshake from/to the ROB
+  input logic rob_ready_i,
 
-    // Output valid and data (to multiple units)
-    output logic      valid_o,
-    output cdb_data_t data_o
+  // Output valid and data (to multiple units)
+  output logic      valid_o,
+  output cdb_data_t data_o
 );
 
   import expipe_pkg::*;
@@ -58,27 +58,27 @@ module cdb #(
   // CDB ARBITER
   // -----------
   cdb_arbiter #(
-      .Len5Cfg(Len5Cfg)
+    .Len5Cfg(Len5Cfg)
   ) u_cdb_arbiter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .flush_i(flush_i),
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .flush_i(flush_i),
 
-      // Handshake from/to the maximum priority unit
-      .max_prio_valid_i(max_prio_valid_i),
-      .max_prio_ready_o(max_prio_ready_o),
+    // Handshake from/to the maximum priority unit
+    .max_prio_valid_i(max_prio_valid_i),
+    .max_prio_ready_o(max_prio_ready_o),
 
-      // Handshake from/to the units
-      .valid_i(rs_valid_i),
-      .ready_o(rs_ready_o),
+    // Handshake from/to the units
+    .valid_i(rs_valid_i),
+    .ready_o(rs_ready_o),
 
-      // Handshake from/to the ROB
-      .rob_ready_i(rob_ready_i),
-      .rob_valid_o(valid_o),
+    // Handshake from/to the ROB
+    .rob_ready_i(rob_ready_i),
+    .rob_valid_o(valid_o),
 
-      // Served unit
-      .served_max_prio_o(served_max_prio),
-      .served_o         (served)
+    // Served unit
+    .served_max_prio_o(served_max_prio),
+    .served_o         (served)
   );
 
   // --------------

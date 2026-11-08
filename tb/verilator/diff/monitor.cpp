@@ -216,11 +216,11 @@ struct Monitor::Impl {
                 const auto rob = issue_signals.get("ex_rob_idx_o", "", lane);
                 const auto insn = issue_signals.get("comm_data_o", "instruction.raw", lane);
                 checker.dispatch(rob, issue_signals.get("comm_data_o", "instr_pc", lane), insn,
-                                 issue_signals.get("ireg_data_q", "rs1_idx", lane),
-                                 issue_signals.get("ireg_data_q", "rs2_idx", lane),
+                                 issue_signals.get("issue_data", "rs1_idx", lane),
+                                 issue_signals.get("issue_data", "rs2_idx", lane),
                                  issue_signals.get("comm_data_o", "rd_idx", lane),
                                  issue_signals.get("comm_data_o", "rd_upd", lane), t,
-                                 issue_signals.get("ireg_data_q", "rs3_idx", lane));
+                                 issue_signals.get("issue_data", "rs3_idx", lane));
                 if (decode(insn).csr)
                     checker.source_at_dispatch(rob, issue_signals.get("comm_data_o", "res_value", lane), t);
             }
@@ -296,15 +296,15 @@ struct Monitor::Impl {
                 checker.store_response(sb_signals.get("mem_tag_i"),
                                        sb_signals.get("mem_except_raised_i"), t);
         }
-        // This is the accepted, compacted fetch bundle entering the IQ, not a held memory response.
+        // Observe acceptance into the input spill; the buffered bundle retains its identity.
         if (!front_flush && issue_signals.get("fetch_valid_i") &&
             issue_signals.get("fetch_ready_o")) {
             auto valid = issue_signals.get("fetch_valid_instr_i");
-            const auto &layout = layouts.at(issue + "new_instr");
-            for (int lane = layout.low; lane <= layout.high; ++lane)
+            const auto lanes = constants.at("tb_bare.Len5Cfg.LEN5_MULTIPLE_ISSUES");
+            for (unsigned lane = 0; lane < lanes; ++lane)
                 if (valid & (uint64_t{1} << lane))
-                    checker.fetch(issue_signals.get("new_instr", "curr_pc", lane),
-                                  issue_signals.get("new_instr", "instruction.raw", lane), t);
+                    checker.fetch(issue_signals.get("fetch_pred_i", "pc", lane),
+                                  issue_signals.get("fetch_instr_i", "", lane), t);
         }
         if (constants.at("tb_bare.TbCfg.MEMORY_BACKEND") != 0 &&
             top_signals.get("dp2mem_store_valid") && top_signals.get("mem2dp_store_ready") &&

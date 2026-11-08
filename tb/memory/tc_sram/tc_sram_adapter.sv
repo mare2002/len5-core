@@ -1,63 +1,63 @@
 `include "tb_typedef.svh"
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 module tc_sram_adapter #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
-        tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
-    ),
-    localparam type memory_response_t = `LEN5_MEMORY_RESPONSE_T(Len5Cfg),
-    parameter int unsigned N = Len5Cfg.LEN5_MULTIPLE_ISSUES,
-    parameter logic [63:0] IMEM_BASE_ADDR = TbCfg.IMEM_BASE_ADDR,
-    parameter int unsigned IMEM_SIZE_BYTES = TbCfg.IMEM_SIZE_BYTES,
-    parameter int unsigned IMEM_LATENCY = TbCfg.IMEM_LATENCY,
-    parameter logic [63:0] DMEM_BASE_ADDR = TbCfg.DMEM_BASE_ADDR,
-    parameter int unsigned DMEM_SIZE_BYTES = TbCfg.DMEM_SIZE_BYTES,
-    parameter int unsigned DMEM_LATENCY = TbCfg.DMEM_LATENCY,
-    parameter logic [63:0] SERIAL_ADDR = TbCfg.SERIAL_ADDR,
-    parameter logic [63:0] EXIT_ADDR = TbCfg.EXIT_ADDR,
-    parameter int unsigned IMEM_DATA_WIDTH = N > 2 ? 32 * N : 64,
-    parameter int unsigned IMEM_ADDR_WIDTH = IMEM_SIZE_BYTES / (IMEM_DATA_WIDTH / 8) > 1 ? $clog2(
-        IMEM_SIZE_BYTES / (IMEM_DATA_WIDTH / 8)
-    ) : 1,
-    parameter int unsigned DMEM_ADDR_WIDTH = DMEM_SIZE_BYTES / 8 > 1 ? $clog2(
-        DMEM_SIZE_BYTES / 8
-    ) : 1,
-    parameter int unsigned RESPONSE_DEPTH = (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1,
-    parameter int unsigned COUNT_WIDTH = $clog2(
-        (RESPONSE_DEPTH > IMEM_LATENCY ? RESPONSE_DEPTH : IMEM_LATENCY) + 1
-    )
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
+      tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
+  ),
+  localparam type memory_response_t = `LEN5_MEMORY_RESPONSE_T(Len5Cfg),
+  parameter int unsigned N = Len5Cfg.LEN5_MULTIPLE_ISSUES,
+  parameter logic [63:0] IMEM_BASE_ADDR = TbCfg.IMEM_BASE_ADDR,
+  parameter int unsigned IMEM_SIZE_BYTES = TbCfg.IMEM_SIZE_BYTES,
+  parameter int unsigned IMEM_LATENCY = TbCfg.IMEM_LATENCY,
+  parameter logic [63:0] DMEM_BASE_ADDR = TbCfg.DMEM_BASE_ADDR,
+  parameter int unsigned DMEM_SIZE_BYTES = TbCfg.DMEM_SIZE_BYTES,
+  parameter int unsigned DMEM_LATENCY = TbCfg.DMEM_LATENCY,
+  parameter logic [63:0] SERIAL_ADDR = TbCfg.SERIAL_ADDR,
+  parameter logic [63:0] EXIT_ADDR = TbCfg.EXIT_ADDR,
+  parameter int unsigned IMEM_DATA_WIDTH = N > 2 ? 32 * N : 64,
+  parameter int unsigned IMEM_ADDR_WIDTH = IMEM_SIZE_BYTES / (IMEM_DATA_WIDTH / 8) > 1 ? $clog2(
+      IMEM_SIZE_BYTES / (IMEM_DATA_WIDTH / 8)
+  ) : 1,
+  parameter int unsigned DMEM_ADDR_WIDTH = DMEM_SIZE_BYTES / 8 > 1 ? $clog2(
+      DMEM_SIZE_BYTES / 8
+  ) : 1,
+  parameter int unsigned RESPONSE_DEPTH = (DMEM_LATENCY > 0 ? DMEM_LATENCY : 1) + 1,
+  parameter int unsigned COUNT_WIDTH = $clog2(
+      (RESPONSE_DEPTH > IMEM_LATENCY ? RESPONSE_DEPTH : IMEM_LATENCY) + 1
+  )
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic initialized_i,
-    input logic instr_req_i,
-    input logic instr_ready_i,
-    input logic [63:0] instr_addr_i,
-    input logic load_req_i,
-    input logic load_ready_i,
-    input logic [63:0] load_addr_i,
-    input logic [7:0] load_be_i,
-    input logic [Len5Cfg.BUFF_IDX_LEN-1:0] load_tag_i,
-    input logic store_req_i,
-    input logic store_ready_i,
-    input logic store_we_i,
-    input logic [63:0] store_addr_i,
-    input logic [63:0] store_data_i,
-    input logic [7:0] store_be_i,
-    input logic [Len5Cfg.BUFF_IDX_LEN-1:0] store_tag_i,
-    output memory_response_t response_o  /* verilator split_var */,
-    output logic imem_req_o,
-    output logic [IMEM_ADDR_WIDTH-1:0] imem_addr_o,
-    input logic [IMEM_DATA_WIDTH-1:0] imem_rdata_i,
-    output logic [1:0] dmem_req_o,
-    output logic [1:0] dmem_we_o,
-    output logic [1:0][DMEM_ADDR_WIDTH-1:0] dmem_addr_o,
-    output logic [1:0][63:0] dmem_wdata_o,
-    output logic [1:0][7:0] dmem_be_o,
-    input logic [1:0][63:0] dmem_rdata_i,
-    output logic mmio_write_o,
-    output logic [2:0][COUNT_WIDTH-1:0] outstanding_o,
-    output logic [2:0][COUNT_WIDTH-1:0] occupancy_o
+  input logic clk_i,
+  input logic rst_ni,
+  input logic initialized_i,
+  input logic instr_req_i,
+  input logic instr_ready_i,
+  input logic [63:0] instr_addr_i,
+  input logic load_req_i,
+  input logic load_ready_i,
+  input logic [63:0] load_addr_i,
+  input logic [7:0] load_be_i,
+  input logic [Len5Cfg.BUFF_IDX_LEN-1:0] load_tag_i,
+  input logic store_req_i,
+  input logic store_ready_i,
+  input logic store_we_i,
+  input logic [63:0] store_addr_i,
+  input logic [63:0] store_data_i,
+  input logic [7:0] store_be_i,
+  input logic [Len5Cfg.BUFF_IDX_LEN-1:0] store_tag_i,
+  output memory_response_t response_o  /* verilator split_var */,
+  output logic imem_req_o,
+  output logic [IMEM_ADDR_WIDTH-1:0] imem_addr_o,
+  input logic [IMEM_DATA_WIDTH-1:0] imem_rdata_i,
+  output logic [1:0] dmem_req_o,
+  output logic [1:0] dmem_we_o,
+  output logic [1:0][DMEM_ADDR_WIDTH-1:0] dmem_addr_o,
+  output logic [1:0][63:0] dmem_wdata_o,
+  output logic [1:0][7:0] dmem_be_o,
+  input logic [1:0][63:0] dmem_rdata_i,
+  output logic mmio_write_o,
+  output logic [2:0][COUNT_WIDTH-1:0] outstanding_o,
+  output logic [2:0][COUNT_WIDTH-1:0] occupancy_o
 );
 
   import len5_pkg::*;
@@ -123,17 +123,17 @@ module tc_sram_adapter #(
   assign fetch_pc_misaligned = instr_addr_i[1:0] != 0;
   for (genvar lane = 0; lane < N; lane++) begin : gen_instr_decode
     memory_access_check #(
-        .TbCfg     (TbCfg),
-        .BASE_ADDR (IMEM_BASE_ADDR),
-        .SIZE_BYTES(IMEM_SIZE_BYTES),
-        .KIND      (0)
+      .TbCfg     (TbCfg),
+      .BASE_ADDR (IMEM_BASE_ADDR),
+      .SIZE_BYTES(IMEM_SIZE_BYTES),
+      .KIND      (0)
     ) u_decode (
-        .addr_i  (fetch_bundle_addr + 64'(lane * 4)),
-        .bytes_i (4),
-        .sram_o  (fetch_lane_sram[lane]),
-        .mmio_o  (unused_instr_mmio[lane]),
-        .except_o(fetch_lane_except[lane]),
-        .code_o  (fetch_lane_code[lane])
+      .addr_i  (fetch_bundle_addr + 64'(lane * 4)),
+      .bytes_i (4),
+      .sram_o  (fetch_lane_sram[lane]),
+      .mmio_o  (unused_instr_mmio[lane]),
+      .except_o(fetch_lane_except[lane]),
+      .code_o  (fetch_lane_code[lane])
     );
   end
   assign fetch_metadata.upper_half = instr_addr_i[2];
@@ -191,34 +191,34 @@ module tc_sram_adapter #(
 
   // DMEM and MMIO retain size validation and misalignment-before-access-fault priority.
   memory_access_check #(
-      .TbCfg      (TbCfg),
-      .BASE_ADDR  (DMEM_BASE_ADDR),
-      .SIZE_BYTES (DMEM_SIZE_BYTES),
-      .SERIAL_ADDR(SERIAL_ADDR),
-      .EXIT_ADDR  (EXIT_ADDR),
-      .KIND       (1)
+    .TbCfg      (TbCfg),
+    .BASE_ADDR  (DMEM_BASE_ADDR),
+    .SIZE_BYTES (DMEM_SIZE_BYTES),
+    .SERIAL_ADDR(SERIAL_ADDR),
+    .EXIT_ADDR  (EXIT_ADDR),
+    .KIND       (1)
   ) u_load_decode (
-      .addr_i  (load_addr_i),
-      .bytes_i (access_bytes(load_be_i)),
-      .sram_o  (load_sram),
-      .mmio_o  (unused_load_mmio),
-      .except_o(load_except),
-      .code_o  (load_code)
+    .addr_i  (load_addr_i),
+    .bytes_i (access_bytes(load_be_i)),
+    .sram_o  (load_sram),
+    .mmio_o  (unused_load_mmio),
+    .except_o(load_except),
+    .code_o  (load_code)
   );
   memory_access_check #(
-      .TbCfg      (TbCfg),
-      .BASE_ADDR  (DMEM_BASE_ADDR),
-      .SIZE_BYTES (DMEM_SIZE_BYTES),
-      .SERIAL_ADDR(SERIAL_ADDR),
-      .EXIT_ADDR  (EXIT_ADDR),
-      .KIND       (2)
+    .TbCfg      (TbCfg),
+    .BASE_ADDR  (DMEM_BASE_ADDR),
+    .SIZE_BYTES (DMEM_SIZE_BYTES),
+    .SERIAL_ADDR(SERIAL_ADDR),
+    .EXIT_ADDR  (EXIT_ADDR),
+    .KIND       (2)
   ) u_store_decode (
-      .addr_i  (store_addr_i),
-      .bytes_i (access_bytes(store_be_i)),
-      .sram_o  (store_sram),
-      .mmio_o  (store_mmio),
-      .except_o(store_except),
-      .code_o  (store_code)
+    .addr_i  (store_addr_i),
+    .bytes_i (access_bytes(store_be_i)),
+    .sram_o  (store_sram),
+    .mmio_o  (store_mmio),
+    .except_o(store_except),
+    .code_o  (store_code)
   );
 
   // Accepted loads retain their response ownership across CPU pipeline flushes.
@@ -295,38 +295,38 @@ module tc_sram_adapter #(
   end
 
   memory_response_buffer #(
-      .DATA_T(data_response_t),
-      .DEPTH (RESPONSE_DEPTH)
+    .DATA_T(data_response_t),
+    .DEPTH (RESPONSE_DEPTH)
   ) u_load_buffer (
-      .clk_i,
-      .rst_ni,
-      .flush_i       (1'b0),
-      .allocate_i    (load_accepted),
-      .credit_o      (load_credit),
-      .result_valid_i(load_result_valid),
-      .result_i      (load_result),
-      .valid_o       (response_o.load_valid),
-      .ready_i       (load_ready_i),
-      .data_o        (load_response),
-      .outstanding_o (data_outstanding[0]),
-      .occupancy_o   (data_occupancy[0])
+    .clk_i,
+    .rst_ni,
+    .flush_i       (1'b0),
+    .allocate_i    (load_accepted),
+    .credit_o      (load_credit),
+    .result_valid_i(load_result_valid),
+    .result_i      (load_result),
+    .valid_o       (response_o.load_valid),
+    .ready_i       (load_ready_i),
+    .data_o        (load_response),
+    .outstanding_o (data_outstanding[0]),
+    .occupancy_o   (data_occupancy[0])
   );
   memory_response_buffer #(
-      .DATA_T(data_response_t),
-      .DEPTH (RESPONSE_DEPTH)
+    .DATA_T(data_response_t),
+    .DEPTH (RESPONSE_DEPTH)
   ) u_store_buffer (
-      .clk_i,
-      .rst_ni,
-      .flush_i       (1'b0),
-      .allocate_i    (store_accepted),
-      .credit_o      (store_credit),
-      .result_valid_i(store_result_valid_q),
-      .result_i      (store_result_q),
-      .valid_o       (response_o.store_valid),
-      .ready_i       (store_ready_i),
-      .data_o        (store_response),
-      .outstanding_o (data_outstanding[1]),
-      .occupancy_o   (data_occupancy[1])
+    .clk_i,
+    .rst_ni,
+    .flush_i       (1'b0),
+    .allocate_i    (store_accepted),
+    .credit_o      (store_credit),
+    .result_valid_i(store_result_valid_q),
+    .result_i      (store_result_q),
+    .valid_o       (response_o.store_valid),
+    .ready_i       (store_ready_i),
+    .data_o        (store_response),
+    .outstanding_o (data_outstanding[1]),
+    .occupancy_o   (data_occupancy[1])
   );
   assign outstanding_o[1]        = COUNT_WIDTH'(data_outstanding[0]);
   assign outstanding_o[2]        = COUNT_WIDTH'(data_outstanding[1]);

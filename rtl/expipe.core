@@ -72,6 +72,7 @@ filesets:
       - expipe/issue-unit/issue_decoder.sv
       - expipe/issue-unit/issue_queue.sv
       - expipe/issue-unit/issue_dependencies.sv
+      - expipe/issue-unit/issue_decode.sv
       - expipe/issue-unit/issue_stage.sv
     file_type: systemVerilogSource
 

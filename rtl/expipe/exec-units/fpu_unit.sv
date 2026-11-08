@@ -14,34 +14,34 @@
 // Date: 27/04/2024
 
 module fpu_unit #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
-    localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+  localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN
 ) (
-    // Clock, reset, and flush
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
-    // Issue stage
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
-    input expipe_pkg::fpu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_eu_ctl_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] issue_frm_i,
-    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
-    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
-    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_i,
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
+  // Clock, reset, and flush
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
+  // Issue stage
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+  input expipe_pkg::fpu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_eu_ctl_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] issue_frm_i,
+  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
+  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
+  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_i,
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
 
-    // CSR frm
-    input logic [csr_pkg::FCSR_FRM_LEN-1:0] csr_frm_i,
-    // CDB
-    input logic cdb_ready_i,
-    output logic cdb_valid_o,
-    input logic cdb_valid_i,  // to know if the CDB is carrying valid data
-    input cdb_data_t cdb_data_i,
-    output cdb_data_t cdb_data_o
+  // CSR frm
+  input logic [csr_pkg::FCSR_FRM_LEN-1:0] csr_frm_i,
+  // CDB
+  input logic cdb_ready_i,
+  output logic cdb_valid_o,
+  input logic cdb_valid_i,  // to know if the CDB is carrying valid data
+  input cdb_data_t cdb_data_i,
+  output cdb_data_t cdb_data_o
 );
 
   import len5_pkg::*;
@@ -71,39 +71,39 @@ module fpu_unit #(
   // DIV reservation station
   // -----------------------
   arith_rs_fpu #(
-      .Len5Cfg(Len5Cfg)
+    .Len5Cfg(Len5Cfg)
   ) u_fpu_rs (
-      .clk_i               (clk_i),
-      .rst_ni              (rst_ni),
-      .flush_i             (flush_i),
-      .issue_valid_i       (issue_valid_i),
-      .issue_ready_o       (issue_ready_o),
-      .issue_eu_ctl_i      (issue_eu_ctl_i),
-      .issue_frm_i         (issue_frm_i),
-      .issue_rs1_i         (issue_rs1_i),
-      .issue_rs2_i         (issue_rs2_i),
-      .issue_rs3_i         (issue_rs3_i),
-      .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
-      .cdb_ready_i         (cdb_ready_i),
-      .cdb_valid_i         (cdb_valid_i),
-      .cdb_valid_o         (cdb_valid_o),
-      .cdb_data_i          (cdb_data_i),
-      .cdb_data_o          (cdb_data_o),
-      .eu_ready_i          (fpu_rs_ready),
-      .eu_valid_i          (fpu_rs_valid),
-      .eu_valid_o          (rs_fpu_valid),
-      .eu_ready_o          (rs_fpu_ready),
-      .eu_rob_idx_i        (fpu_rs_rob_idx),
-      .eu_result_i         (fpu_rs_result),
-      .eu_except_raised_i  (fpu_rs_except_raised),
-      .eu_except_code_i    (fpu_rs_except_code),
-      .eu_fflags_i         (fpu_rs_flags),
-      .eu_ctl_o            (rs_fpu_ctl),
-      .eu_frm_o            (rs_fpu_rm),
-      .eu_rs1_o            (rs_fpu_rs1_value),
-      .eu_rs2_o            (rs_fpu_rs2_value),
-      .eu_rs3_o            (rs_fpu_rs3_value),
-      .eu_rob_idx_o        (rs_fpu_rob_idx)
+    .clk_i               (clk_i),
+    .rst_ni              (rst_ni),
+    .flush_i             (flush_i),
+    .issue_valid_i       (issue_valid_i),
+    .issue_ready_o       (issue_ready_o),
+    .issue_eu_ctl_i      (issue_eu_ctl_i),
+    .issue_frm_i         (issue_frm_i),
+    .issue_rs1_i         (issue_rs1_i),
+    .issue_rs2_i         (issue_rs2_i),
+    .issue_rs3_i         (issue_rs3_i),
+    .issue_dest_rob_idx_i(issue_dest_rob_idx_i),
+    .cdb_ready_i         (cdb_ready_i),
+    .cdb_valid_i         (cdb_valid_i),
+    .cdb_valid_o         (cdb_valid_o),
+    .cdb_data_i          (cdb_data_i),
+    .cdb_data_o          (cdb_data_o),
+    .eu_ready_i          (fpu_rs_ready),
+    .eu_valid_i          (fpu_rs_valid),
+    .eu_valid_o          (rs_fpu_valid),
+    .eu_ready_o          (rs_fpu_ready),
+    .eu_rob_idx_i        (fpu_rs_rob_idx),
+    .eu_result_i         (fpu_rs_result),
+    .eu_except_raised_i  (fpu_rs_except_raised),
+    .eu_except_code_i    (fpu_rs_except_code),
+    .eu_fflags_i         (fpu_rs_flags),
+    .eu_ctl_o            (rs_fpu_ctl),
+    .eu_frm_o            (rs_fpu_rm),
+    .eu_rs1_o            (rs_fpu_rs1_value),
+    .eu_rs2_o            (rs_fpu_rs2_value),
+    .eu_rs3_o            (rs_fpu_rs3_value),
+    .eu_rob_idx_o        (rs_fpu_rob_idx)
   );
 
   // Rounding mode multiplexer
@@ -111,26 +111,26 @@ module fpu_unit #(
 
   // FPU wrapper
   fpu_wrapper #(
-      .Len5Cfg(Len5Cfg)
+    .Len5Cfg(Len5Cfg)
   ) u_fpu_wrapper (
-      .clk_i          (clk_i),
-      .rst_ni         (rst_ni),
-      .flush_i        (flush_i),
-      .valid_i        (rs_fpu_valid),
-      .ready_i        (rs_fpu_ready),
-      .ready_o        (fpu_rs_ready),
-      .valid_o        (fpu_rs_valid),
-      .ctl_i          (rs_fpu_ctl),
-      .rm_i           (fpu_rm),
-      .rob_idx_i      (rs_fpu_rob_idx),
-      .rs1_value_i    (rs_fpu_rs1_value),
-      .rs2_value_i    (rs_fpu_rs2_value),
-      .rs3_value_i    (rs_fpu_rs3_value),
-      .rob_idx_o      (fpu_rs_rob_idx),
-      .result_o       (fpu_rs_result),
-      .except_raised_o(fpu_rs_except_raised),
-      .except_code_o  (fpu_rs_except_code),
-      .fflags_o       (fpu_rs_flags)
+    .clk_i          (clk_i),
+    .rst_ni         (rst_ni),
+    .flush_i        (flush_i),
+    .valid_i        (rs_fpu_valid),
+    .ready_i        (rs_fpu_ready),
+    .ready_o        (fpu_rs_ready),
+    .valid_o        (fpu_rs_valid),
+    .ctl_i          (rs_fpu_ctl),
+    .rm_i           (fpu_rm),
+    .rob_idx_i      (rs_fpu_rob_idx),
+    .rs1_value_i    (rs_fpu_rs1_value),
+    .rs2_value_i    (rs_fpu_rs2_value),
+    .rs3_value_i    (rs_fpu_rs3_value),
+    .rob_idx_o      (fpu_rs_rob_idx),
+    .result_o       (fpu_rs_result),
+    .except_raised_o(fpu_rs_except_raised),
+    .except_code_o  (fpu_rs_except_code),
+    .fflags_o       (fpu_rs_flags)
   );
 
 endmodule

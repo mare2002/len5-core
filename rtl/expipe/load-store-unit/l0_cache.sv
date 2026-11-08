@@ -21,29 +21,29 @@
  *          the load without accessing the memory.
  */
 module l0_cache #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    /* Dependent parameters: do NOT override */
-    localparam int unsigned StIdxW = Len5Cfg.STBUFF_TAG_W
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  /* Dependent parameters: do NOT override */
+  localparam int unsigned StIdxW = Len5Cfg.STBUFF_TAG_W
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i, // flush after exception
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i, // flush after exception
 
-    // Store buffer
-    input logic st_valid_i,  // store instruction valid
-    input logic [len5_pkg::ALEN-1:0] st_addr_i,  // store address
-    input logic [StIdxW-1:0] st_idx_i,  // store buffer index
-    input logic st_cached_i,  // the store instruction is cached
-    input logic [len5_pkg::ALEN-1:0] st_cached_addr_i,  // cached store address
-    input expipe_pkg::ldst_width_t st_cached_width_i,  // cached store width
-    input logic [len5_pkg::XLEN-1:0] st_cached_value_i,  // cached store value
-    output logic [StIdxW-1:0] st_idx_o,  // store buffer index
+  // Store buffer
+  input logic st_valid_i,  // store instruction valid
+  input logic [len5_pkg::ALEN-1:0] st_addr_i,  // store address
+  input logic [StIdxW-1:0] st_idx_i,  // store buffer index
+  input logic st_cached_i,  // the store instruction is cached
+  input logic [len5_pkg::ALEN-1:0] st_cached_addr_i,  // cached store address
+  input expipe_pkg::ldst_width_t st_cached_width_i,  // cached store width
+  input logic [len5_pkg::XLEN-1:0] st_cached_value_i,  // cached store value
+  output logic [StIdxW-1:0] st_idx_o,  // store buffer index
 
-    // Load buffer
-    input  logic                    [len5_pkg::ALEN-1:0] ld_addr_i,   // load address
-    input  expipe_pkg::ldst_width_t                      ld_width_i,  // load width
-    output logic                                         ld_valid_o,  // forwarding succeeded
-    output logic                    [len5_pkg::XLEN-1:0] ld_value_o   // cached value
+  // Load buffer
+  input  logic                    [len5_pkg::ALEN-1:0] ld_addr_i,   // load address
+  input  expipe_pkg::ldst_width_t                      ld_width_i,  // load width
+  output logic                                         ld_valid_o,  // forwarding succeeded
+  output logic                    [len5_pkg::XLEN-1:0] ld_value_o   // cached value
 );
 
   import len5_config_pkg::*;

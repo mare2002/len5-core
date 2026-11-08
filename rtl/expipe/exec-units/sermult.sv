@@ -24,29 +24,29 @@ The interface of the unit has to be adapted to that of the processor exe unit*/
 // TODO: remove useless comments, add comments
 
 module sermult #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Handshake from/to the reservation station unit
-    input  logic valid_i,
-    input  logic ready_i,
-    output logic valid_o,
-    output logic ready_o,
+  // Handshake from/to the reservation station unit
+  input  logic valid_i,
+  input  logic ready_i,
+  output logic valid_o,
+  output logic ready_o,
 
-    // Data from/to the reservation station unit
-    input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-    input  rob_idx_t                                    rob_idx_i,
-    input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
-    input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-    output rob_idx_t                                    rob_idx_o,
-    output logic                   [len5_pkg::XLEN-1:0] result_o,
-    output logic                                        except_raised_o,
-    output len5_pkg::except_code_t                      except_code_o
+  // Data from/to the reservation station unit
+  input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
+  input  rob_idx_t                                    rob_idx_i,
+  input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
+  input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
+  output rob_idx_t                                    rob_idx_o,
+  output logic                   [len5_pkg::XLEN-1:0] result_o,
+  output logic                                        except_raised_o,
+  output len5_pkg::except_code_t                      except_code_o
 );
 
   import len5_pkg::*;

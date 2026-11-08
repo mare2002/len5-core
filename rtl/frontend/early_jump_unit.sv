@@ -14,27 +14,27 @@
 // Date: 28/02/2024
 
 module early_jump_unit #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    input  len5_pkg::instr_t       [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr_i,
-    input  logic                                                      instr_valid_i,
-    input  logic                                                      issue_ready_i,
-    input  fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred_i,
-    input  logic                   [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr_i,
-    output logic                   [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr_o,
-    input  logic                   [              len5_pkg::XLEN-1:0] early_jump_target_i,
-    input  logic                                                      call_confirm_i,
-    input  logic                                                      ret_confirm_i,
-    input  logic                   [              len5_pkg::ALEN-1:0] res_link_addr_i,
-    output fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
-    output logic                                                      early_jump_valid_o,
-    output logic                                                      mem_flush_o,
-    output logic                   [              len5_pkg::XLEN-1:0] early_jump_base_o,
-    output logic                   [              len5_pkg::XLEN-1:0] early_jump_offs_o
+  input  len5_pkg::instr_t       [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instr_i,
+  input  logic                                                      instr_valid_i,
+  input  logic                                                      issue_ready_i,
+  input  fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] mem_if_pred_i,
+  input  logic                   [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr_i,
+  output logic                   [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_instr_o,
+  input  logic                   [              len5_pkg::XLEN-1:0] early_jump_target_i,
+  input  logic                                                      call_confirm_i,
+  input  logic                                                      ret_confirm_i,
+  input  logic                   [              len5_pkg::ALEN-1:0] res_link_addr_i,
+  output fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] issue_pred_o,
+  output logic                                                      early_jump_valid_o,
+  output logic                                                      mem_flush_o,
+  output logic                   [              len5_pkg::XLEN-1:0] early_jump_base_o,
+  output logic                   [              len5_pkg::XLEN-1:0] early_jump_offs_o
 );
 
   import len5_pkg::*;
@@ -232,19 +232,19 @@ module early_jump_unit #(
 
   // RAS LIFO buffer
   ras #(
-      .Len5Cfg(Len5Cfg)
+    .Len5Cfg(Len5Cfg)
   ) u_ras (
-      .clk_i          (clk_i),
-      .rst_ni         (rst_ni),
-      .flush_i        (flush_i),
-      .push_i         (ras_push),
-      .pop_i          (ras_pop),
-      .link_addr_i    (link_addr),
-      .valid_o        (ras_addr_valid),
-      .ret_addr_o     (ras_addr),
-      .call_confirm_i (call_confirm_i),
-      .ret_confirm_i  (ret_confirm_i),
-      .res_link_addr_i(res_link_addr_i)
+    .clk_i          (clk_i),
+    .rst_ni         (rst_ni),
+    .flush_i        (flush_i),
+    .push_i         (ras_push),
+    .pop_i          (ras_pop),
+    .link_addr_i    (link_addr),
+    .valid_o        (ras_addr_valid),
+    .ret_addr_o     (ras_addr),
+    .call_confirm_i (call_confirm_i),
+    .ret_confirm_i  (ret_confirm_i),
+    .res_link_addr_i(res_link_addr_i)
   );
 
   // Output network

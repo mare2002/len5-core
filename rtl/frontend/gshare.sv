@@ -14,19 +14,19 @@
 
 
 module gshare #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam int unsigned HLEN = Len5Cfg.BPU_HLEN,
-    localparam fetch_pkg::c2b_t INIT_C2B = fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam int unsigned HLEN = Len5Cfg.BPU_HLEN,
+  localparam fetch_pkg::c2b_t INIT_C2B = fetch_pkg::c2b_t'(Len5Cfg.BPU_INIT_C2B)
 ) (
-    input logic                                              clk_i,
-    input logic                                              rst_ni,
-    input logic                                              flush_i,
-    input logic [HLEN-Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:0] curr_hist_i,
-    input logic                                              res_valid_i,
-    input logic                                              res_taken_i,
-    input logic [                                  HLEN-1:0] res_hist_i,
+  input logic                                              clk_i,
+  input logic                                              rst_ni,
+  input logic                                              flush_i,
+  input logic [HLEN-Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS-1:0] curr_hist_i,
+  input logic                                              res_valid_i,
+  input logic                                              res_taken_i,
+  input logic [                                  HLEN-1:0] res_hist_i,
 
-    output logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] taken_o
+  output logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] taken_o
 );
 
   import len5_pkg::*;

@@ -36,7 +36,8 @@ package len5_config_pkg;
     // Multi-issue architecture
     // ------------------------
     int unsigned LEN5_MULTIPLE_ISSUES;  // instructions per fetch bundle
-    int unsigned ISSUE_WIDTH;  // decoded instruction slots
+    int unsigned ISSUE_WIDTH;  // maximum instructions dispatched per cycle
+    bit ISSUE_DECODE_SPILL_EN;
 
     // Enable M extension support
     // --------------------------
@@ -178,6 +179,7 @@ package len5_config_pkg;
     logic [63:0] BOOT_PC;
     int unsigned LEN5_MULTIPLE_ISSUES;
     int unsigned ISSUE_WIDTH;
+    bit ISSUE_DECODE_SPILL_EN;
     bit LEN5_M_EN;
     bit LEN5_DIV_EN;
     bit LEN5_F_EN;
@@ -246,6 +248,7 @@ package len5_config_pkg;
       BOOT_PC: 64'h180,
       LEN5_MULTIPLE_ISSUES: 32'd8,
       ISSUE_WIDTH: 32'd1,
+      ISSUE_DECODE_SPILL_EN: 1'b1,
       LEN5_M_EN: 1'b1,
       LEN5_DIV_EN: 1'b1,
       LEN5_F_EN: 1'b1,
@@ -295,6 +298,7 @@ package len5_config_pkg;
     cfg.BOOT_PC = user_cfg.BOOT_PC;
     cfg.LEN5_MULTIPLE_ISSUES = user_cfg.LEN5_MULTIPLE_ISSUES;
     cfg.ISSUE_WIDTH = user_cfg.ISSUE_WIDTH;
+    cfg.ISSUE_DECODE_SPILL_EN = user_cfg.ISSUE_DECODE_SPILL_EN;
     cfg.LEN5_M_EN = user_cfg.LEN5_M_EN;
     cfg.LEN5_DIV_EN = user_cfg.LEN5_DIV_EN;
     cfg.LEN5_F_EN = user_cfg.LEN5_F_EN;
@@ -359,9 +363,9 @@ package len5_config_pkg;
 
   // Use explicit fatal checks so constant evaluation also rejects invalid builds without --assert.
   function automatic bit check_build(len5_cfg cfg);
-    int unsigned depths[6];
+    int unsigned depths          [6];
     int unsigned max_outstanding;
-    bit derived_valid;
+    bit          derived_valid;
     if ($isunknown(cfg)) $fatal(1, "check_build: LEN5 configuration contains unknown bits");
     if (!(cfg.LEN5_MULTIPLE_ISSUES inside {1, 2, 4, 8}))
       $fatal(1, "check_build: LEN5_MULTIPLE_ISSUES must be 1, 2, 4 or 8");
@@ -373,8 +377,7 @@ package len5_config_pkg;
     if (cfg.FETCH_MEMIF_FIFO_DEPTH == 0 ||
         (cfg.FETCH_MEMIF_FIFO_DEPTH & (cfg.FETCH_MEMIF_FIFO_DEPTH - 1)) != 0)
       $fatal(1, "check_build: FETCH_MEMIF_FIFO_DEPTH must be a positive power of two");
-    if (cfg.IQ_DEPTH < 2)
-      $fatal(1, "check_build: IQ_DEPTH must be at least two");
+    if (cfg.IQ_DEPTH < 2) $fatal(1, "check_build: IQ_DEPTH must be at least two");
     depths = '{
         cfg.RAS_DEPTH,
         cfg.LDBUFF_DEPTH,

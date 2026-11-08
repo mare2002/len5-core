@@ -54,36 +54,36 @@
 //                       on write requests.
 
 module tc_sram #(
-  parameter int unsigned NumWords     = 32'd1024, // Number of Words in data array
-  parameter int unsigned DataWidth    = 32'd128,  // Data signal width
-  parameter int unsigned ByteWidth    = 32'd8,    // Width of a data byte
-  parameter int unsigned NumPorts     = 32'd2,    // Number of read and write ports
-  parameter int unsigned Latency      = 32'd1,    // Latency when the read data is available
-  parameter              SimInit      = "none",   // Simulation initialization
-  parameter bit          PrintSimCfg  = 1'b0,     // Print configuration
-  parameter              ImplKey      = "none",   // Reference to specific implementation
-  parameter              FPGAImplKey  = "auto",   // Reference to specific implementation for fpga
+  parameter int unsigned NumWords = 32'd1024,  // Number of Words in data array
+  parameter int unsigned DataWidth = 32'd128,  // Data signal width
+  parameter int unsigned ByteWidth = 32'd8,  // Width of a data byte
+  parameter int unsigned NumPorts = 32'd2,  // Number of read and write ports
+  parameter int unsigned Latency = 32'd1,  // Latency when the read data is available
+  parameter SimInit = "none",  // Simulation initialization
+  parameter bit PrintSimCfg = 1'b0,  // Print configuration
+  parameter ImplKey = "none",  // Reference to specific implementation
+  parameter FPGAImplKey = "auto",  // Reference to specific implementation for fpga
   // DEPENDENT PARAMETERS, DO NOT OVERWRITE!
   parameter int unsigned AddrWidth = (NumWords > 32'd1) ? $clog2(NumWords) : 32'd1,
-  parameter int unsigned BeWidth   = (DataWidth + ByteWidth - 32'd1) / ByteWidth, // ceil_div
-  parameter type         addr_t    = logic [AddrWidth-1:0],
-  parameter type         data_t    = logic [DataWidth-1:0],
-  parameter type         be_t      = logic [BeWidth-1:0]
+  parameter int unsigned BeWidth = (DataWidth + ByteWidth - 32'd1) / ByteWidth,  // ceil_div
+  parameter type addr_t = logic [AddrWidth-1:0],
+  parameter type data_t = logic [DataWidth-1:0],
+  parameter type be_t = logic [BeWidth-1:0]
 ) (
-  input  logic                 clk_i,      // Clock
-  input  logic                 rst_ni,     // Asynchronous reset active low
+  input  logic                 clk_i,    // Clock
+  input  logic                 rst_ni,   // Asynchronous reset active low
   // input ports
-  input  logic  [NumPorts-1:0] req_i,      // request
-  input  logic  [NumPorts-1:0] we_i,       // write enable
-  input  addr_t [NumPorts-1:0] addr_i,     // request address
-  input  data_t [NumPorts-1:0] wdata_i,    // write data
-  input  be_t   [NumPorts-1:0] be_i,       // write byte enable
+  input  logic  [NumPorts-1:0] req_i,    // request
+  input  logic  [NumPorts-1:0] we_i,     // write enable
+  input  addr_t [NumPorts-1:0] addr_i,   // request address
+  input  data_t [NumPorts-1:0] wdata_i,  // write data
+  input  be_t   [NumPorts-1:0] be_i,     // write byte enable
   // output ports
-  output data_t [NumPorts-1:0] rdata_o     // read data
+  output data_t [NumPorts-1:0] rdata_o   // read data
 );
 
-// Synthesis uses an empty, parameterized blackbox instead of the functional model.
-// Support both the standard `SYNTHESIS define and the Bender define.
+  // Synthesis uses an empty, parameterized blackbox instead of the functional model.
+  // Support both the standard `SYNTHESIS define and the Bender define.
 `ifdef SYNTHESIS
   `define TC_GENERIC_SRAM_SYNTHESIS
 `elsif TARGET_SYNTHESIS
@@ -92,12 +92,12 @@ module tc_sram #(
 
 `ifndef TC_GENERIC_SRAM_SYNTHESIS
   // memory array
-  data_t sram [NumWords-1:0];
+  data_t                sram     [NumWords-1:0];
   // hold the read address when no read access is made
   addr_t [NumPorts-1:0] r_addr_q;
 
   // SRAM simulation initialization
-  data_t init_val[NumWords-1:0];
+  data_t                init_val [NumWords-1:0];
   // pragma translate_off
   function automatic data_t random_init_word();
     random_init_word = '0;
@@ -124,7 +124,7 @@ module tc_sram #(
   // array index 0.
 
   // read data output assignment
-  data_t [NumPorts-1:0][Latency-1:0] rdata_q,  rdata_d;
+  data_t [NumPorts-1:0][Latency-1:0] rdata_q, rdata_d;
   if (Latency == 32'd0) begin : gen_no_read_lat
     for (genvar i = 0; i < NumPorts; i++) begin : gen_port
       assign rdata_o[i] = (req_i[i] && !we_i[i]) ? sram[addr_i[i]] : sram[r_addr_q[i]];
@@ -134,7 +134,7 @@ module tc_sram #(
     always_comb begin
       for (int unsigned i = 0; i < NumPorts; i++) begin
         rdata_o[i] = rdata_q[i][0];
-        for (int unsigned j = 0; j < (Latency-1); j++) begin
+        for (int unsigned j = 0; j < (Latency - 1); j++) begin
           rdata_d[i][j] = rdata_q[i][j+1];
         end
         rdata_d[i][Latency-1] = (req_i[i] && !we_i[i]) ? sram[addr_i[i]] : sram[r_addr_q[i]];
@@ -174,9 +174,9 @@ module tc_sram #(
               // otherwise update read address for subsequent non request cycles
               r_addr_q[i] <= addr_i[i];
             end
-          end // if req_i
-        end // for ports
-      end // if !rst_ni
+          end  // if req_i
+        end  // for ports
+      end  // if !rst_ni
     end
   end else begin
     // write memory array
@@ -215,52 +215,63 @@ module tc_sram #(
               // otherwise update read address for subsequent non request cycles
               r_addr_q[i] <= addr_i[i];
             end
-          end // if req_i
-        end // for ports
-      end // if !rst_ni
+          end  // if req_i
+        end  // for ports
+      end  // if !rst_ni
     end
   end
 
-// Validate parameters.
-// pragma translate_off
+  // Validate parameters.
+  // pragma translate_off
 `ifndef VERILATOR
 `ifndef TARGET_SYNTHESIS
-  initial begin: p_assertions
-    assert ($bits(addr_i)  == NumPorts * AddrWidth) else $fatal(1, "AddrWidth problem on `addr_i`");
-    assert ($bits(wdata_i) == NumPorts * DataWidth) else $fatal(1, "DataWidth problem on `wdata_i`");
-    assert ($bits(be_i)    == NumPorts * BeWidth)   else $fatal(1, "BeWidth   problem on `be_i`"   );
-    assert ($bits(rdata_o) == NumPorts * DataWidth) else $fatal(1, "DataWidth problem on `rdata_o`");
-    assert (NumWords  >= 32'd1) else $fatal(1, "NumWords has to be > 0");
-    assert (DataWidth >= 32'd1) else $fatal(1, "DataWidth has to be > 0");
-    assert (ByteWidth >= 32'd1) else $fatal(1, "ByteWidth has to be > 0");
-    assert (NumPorts  >= 32'd1) else $fatal(1, "The number of ports must be at least 1!");
+  initial begin : p_assertions
+    assert ($bits(addr_i) == NumPorts * AddrWidth)
+    else $fatal(1, "AddrWidth problem on `addr_i`");
+    assert ($bits(wdata_i) == NumPorts * DataWidth)
+    else $fatal(1, "DataWidth problem on `wdata_i`");
+    assert ($bits(be_i) == NumPorts * BeWidth)
+    else $fatal(1, "BeWidth   problem on `be_i`");
+    assert ($bits(rdata_o) == NumPorts * DataWidth)
+    else $fatal(1, "DataWidth problem on `rdata_o`");
+    assert (NumWords >= 32'd1)
+    else $fatal(1, "NumWords has to be > 0");
+    assert (DataWidth >= 32'd1)
+    else $fatal(1, "DataWidth has to be > 0");
+    assert (ByteWidth >= 32'd1)
+    else $fatal(1, "ByteWidth has to be > 0");
+    assert (NumPorts >= 32'd1)
+    else $fatal(1, "The number of ports must be at least 1!");
   end
-  initial begin: p_sim_hello
+  initial begin : p_sim_hello
     if (PrintSimCfg) begin
       $display("#################################################################################");
-      $display("tc_sram functional instantiated with the configuration:"                          );
-      $display("Instance: %m"                                                                     );
-      $display("Number of ports   (dec): %0d", NumPorts                                           );
-      $display("Number of words   (dec): %0d", NumWords                                           );
-      $display("Address width     (dec): %0d", AddrWidth                                          );
-      $display("Data width        (dec): %0d", DataWidth                                          );
-      $display("Byte width        (dec): %0d", ByteWidth                                          );
-      $display("Byte enable width (dec): %0d", BeWidth                                            );
-      $display("Latency Cycles    (dec): %0d", Latency                                            );
-      $display("Simulation init   (str): %0s", SimInit                                            );
+      $display("tc_sram functional instantiated with the configuration:");
+      $display("Instance: %m");
+      $display("Number of ports   (dec): %0d", NumPorts);
+      $display("Number of words   (dec): %0d", NumWords);
+      $display("Address width     (dec): %0d", AddrWidth);
+      $display("Data width        (dec): %0d", DataWidth);
+      $display("Byte width        (dec): %0d", ByteWidth);
+      $display("Byte enable width (dec): %0d", BeWidth);
+      $display("Latency Cycles    (dec): %0d", Latency);
+      $display("Simulation init   (str): %0s", SimInit);
       $display("#################################################################################");
     end
   end
   for (genvar i = 0; i < NumPorts; i++) begin : gen_assertions
-    assert property ( @(posedge clk_i) disable iff (!rst_ni)
-        (req_i[i] |-> (addr_i[i] < NumWords))) else
-      $warning("Request address %0h not mapped, port %0d, expect random write or read behavior!",
-          addr_i[i], i);
+    assert property (@(posedge clk_i) disable iff (!rst_ni) (req_i[i] |-> (addr_i[i] < NumWords)))
+    else
+      $warning(
+          "Request address %0h not mapped, port %0d, expect random write or read behavior!",
+          addr_i[i],
+          i
+      );
   end
 
 `endif
 `endif
-// pragma translate_on
+  // pragma translate_on
 `else
   // Preserve the requested SRAM configuration as instance attributes where
   // supported, and as resolved parameters of the blackbox in all tools.
@@ -268,16 +279,18 @@ module tc_sram #(
      sram_byte_width = ByteWidth, sram_num_ports = NumPorts,
      sram_latency = Latency, sram_impl_key = ImplKey *)
   tc_sram_blackbox #(
-    .NumWords     ( NumWords     ),
-    .DataWidth    ( DataWidth    ),
-    .ByteWidth    ( ByteWidth    ),
-    .NumPorts     ( NumPorts     ),
-    .Latency      ( Latency      ),
-    .SimInit      ( SimInit      ),
-    .PrintSimCfg  ( PrintSimCfg  ),
-    .ImplKey      ( ImplKey      ),
-    .FPGAImplKey  ( FPGAImplKey  )
-  ) i_tc_sram_blackbox (.*);
+    .NumWords   (NumWords),
+    .DataWidth  (DataWidth),
+    .ByteWidth  (ByteWidth),
+    .NumPorts   (NumPorts),
+    .Latency    (Latency),
+    .SimInit    (SimInit),
+    .PrintSimCfg(PrintSimCfg),
+    .ImplKey    (ImplKey),
+    .FPGAImplKey(FPGAImplKey)
+  ) i_tc_sram_blackbox (
+    .*
+  );
 `endif
 
 endmodule
@@ -286,20 +299,20 @@ endmodule
 // Interface matches tc_sram so that the requested macro remains visible.
 (* black_box, syn_black_box = 1 *)
 module tc_sram_blackbox #(
-  parameter int unsigned NumWords     = 32'd1024,
-  parameter int unsigned DataWidth    = 32'd128,
-  parameter int unsigned ByteWidth    = 32'd8,
-  parameter int unsigned NumPorts     = 32'd2,
-  parameter int unsigned Latency      = 32'd1,
-  parameter              SimInit      = "none",
-  parameter bit          PrintSimCfg  = 1'b0,
-  parameter              ImplKey      = "none",
-  parameter              FPGAImplKey  = "auto",
+  parameter int unsigned NumWords = 32'd1024,
+  parameter int unsigned DataWidth = 32'd128,
+  parameter int unsigned ByteWidth = 32'd8,
+  parameter int unsigned NumPorts = 32'd2,
+  parameter int unsigned Latency = 32'd1,
+  parameter SimInit = "none",
+  parameter bit PrintSimCfg = 1'b0,
+  parameter ImplKey = "none",
+  parameter FPGAImplKey = "auto",
   parameter int unsigned AddrWidth = (NumWords > 32'd1) ? $clog2(NumWords) : 32'd1,
-  parameter int unsigned BeWidth   = (DataWidth + ByteWidth - 32'd1) / ByteWidth,
-  parameter type         addr_t    = logic [AddrWidth-1:0],
-  parameter type         data_t    = logic [DataWidth-1:0],
-  parameter type         be_t      = logic [BeWidth-1:0]
+  parameter int unsigned BeWidth = (DataWidth + ByteWidth - 32'd1) / ByteWidth,
+  parameter type addr_t = logic [AddrWidth-1:0],
+  parameter type data_t = logic [DataWidth-1:0],
+  parameter type be_t = logic [BeWidth-1:0]
 ) (
   input  logic                 clk_i,
   input  logic                 rst_ni,

@@ -13,28 +13,28 @@
 // Date: 11/11/2019
 
 module cdb_arbiter #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
 
-    // Handshake from/to the maximum priority unit
-    input  logic max_prio_valid_i,
-    output logic max_prio_ready_o,
+  // Handshake from/to the maximum priority unit
+  input  logic max_prio_valid_i,
+  output logic max_prio_ready_o,
 
-    // Handshake from/to the units
-    input  logic [Len5Cfg.MAX_EU_N-2:0] valid_i,
-    output logic [Len5Cfg.MAX_EU_N-2:0] ready_o,
+  // Handshake from/to the units
+  input  logic [Len5Cfg.MAX_EU_N-2:0] valid_i,
+  output logic [Len5Cfg.MAX_EU_N-2:0] ready_o,
 
-    // Handshake from/to the ROB
-    input  logic rob_ready_i,
-    output logic rob_valid_o,
+  // Handshake from/to the ROB
+  input  logic rob_ready_i,
+  output logic rob_valid_o,
 
-    // To the CDB MUX
-    output logic                                served_max_prio_o,
-    output logic [$clog2(Len5Cfg.MAX_EU_N)-1:0] served_o
+  // To the CDB MUX
+  output logic                                served_max_prio_o,
+  output logic [$clog2(Len5Cfg.MAX_EU_N)-1:0] served_o
 );
 
   import expipe_pkg::*;
@@ -60,12 +60,12 @@ module cdb_arbiter #(
   // VALID PRIORITY ENCODER
   // ----------------------
   prio_enc #(
-      .N  (Len5Cfg.MAX_EU_N - 1),
-      .INV(1'b1)
+    .N  (Len5Cfg.MAX_EU_N - 1),
+    .INV(1'b1)
   ) vaild_prio_enc (
-      .lines_i(mux_valid),
-      .enc_o  (enc_out),
-      .valid_o(enc_valid)
+    .lines_i(mux_valid),
+    .enc_o  (enc_out),
+    .valid_o(enc_valid)
   );
 
   // Decoder:

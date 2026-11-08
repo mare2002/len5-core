@@ -20,52 +20,52 @@
  *          updates from the CDB.
  */
 module rob #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam type issue_count_t = `LEN5_ISSUE_COUNT_T(Len5Cfg),
-    localparam int DEPTH = Len5Cfg.ROB_DEPTH
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam type issue_count_t = `LEN5_ISSUE_COUNT_T(Len5Cfg),
+  localparam int DEPTH = Len5Cfg.ROB_DEPTH
 ) (
-    // Clock and reset
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  // Clock and reset
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Issue stage
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,  // ordered request prefix
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,  // available prefix, independent of requests
-    input expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_data_i,
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_tail_idx_o,
-    // Parallel operand lookups
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs1_valid_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs1_ready_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs1_value_o,
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs2_valid_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs2_ready_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs2_value_o,
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs3_valid_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs3_ready_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs3_value_o,
+  // Issue stage
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,  // ordered request prefix
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,  // available prefix, independent of requests
+  input expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_data_i,
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_tail_idx_o,
+  // Parallel operand lookups
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs1_valid_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs1_ready_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs1_value_o,
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs2_valid_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs2_ready_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs2_value_o,
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs3_valid_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] opfwd_rs3_ready_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] opfwd_rs3_value_o,
 
-    // Store buffer
-    input  rob_idx_t sb_mem_idx_i,   // executing store ROB index
-    output logic     sb_mem_clear_o, // store is clear to execute
+  // Store buffer
+  input  rob_idx_t sb_mem_idx_i,   // executing store ROB index
+  output logic     sb_mem_clear_o, // store is clear to execute
 
-    // Commit stage
-    output logic                   comm_valid_o,  // to downstream hardware
-    input  logic                   comm_ready_i,  // from downstream hardware
-    output expipe_pkg::rob_entry_t comm_data_o,
-    output rob_idx_t               comm_idx_o,    // ROB head idx to update register status
+  // Commit stage
+  output logic                   comm_valid_o,  // to downstream hardware
+  input  logic                   comm_ready_i,  // from downstream hardware
+  output expipe_pkg::rob_entry_t comm_data_o,
+  output rob_idx_t               comm_idx_o,    // ROB head idx to update register status
 
-    // Common data bus (CDB)
-    input  logic      cdb_valid_i,
-    input  cdb_data_t cdb_data_i,
-    output logic      cdb_ready_o
+  // Common data bus (CDB)
+  input  logic      cdb_valid_i,
+  input  cdb_data_t cdb_data_i,
+  output logic      cdb_ready_o
 );
-//%TODO redo it later on when redoing the commit unit
+  //%TODO redo it later on when redoing the commit unit
   import expipe_pkg::*;
   import len5_pkg::XLEN;
   import len5_pkg::REG_IDX_LEN;
@@ -86,53 +86,53 @@ module rob #(
   logic fifo_push, fifo_pop, update_res;
   logic rob_full;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] alloc_available, issue_accept;
-  issue_count_t alloc_count;
-  logic unused_alloc_empty;
-  logic [DEPTH-1:0] issue_write_en;
-  rob_entry_t [DEPTH-1:0] issue_write_data;
+  issue_count_t             alloc_count;
+  logic                     unused_alloc_empty;
+  logic         [DEPTH-1:0] issue_write_en;
+  rob_entry_t   [DEPTH-1:0] issue_write_data;
 
   // Clear store instruction
   logic mem_instr_clear, entry_clear, cdb_clear;
   logic [DEPTH-1:0] uncleared;
 
   // Out of order commit
-  logic instr_waw;
+  logic             instr_waw;
   logic comm_valid_in_order, comm_valid_ooo, commit_valid;
 
   // -----------------
   // FIFO CONTROL UNIT
   // -----------------
   // Push/pop/update control
-  assign fifo_push = |alloc_count;
-  assign fifo_pop = commit_valid & comm_ready_i;
-  assign update_res = cdb_valid_i;
-  assign rob_full = data_valid[tail_idx];
+  assign fifo_push     = |alloc_count;
+  assign fifo_pop      = commit_valid & comm_ready_i;
+  assign update_res    = cdb_valid_i;
+  assign rob_full      = data_valid[tail_idx];
 
   // Counters control
-  assign head_reg_clr = flush_i;
-  assign tail_cnt_clr = flush_i;
+  assign head_reg_clr  = flush_i;
+  assign tail_cnt_clr  = flush_i;
   assign clear_cnt_clr = flush_i;
-  assign work_cnt_clr = flush_i;
-  assign head_reg_en = comm_valid_in_order & comm_ready_i;  // in-order commit only
-  assign tail_cnt_en = fifo_push;
-  assign clear_cnt_en = mem_instr_clear;
-  assign work_cnt_en = commit_valid & comm_ready_i;  // in- OR out-of-order commit
+  assign work_cnt_clr  = flush_i;
+  assign head_reg_en   = comm_valid_in_order & comm_ready_i;  // in-order commit only
+  assign tail_cnt_en   = fifo_push;
+  assign clear_cnt_en  = mem_instr_clear;
+  assign work_cnt_en   = commit_valid & comm_ready_i;  // in- OR out-of-order commit
 
   // DEPTH is a power of two and ISSUE_WIDTH < DEPTH; indices wrap by overflow.
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_alloc
     assign issue_tail_idx_o[i] = tail_idx + i[Len5Cfg.ROB_IDX_LEN-1:0];
-    assign alloc_available[i] = !data_valid[issue_tail_idx_o[i]];
-    assign issue_ready_o[i] = &alloc_available[i:0];
-    assign issue_accept[i] = issue_ready_o[i] && issue_valid_i[i];
+    assign alloc_available[i]  = !data_valid[issue_tail_idx_o[i]];
+    assign issue_ready_o[i]    = &alloc_available[i:0];
+    assign issue_accept[i]     = issue_ready_o[i] && issue_valid_i[i];
   end
 
   lzc #(
-      .WIDTH(Len5Cfg.ISSUE_WIDTH + 1),
-      .MODE (1'b0)
+    .WIDTH(Len5Cfg.ISSUE_WIDTH + 1),
+    .MODE (1'b0)
   ) u_alloc_count (
-      .in_i   ({1'b1, ~issue_accept}),
-      .cnt_o  (alloc_count),
-      .empty_o(unused_alloc_empty)
+    .in_i   ({1'b1, ~issue_accept}),
+    .cnt_o  (alloc_count),
+    .empty_o(unused_alloc_empty)
   );
 
   always_comb begin : alloc_demux
@@ -140,7 +140,7 @@ module rob #(
     foreach (issue_write_data[i]) issue_write_data[i] = '0;
     for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
       if (issue_accept[i]) begin
-        issue_write_en[issue_tail_idx_o[i]] = 1'b1;
+        issue_write_en[issue_tail_idx_o[i]]   = 1'b1;
         issue_write_data[issue_tail_idx_o[i]] = issue_data_i[i];
       end
     end
@@ -267,42 +267,42 @@ module rob #(
   // Tail counter
   // Tracks the first available empty entry in the ROB
   modn_counter_special #(
-      .N(DEPTH),
-      .I($clog2(Len5Cfg.ISSUE_WIDTH))
+    .N(DEPTH),
+    .I($clog2(Len5Cfg.ISSUE_WIDTH))
   ) u_tail_counter (
-      .clk_i         (clk_i),
-      .rst_ni        (rst_ni),
-      .en_i          (tail_cnt_en),
-      .clr_i         (tail_cnt_clr),
-      .increase_val_i(alloc_count),
-      .count_o       (tail_idx)
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .en_i          (tail_cnt_en),
+    .clr_i         (tail_cnt_clr),
+    .increase_val_i(alloc_count),
+    .count_o       (tail_idx)
   );
 
   // Clear counter for store instructions
   // Tracks the oldest instruction that is NOT "clear to commit"
   modn_counter #(
-      .N(DEPTH)
+    .N(DEPTH)
   ) u_clear_counter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (clear_cnt_en),
-      .clr_i  (clear_cnt_clr),
-      .count_o(clear_idx),
-      .tc_o   ()                // not needed
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .en_i   (clear_cnt_en),
+    .clr_i  (clear_cnt_clr),
+    .count_o(clear_idx),
+    .tc_o   ()                // not needed
   );
 
   // Work counter for out-of-order commit
   // Tracks the oldest instruction that is NOT "clear to commit"
   modn_counter #(
-      .N   (DEPTH),
-      .INIT(1)
+    .N   (DEPTH),
+    .INIT(1)
   ) u_work_counter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (work_cnt_en),
-      .clr_i  (work_cnt_clr),
-      .count_o(work_idx),
-      .tc_o   ()               // not needed
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .en_i   (work_cnt_en),
+    .clr_i  (work_cnt_clr),
+    .count_o(work_idx),
+    .tc_o   ()               // not needed
   );
 
   // --------------
@@ -343,8 +343,13 @@ module rob #(
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_check_alloc
     property p_fifo_push;
       @(posedge clk_i) disable iff (!rst_ni) sync_accept_on (flush_i)
-        issue_accept[i] |-> ##1 data_valid[$past(issue_tail_idx_o[i])] &&
-        data[$past(issue_tail_idx_o[i])] == $past(issue_data_i[i]);
+        issue_accept[i] |-> ##1 data_valid[$past(
+          issue_tail_idx_o[i]
+      )] && data[$past(
+          issue_tail_idx_o[i]
+      )] == $past(
+          issue_data_i[i]
+      );
     endproperty
     a_fifo_push :
     assert property (p_fifo_push)

@@ -255,15 +255,13 @@ package expipe_pkg;
   // ISSUE STAGE
   // -----------
 
-  // Issue queue data
+  // Raw frontend instruction retained by the mandatory input spill.
   typedef struct packed {
-    logic [XLEN-1:0] curr_pc;
-    instr_t          instruction;
-    logic [XLEN-1:0] pred_target;
-    logic            pred_taken;
-    logic            except_raised;
-    except_code_t    except_code;
-  } iq_entry_t;
+    instr_t instruction;
+    fetch_pkg::prediction_t prediction;
+    logic except_raised;
+    except_code_t except_code;
+  } fetch_entry_t;
 
   // Issue operation type
   typedef enum logic [3:0] {
@@ -318,6 +316,36 @@ package expipe_pkg;
     RS3_SEL_NONE,
     RS3_SEL_FP
   } rs3_sel_t;
+
+  // Static decode results; architectural legality is checked at dispatch.
+  typedef struct packed {
+    logic [XLEN-1:0]                  curr_pc;
+    instr_t                           instr;
+    issue_type_t                      issue_type;
+    issue_dispatch_t                  dispatch;
+    logic                             skip_eu;
+    issue_eu_t                        assigned_eu;
+    rs1_sel_t                         rs1_sel;
+    logic [REG_IDX_LEN-1:0]           rs1_idx;
+    rs2_sel_t                         rs2_sel;
+    logic [REG_IDX_LEN-1:0]           rs2_idx;
+    rs3_sel_t                         rs3_sel;
+    logic [REG_IDX_LEN-1:0]           rs3_idx;
+    logic [XLEN-1:0]                  imm_value;
+    logic [REG_IDX_LEN-1:0]           rd_idx;
+    logic                             rd_upd;
+    eu_ctl_t                          eu_ctl;
+    logic [csr_pkg::FCSR_FRM_LEN-1:0] frm;
+    logic                             mem_crit;
+    logic                             order_crit;
+    logic                             pred_taken;
+    logic [XLEN-1:0]                  pred_target;
+    logic                             except_raised;
+    except_code_t                     except_code;
+    logic                             requires_fp;
+    csr_pkg::csr_priv_t               required_priv;
+    logic                             ecall;
+  } decoded_instr_t;
 
   // Immediate type
   typedef enum logic [2:0] {

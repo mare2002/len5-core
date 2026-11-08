@@ -20,48 +20,48 @@
 */
 
 module arith_rs_serial #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
-    localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam int unsigned DEPTH = Len5Cfg.MULT_RS_DEPTH,
-    localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN,
-    localparam bit RR_ARBITER = Len5Cfg.MULT_RR_ARBITER,
-    localparam int unsigned RsIdxLen = $clog2(DEPTH)
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+  localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned DEPTH = Len5Cfg.MULT_RS_DEPTH,
+  localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN,
+  localparam bit RR_ARBITER = Len5Cfg.MULT_RR_ARBITER,
+  localparam int unsigned RsIdxLen = $clog2(DEPTH)
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
 
-    // Ordered insertion prefix; readiness reports the available free-entry prefix.
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][EU_CTL_LEN-1:0] issue_eu_ctl_i,
-    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
-    input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
+  // Ordered insertion prefix; readiness reports the available free-entry prefix.
+  input  logic     [Len5Cfg.ISSUE_WIDTH-1:0]                 issue_valid_i,
+  output logic     [Len5Cfg.ISSUE_WIDTH-1:0]                 issue_ready_o,
+  input  logic     [Len5Cfg.ISSUE_WIDTH-1:0][EU_CTL_LEN-1:0] issue_eu_ctl_i,
+  input  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0]                 issue_rs1_i,
+  input  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0]                 issue_rs2_i,
+  input  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0]                 issue_dest_rob_idx_i,
 
-    // CDB
-    input  logic      cdb_ready_i,
-    input  logic      cdb_valid_i,  // to know if the CDB is carrying valid data
-    output logic      cdb_valid_o,
-    input  cdb_data_t cdb_data_i,
-    output cdb_data_t cdb_data_o,
+  // CDB
+  input  logic      cdb_ready_i,
+  input  logic      cdb_valid_i,  // to know if the CDB is carrying valid data
+  output logic      cdb_valid_o,
+  input  cdb_data_t cdb_data_i,
+  output cdb_data_t cdb_data_o,
 
-    // Execution unit
-    input  logic                                        eu_ready_i,
-    input  logic                                        eu_valid_i,
-    output logic                                        eu_valid_o,
-    output logic                                        eu_ready_o,
-    input  rob_idx_t                                    eu_rob_idx_i,
-    input  logic                   [len5_pkg::XLEN-1:0] eu_result_i,
-    input  logic                                        eu_except_raised_i,
-    input  len5_pkg::except_code_t                      eu_except_code_i,
-    output logic                   [    EU_CTL_LEN-1:0] eu_ctl_o,
-    output logic                   [len5_pkg::XLEN-1:0] eu_rs1_o,
-    output logic                   [len5_pkg::XLEN-1:0] eu_rs2_o,
-    output rob_idx_t                                    eu_rob_idx_o
+  // Execution unit
+  input  logic                                        eu_ready_i,
+  input  logic                                        eu_valid_i,
+  output logic                                        eu_valid_o,
+  output logic                                        eu_ready_o,
+  input  rob_idx_t                                    eu_rob_idx_i,
+  input  logic                   [len5_pkg::XLEN-1:0] eu_result_i,
+  input  logic                                        eu_except_raised_i,
+  input  len5_pkg::except_code_t                      eu_except_code_i,
+  output logic                   [    EU_CTL_LEN-1:0] eu_ctl_o,
+  output logic                   [len5_pkg::XLEN-1:0] eu_rs1_o,
+  output logic                   [len5_pkg::XLEN-1:0] eu_rs2_o,
+  output rob_idx_t                                    eu_rob_idx_o
 );
 
   import len5_config_pkg::*;
@@ -165,19 +165,19 @@ module arith_rs_serial #(
   end
 
   always_comb begin : gen_insert
-    insert = '0;
-    insert_eu_ctl = '0;
-    insert_rs1 = '0;
-    insert_rs2 = '0;
+    insert              = '0;
+    insert_eu_ctl       = '0;
+    insert_rs1          = '0;
+    insert_rs2          = '0;
     insert_dest_rob_idx = '0;
 
     // Unused encoder outputs may repeat a valid entry's index.
     foreach (new_idx[k]) begin
       if (alloc_valid[k]) begin
-        insert[new_idx[k]] = issue_accept[k];
-        insert_eu_ctl[new_idx[k]] = issue_eu_ctl_i[k];
-        insert_rs1[new_idx[k]] = issue_rs1_fwd[k];
-        insert_rs2[new_idx[k]] = issue_rs2_fwd[k];
+        insert[new_idx[k]]              = issue_accept[k];
+        insert_eu_ctl[new_idx[k]]       = issue_eu_ctl_i[k];
+        insert_rs1[new_idx[k]]          = issue_rs1_fwd[k];
+        insert_rs2[new_idx[k]]          = issue_rs2_fwd[k];
         insert_dest_rob_idx[new_idx[k]] = issue_dest_rob_idx_i[k];
       end
     end
@@ -209,10 +209,12 @@ module arith_rs_serial #(
         ARITH_S_EMPTY: begin  // insert a new instruction
           if (insert[i]) begin
             arith_op[i] = ARITH_OP_INSERT;
-            case ({insert_rs1[i].ready, insert_rs2[i].ready})
-              2'b11: next_state[i] = ARITH_S_EX_REQ;
-              2'b01: next_state[i] = ARITH_S_RS1_PENDING;
-              2'b10: next_state[i] = ARITH_S_RS2_PENDING;
+            case ({
+              insert_rs1[i].ready, insert_rs2[i].ready
+            })
+              2'b11:   next_state[i] = ARITH_S_EX_REQ;
+              2'b01:   next_state[i] = ARITH_S_RS1_PENDING;
+              2'b10:   next_state[i] = ARITH_S_RS2_PENDING;
               default: next_state[i] = ARITH_S_RS12_PENDING;
             endcase
           end else next_state[i] = ARITH_S_EMPTY;
@@ -344,7 +346,7 @@ module arith_rs_serial #(
   // -----------------
 
   // Issue Stage
-  assign issue_ready_o = alloc_valid & {Len5Cfg.ISSUE_WIDTH{!flush_i}};
+  assign issue_ready_o            = alloc_valid & {Len5Cfg.ISSUE_WIDTH{!flush_i}};
 
   // CDB
   assign cdb_data_o.rob_idx       = data[cdb_idx].dest_rob_idx;
@@ -367,61 +369,61 @@ module arith_rs_serial #(
 
   // Free-entry allocation; execution and CDB selection below are unchanged.
   prio_enc_multi #(
-      .N(DEPTH),
-      .NUM_RESULTS(Len5Cfg.ISSUE_WIDTH)
+    .N          (DEPTH),
+    .NUM_RESULTS(Len5Cfg.ISSUE_WIDTH)
   ) new_sel (
-      .lines_i(empty),
-      .enc_o(new_idx),
-      .valid_o(alloc_valid)
+    .lines_i(empty),
+    .enc_o  (new_idx),
+    .valid_o(alloc_valid)
   );
 
   generate
     if (RR_ARBITER) begin : gen_rr_arbiters
       // Execution
       rr_arbiter #(
-          .N(DEPTH)
+        .N(DEPTH)
       ) u_ex_sel (
-          .clk_i   (clk_i),
-          .rst_ni  (rst_ni),
-          .flush_i (flush_i),
-          .valid_i (ready_ex),
-          .ready_o (),            // eu_ready_i used instead
-          .valid_o (eu_valid_o),
-          .ready_i (eu_ready_i),
-          .served_o(ex_idx)
+        .clk_i   (clk_i),
+        .rst_ni  (rst_ni),
+        .flush_i (flush_i),
+        .valid_i (ready_ex),
+        .ready_o (),            // eu_ready_i used instead
+        .valid_o (eu_valid_o),
+        .ready_i (eu_ready_i),
+        .served_o(ex_idx)
       );
 
       // CDB access
       rr_arbiter #(
-          .N(DEPTH)
+        .N(DEPTH)
       ) u_cdb_sel (
-          .clk_i   (clk_i),
-          .rst_ni  (rst_ni),
-          .flush_i (flush_i),
-          .valid_i (ready_cdb),
-          .ready_o (),             // cdb_ready_i used instead
-          .valid_o (cdb_valid_o),
-          .ready_i (cdb_ready_i),
-          .served_o(cdb_idx)
+        .clk_i   (clk_i),
+        .rst_ni  (rst_ni),
+        .flush_i (flush_i),
+        .valid_i (ready_cdb),
+        .ready_o (),             // cdb_ready_i used instead
+        .valid_o (cdb_valid_o),
+        .ready_i (cdb_ready_i),
+        .served_o(cdb_idx)
       );
     end else begin : gen_prio_arbiters
       // Execution
       prio_enc #(
-          .N(DEPTH)
+        .N(DEPTH)
       ) u_ex_sel (
-          .lines_i(ready_ex),
-          .enc_o  (ex_idx),
-          .valid_o()
+        .lines_i(ready_ex),
+        .enc_o  (ex_idx),
+        .valid_o()
       );
       assign eu_valid_o = curr_state[ex_idx] == ARITH_S_EX_REQ;
 
       // CDB access
       prio_enc #(
-          .N(DEPTH)
+        .N(DEPTH)
       ) u_cdb_sel (
-          .lines_i(ready_cdb),
-          .enc_o  (cdb_idx),
-          .valid_o()
+        .lines_i(ready_cdb),
+        .enc_o  (cdb_idx),
+        .valid_o()
       );
       assign cdb_valid_o = curr_state[cdb_idx] == ARITH_S_COMPLETED;
     end

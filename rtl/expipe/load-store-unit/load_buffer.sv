@@ -20,75 +20,75 @@
  *          to be directly connected to a memory module.
  */
 module load_buffer #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
-    localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
-    localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
-    localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
-    localparam int unsigned DEPTH = Len5Cfg.LDBUFF_DEPTH,
-    localparam int unsigned TAG_W = Len5Cfg.BUFF_IDX_LEN,
-    localparam bit DRAIN_ON_FLUSH = Len5Cfg.LOAD_BUFFER_DRAIN_ON_FLUSH,
-    localparam int unsigned IdxW = $clog2(DEPTH)
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
+  localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
+  localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
+  localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
+  localparam int unsigned DEPTH = Len5Cfg.LDBUFF_DEPTH,
+  localparam int unsigned TAG_W = Len5Cfg.BUFF_IDX_LEN,
+  localparam bit DRAIN_ON_FLUSH = Len5Cfg.LOAD_BUFFER_DRAIN_ON_FLUSH,
+  localparam int unsigned IdxW = $clog2(DEPTH)
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Issue stage
-    input logic issue_valid_i,
-    output logic issue_ready_o,
-    input expipe_pkg::ldst_width_t issue_type_i,  // byte, halfword, ...
-    input op_data_t issue_rs1_i,  // base address
-    input logic [len5_pkg::XLEN-1:0] issue_imm_i,  // offset
-    input rob_idx_t issue_dest_rob_idx_i,
+  // Issue stage
+  input  logic                                         issue_valid_i,
+  output logic                                         issue_ready_o,
+  input  expipe_pkg::ldst_width_t                      issue_type_i,         // byte, halfword, ...
+  input  op_data_t                                     issue_rs1_i,          // base address
+  input  logic                    [len5_pkg::XLEN-1:0] issue_imm_i,          // offset
+  input  rob_idx_t                                     issue_dest_rob_idx_i,
 
-    // Common data bus (CDB)
-    input  logic      cdb_valid_i,
-    input  logic      cdb_ready_i,
-    output logic      cdb_valid_o,
-    input  cdb_data_t cdb_data_i,
-    output cdb_data_t cdb_data_o,
+  // Common data bus (CDB)
+  input  logic      cdb_valid_i,
+  input  logic      cdb_ready_i,
+  output logic      cdb_valid_o,
+  input  cdb_data_t cdb_data_i,
+  output cdb_data_t cdb_data_o,
 
-    // Address adder
-    input  logic       adder_valid_i,
-    input  logic       adder_ready_i,
-    output logic       adder_valid_o,
-    output logic       adder_ready_o,
-    input  adder_ans_t adder_ans_i,
-    output adder_req_t adder_req_o,
+  // Address adder
+  input  logic       adder_valid_i,
+  input  logic       adder_ready_i,
+  output logic       adder_valid_o,
+  output logic       adder_ready_o,
+  input  adder_ans_t adder_ans_i,
+  output adder_req_t adder_req_o,
 
-    // Store buffer
-    input logic                            sb_latest_valid_i,
-    input logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_latest_idx_i,
-    input logic                            sb_oldest_completed_i,
-    input logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_oldest_idx_i,
+  // Store buffer
+  input logic                            sb_latest_valid_i,
+  input logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_latest_idx_i,
+  input logic                            sb_oldest_completed_i,
+  input logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_oldest_idx_i,
 
-    // Protect older loads from younger stores until their values are captured.
-    output logic                    [         DEPTH-1:0] sb_pending_loads_o,
-    input  logic                    [         DEPTH-1:0] sb_older_loads_i,
-    input  logic                    [len5_pkg::XLEN-1:0] sb_mem_addr_i,
-    input  expipe_pkg::ldst_width_t                      sb_mem_type_i,
-    output logic                                         sb_mem_blocked_o,
+  // Protect older loads from younger stores until their values are captured.
+  output logic                    [         DEPTH-1:0] sb_pending_loads_o,
+  input  logic                    [         DEPTH-1:0] sb_older_loads_i,
+  input  logic                    [len5_pkg::XLEN-1:0] sb_mem_addr_i,
+  input  expipe_pkg::ldst_width_t                      sb_mem_type_i,
+  output logic                                         sb_mem_blocked_o,
 
-    // Level-zero cache
-    input  logic                                         l0_valid_i,
-    input  logic                    [len5_pkg::XLEN-1:0] l0_value_i,
-    output expipe_pkg::ldst_width_t                      l0_width_o,
+  // Level-zero cache
+  input  logic                                         l0_valid_i,
+  input  logic                    [len5_pkg::XLEN-1:0] l0_value_i,
+  output expipe_pkg::ldst_width_t                      l0_width_o,
 
-    // Memory system
-    output logic                                              mem_valid_o,
-    input  logic                                              mem_ready_i,
-    input  logic                                              mem_valid_i,
-    output logic                                              mem_ready_o,
-    output logic                                              mem_we_o,
-    output logic                   [      len5_pkg::XLEN-1:0] mem_addr_o,
-    output logic                   [                     7:0] mem_be_o,
-    output logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_tag_o,
-    input  logic                   [      len5_pkg::XLEN-1:0] mem_rdata_i,
-    input  logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_tag_i,
-    input  logic                                              mem_except_raised_i,
-    input  len5_pkg::except_code_t                            mem_except_code_i
+  // Memory system
+  output logic                                              mem_valid_o,
+  input  logic                                              mem_ready_i,
+  input  logic                                              mem_valid_i,
+  output logic                                              mem_ready_o,
+  output logic                                              mem_we_o,
+  output logic                   [      len5_pkg::XLEN-1:0] mem_addr_o,
+  output logic                   [                     7:0] mem_be_o,
+  output logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_tag_o,
+  input  logic                   [      len5_pkg::XLEN-1:0] mem_rdata_i,
+  input  logic                   [Len5Cfg.BUFF_IDX_LEN-1:0] mem_tag_i,
+  input  logic                                              mem_except_raised_i,
+  input  len5_pkg::except_code_t                            mem_except_code_i
 );
 
   import len5_pkg::*;
@@ -523,17 +523,17 @@ module load_buffer #(
     if (Len5Cfg.ONLY_DOUBLEWORD_MEM_ACCESSES != 0) begin : gen_byte_selector
       assign byte_offs = data[head_idx].imm_addr_value[2:0];
       byte_selector u_byte_selector (
-          .type_i  (data[head_idx].load_type),
-          .byte_off(byte_offs),
-          .data_i  (data[head_idx].value),
-          .data_o  (cdb_data)
+        .type_i  (data[head_idx].load_type),
+        .byte_off(byte_offs),
+        .data_i  (data[head_idx].value),
+        .data_o  (cdb_data)
       );
     end else begin : gen_sign_extender
       assign byte_offs = '0;
       sign_extender u_sign_extender (
-          .type_i(data[head_idx].load_type),
-          .data_i(data[head_idx].value),
-          .data_o(cdb_data)
+        .type_i(data[head_idx].load_type),
+        .data_i(data[head_idx].value),
+        .data_o(cdb_data)
       );
     end
   endgenerate
@@ -543,47 +543,47 @@ module load_buffer #(
   // --------
 
   modn_counter #(
-      .N(DEPTH)
+    .N(DEPTH)
   ) u_head_counter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (head_cnt_en),
-      .clr_i  (head_cnt_clr),
-      .count_o(head_idx),
-      .tc_o   ()               // not needed
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .en_i   (head_cnt_en),
+    .clr_i  (head_cnt_clr),
+    .count_o(head_idx),
+    .tc_o   ()               // not needed
   );
 
   modn_counter #(
-      .N(DEPTH)
+    .N(DEPTH)
   ) u_tail_counter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (tail_cnt_en),
-      .clr_i  (tail_cnt_clr),
-      .count_o(tail_idx),
-      .tc_o   ()               // not needed
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .en_i   (tail_cnt_en),
+    .clr_i  (tail_cnt_clr),
+    .count_o(tail_idx),
+    .tc_o   ()               // not needed
   );
 
   modn_counter #(
-      .N(DEPTH)
+    .N(DEPTH)
   ) u_addr_counter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (addr_cnt_en),
-      .clr_i  (addr_cnt_clr),
-      .count_o(addr_idx),
-      .tc_o   ()               // not needed
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .en_i   (addr_cnt_en),
+    .clr_i  (addr_cnt_clr),
+    .count_o(addr_idx),
+    .tc_o   ()               // not needed
   );
 
   modn_counter #(
-      .N(DEPTH)
+    .N(DEPTH)
   ) u_mem_counter (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .en_i   (mem_cnt_en),
-      .clr_i  (mem_cnt_clr),
-      .count_o(mem_idx),
-      .tc_o   ()              // not needed
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .en_i   (mem_cnt_en),
+    .clr_i  (mem_cnt_clr),
+    .count_o(mem_idx),
+    .tc_o   ()              // not needed
   );
 
   // ----------

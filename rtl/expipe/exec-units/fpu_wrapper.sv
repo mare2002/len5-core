@@ -14,34 +14,34 @@
 // Date: 27/04/2024
 
 module fpu_wrapper #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN,
-    localparam bit SKIP_IN_REG = Len5Cfg.FPU_SPILL_SKIP,
-    localparam int unsigned PIPE_DEPTH = Len5Cfg.FPU_PIPE_DEPTH
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN,
+  localparam bit SKIP_IN_REG = Len5Cfg.FPU_SPILL_SKIP,
+  localparam int unsigned PIPE_DEPTH = Len5Cfg.FPU_PIPE_DEPTH
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Handshake from/to the reservation station unit
-    input  logic valid_i,
-    output logic ready_o,
-    input  logic ready_i,
-    output logic valid_o,
+  // Handshake from/to the reservation station unit
+  input  logic valid_i,
+  output logic ready_o,
+  input  logic ready_i,
+  output logic valid_o,
 
-    // Data from/to the reservation station unit
-    input  logic                   [           EU_CTL_LEN-1:0] ctl_i,
-    input  logic                   [csr_pkg::FCSR_FRM_LEN-1:0] rm_i,
-    input  rob_idx_t                                           rob_idx_i,
-    input  logic                   [       len5_pkg::XLEN-1:0] rs1_value_i,
-    input  logic                   [       len5_pkg::XLEN-1:0] rs2_value_i,
-    input  logic                   [       len5_pkg::XLEN-1:0] rs3_value_i,
-    output rob_idx_t                                           rob_idx_o,
-    output logic                   [       len5_pkg::XLEN-1:0] result_o,
-    output logic                                               except_raised_o,
-    output len5_pkg::except_code_t                             except_code_o,
-    output csr_pkg::fcsr_fflags_t                              fflags_o
+  // Data from/to the reservation station unit
+  input  logic                   [           EU_CTL_LEN-1:0] ctl_i,
+  input  logic                   [csr_pkg::FCSR_FRM_LEN-1:0] rm_i,
+  input  rob_idx_t                                           rob_idx_i,
+  input  logic                   [       len5_pkg::XLEN-1:0] rs1_value_i,
+  input  logic                   [       len5_pkg::XLEN-1:0] rs2_value_i,
+  input  logic                   [       len5_pkg::XLEN-1:0] rs3_value_i,
+  output rob_idx_t                                           rob_idx_o,
+  output logic                   [       len5_pkg::XLEN-1:0] result_o,
+  output logic                                               except_raised_o,
+  output len5_pkg::except_code_t                             except_code_o,
+  output csr_pkg::fcsr_fflags_t                              fflags_o
 );
 
   import len5_pkg::*;
@@ -121,18 +121,18 @@ module fpu_wrapper #(
 
   // Input reservation station
   spill_cell_flush #(
-      .DATA_T(in_reg_data_t),
-      .SKIP  (SKIP_IN_REG)
+    .DATA_T(in_reg_data_t),
+    .SKIP  (SKIP_IN_REG)
   ) u_out_reg (
-      .clk_i  (clk_i),
-      .rst_ni (rst_ni),
-      .flush_i(flush_i),
-      .valid_i(valid_i),         // valid from EU (downstream)
-      .ready_o(ready_o),         // ready to EU (downstream)
-      .ready_i(ready_fpu),       // ready from RS (upstream), CHECK if ready_i or ready_q
-      .valid_o(valid_fpu),       // valid to RS (upstream)
-      .data_i (in_reg_data_in),
-      .data_o (in_reg_data_out)
+    .clk_i  (clk_i),
+    .rst_ni (rst_ni),
+    .flush_i(flush_i),
+    .valid_i(valid_i),         // valid from EU (downstream)
+    .ready_o(ready_o),         // ready to EU (downstream)
+    .ready_i(ready_fpu),       // ready from RS (upstream), CHECK if ready_i or ready_q
+    .valid_o(valid_fpu),       // valid to RS (upstream)
+    .data_i (in_reg_data_in),
+    .data_o (in_reg_data_out)
   );
 
   assign fpu_tag.rob_idx = in_reg_data_out.rob_idx;
@@ -406,35 +406,35 @@ module fpu_wrapper #(
 
   // FPU instance
   fpnew_top #(
-      .Features      (FpuFeatures),
-      .Implementation(FpuImpl),
-      // PulpDivSqrt = 0 enables T-head-based DivSqrt unit. Supported only for FP32-only instances of Fpnew
-      .PulpDivsqrt   (FpuPulpDivsqrt),
-      .TagType       (fpu_tag_t),
-      .TrueSIMDClass (0),
-      .EnableSIMDMask(0)
+    .Features      (FpuFeatures),
+    .Implementation(FpuImpl),
+    // PulpDivSqrt = 0 enables T-head-based DivSqrt unit. Supported only for FP32-only instances of Fpnew
+    .PulpDivsqrt   (FpuPulpDivsqrt),
+    .TagType       (fpu_tag_t),
+    .TrueSIMDClass (0),
+    .EnableSIMDMask(0)
   ) u_fpu (
-      .clk_i         (clk_i),
-      .rst_ni        (rst_ni),
-      .operands_i    (fpu_operands),
-      .rnd_mode_i    (fpu_rm),
-      .op_i          (fpu_op),
-      .op_mod_i      (fpu_op_mod),
-      .src_fmt_i     (fpu_src_fmt),
-      .dst_fmt_i     (fpu_dst_fmt),
-      .int_fmt_i     (fpu_int_fmt),
-      .vectorial_op_i(0),               // no support for V
-      .tag_i         (fpu_tag),
-      .simd_mask_i   ('0),              // no support for V
-      .in_valid_i    (valid_fpu),       // from RS
-      .in_ready_o    (ready_fpu),       // to RS
-      .flush_i       (flush_i),
-      .result_o      (fpu_result),
-      .status_o      (fpu_status),
-      .tag_o         (fpu_result_tag),
-      .out_valid_o   (valid_o),         // to downstream
-      .out_ready_i   (ready_i),         // from downstream
-      .busy_o        ()
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .operands_i    (fpu_operands),
+    .rnd_mode_i    (fpu_rm),
+    .op_i          (fpu_op),
+    .op_mod_i      (fpu_op_mod),
+    .src_fmt_i     (fpu_src_fmt),
+    .dst_fmt_i     (fpu_dst_fmt),
+    .int_fmt_i     (fpu_int_fmt),
+    .vectorial_op_i(0),               // no support for V
+    .tag_i         (fpu_tag),
+    .simd_mask_i   ('0),              // no support for V
+    .in_valid_i    (valid_fpu),       // from RS
+    .in_ready_o    (ready_fpu),       // to RS
+    .flush_i       (flush_i),
+    .result_o      (fpu_result),
+    .status_o      (fpu_status),
+    .tag_o         (fpu_result_tag),
+    .out_valid_o   (valid_o),         // to downstream
+    .out_ready_i   (ready_i),         // from downstream
+    .busy_o        ()
   );
 
   // --------------

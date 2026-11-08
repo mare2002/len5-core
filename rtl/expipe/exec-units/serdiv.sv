@@ -19,28 +19,28 @@
 module serdiv
   import len5_pkg::*;
 #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    parameter int WIDTH = 64,  // signed int required for the shift_a assignment
-    localparam logic [$clog2(WIDTH):0] WIDTH_S = WIDTH[$clog2(WIDTH):0],
-    parameter bit STABLE_HANDSHAKE = 1  // LEN5 guarantees stable in_rdy_o during the input handshake; CVA6 uses 0
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  parameter int WIDTH = 64,  // signed int required for the shift_a assignment
+  localparam logic [$clog2(WIDTH):0] WIDTH_S = WIDTH[$clog2(WIDTH):0],
+  parameter bit STABLE_HANDSHAKE = 1  // LEN5 guarantees stable in_rdy_o during the input handshake; CVA6 uses 0
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    // input IF
-    input rob_idx_t id_i,
-    input logic [WIDTH-1:0] op_a_i,
-    input logic [WIDTH-1:0] op_b_i,
-    input logic [1:0] opcode_i,  // 0: udiv, 2: urem, 1: div, 3: rem
-    // handshake
-    input  logic in_vld_i, // there is a cycle delay from in_rdy_o->in_vld_i, see issue_read_operands.sv stage
-    output logic in_rdy_o,
-    input logic flush_i,
-    // output IF
-    output logic out_vld_o,
-    input logic out_rdy_i,
-    output rob_idx_t id_o,
-    output logic [WIDTH-1:0] res_o
+  input logic clk_i,
+  input logic rst_ni,
+  // input IF
+  input rob_idx_t id_i,
+  input logic [WIDTH-1:0] op_a_i,
+  input logic [WIDTH-1:0] op_b_i,
+  input logic [1:0] opcode_i,  // 0: udiv, 2: urem, 1: div, 3: rem
+  // handshake
+  input  logic in_vld_i, // there is a cycle delay from in_rdy_o->in_vld_i, see issue_read_operands.sv stage
+  output logic in_rdy_o,
+  input logic flush_i,
+  // output IF
+  output logic out_vld_o,
+  input logic out_rdy_i,
+  output rob_idx_t id_o,
+  output logic [WIDTH-1:0] res_o
 );
 
   /////////////////////////
@@ -97,21 +97,21 @@ module serdiv
   assign lzc_b_input  = (opcode_i[0] & op_b_sign) ? ~op_b_i : op_b_i;
 
   lzc #(
-      .MODE (1),     // count leading zeros
-      .WIDTH(WIDTH)
+    .MODE (1),     // count leading zeros
+    .WIDTH(WIDTH)
   ) i_lzc_a (
-      .in_i   (lzc_a_input),
-      .cnt_o  (lzc_a_result),
-      .empty_o(lzc_a_no_one)
+    .in_i   (lzc_a_input),
+    .cnt_o  (lzc_a_result),
+    .empty_o(lzc_a_no_one)
   );
 
   lzc #(
-      .MODE (1),     // count leading zeros
-      .WIDTH(WIDTH)
+    .MODE (1),     // count leading zeros
+    .WIDTH(WIDTH)
   ) i_lzc_b (
-      .in_i   (lzc_b_input),
-      .cnt_o  (lzc_b_result),
-      .empty_o(lzc_b_no_one)
+    .in_i   (lzc_b_input),
+    .cnt_o  (lzc_b_result),
+    .empty_o(lzc_b_no_one)
   );
 
   assign shift_a = (lzc_a_no_one) ? WIDTH_S : {1'b0, lzc_a_result};

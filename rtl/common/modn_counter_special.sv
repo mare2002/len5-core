@@ -13,18 +13,18 @@
 // Date: 17/10/2019
 
 module modn_counter_special #(
-  parameter int unsigned N = 16, //maximal value of the counter
-  parameter int unsigned I = 4, //maximal number of bits to represend the increment
+  parameter int unsigned N = 16,  //maximal value of the counter
+  parameter int unsigned I = 4,  //maximal number of bits to represend the increment
   parameter logic [$clog2(N)-1:0] INIT = '0  // initial value at reset and clear
 ) (
   // Input signals
-  input logic clk_i,
-  input logic rst_ni,  // Asynchronous reset
-  input logic en_i,
-  input logic clr_i,   // Synchronous clear
-  input logic [I:0] increase_val_i,
+  input  logic                 clk_i,
+  input  logic                 rst_ni,          // Asynchronous reset
+  input  logic                 en_i,
+  input  logic                 clr_i,           // Synchronous clear
+  input  logic [          I:0] increase_val_i,
   // Output signals
-  output logic [$clog2(N)-1:0] count_o  // Counter value
+  output logic [$clog2(N)-1:0] count_o          // Counter value
 );
   //%TODO Check with Michele if this is OK assumption
   // This special counter assumes that the number of entries to the IQ is power of S2
@@ -32,7 +32,7 @@ module modn_counter_special #(
   //----------------
   logic [$clog2(N)-1:0] adder_res;
 
-  assign adder_res = count_o + {{$clog2(N)-I-1{1'b0}},increase_val_i};
+  assign adder_res = count_o + {{$clog2(N) - I - 1{1'b0}}, increase_val_i};
 
   // Main counting process. The counter clears when reaching the threshold
   always_ff @(posedge clk_i or negedge rst_ni) begin

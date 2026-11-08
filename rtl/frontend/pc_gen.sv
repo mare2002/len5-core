@@ -16,25 +16,25 @@
 
 
 module pc_gen #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam logic [len5_pkg::XLEN-1:0] BOOT_PC = Len5Cfg.BOOT_PC
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam logic [len5_pkg::XLEN-1:0] BOOT_PC = Len5Cfg.BOOT_PC
 ) (
-    input  logic                                        clk_i,
-    input  logic                                        rst_ni,
-    input  logic                                        comm_except_raised_i,
-    input  logic                   [len5_pkg::XLEN-1:0] comm_except_pc_i,
-    input  logic                                        bu_res_valid_i,
-    input  fetch_pkg::resolution_t                      bu_res_i,
-    input  logic                   [len5_pkg::XLEN-1:0] pred_target_i,
-    input  logic                                        pred_taken_i,
-    input  logic                                        mem_ready_i,
-    output logic                                        valid_o,
-    output logic                                        bu_ready_o,
-    output logic                   [len5_pkg::XLEN-1:0] pc_o,
-    input  logic                                        early_jump_valid_i,
-    input  logic                   [len5_pkg::XLEN-1:0] early_jump_offs_i,
-    input  logic                   [len5_pkg::XLEN-1:0] early_jump_base_i,
-    output logic                   [len5_pkg::XLEN-1:0] early_jump_target_o
+  input  logic                                        clk_i,
+  input  logic                                        rst_ni,
+  input  logic                                        comm_except_raised_i,
+  input  logic                   [len5_pkg::XLEN-1:0] comm_except_pc_i,
+  input  logic                                        bu_res_valid_i,
+  input  fetch_pkg::resolution_t                      bu_res_i,
+  input  logic                   [len5_pkg::XLEN-1:0] pred_target_i,
+  input  logic                                        pred_taken_i,
+  input  logic                                        mem_ready_i,
+  output logic                                        valid_o,
+  output logic                                        bu_ready_o,
+  output logic                   [len5_pkg::XLEN-1:0] pc_o,
+  input  logic                                        early_jump_valid_i,
+  input  logic                   [len5_pkg::XLEN-1:0] early_jump_offs_i,
+  input  logic                   [len5_pkg::XLEN-1:0] early_jump_base_i,
+  output logic                   [len5_pkg::XLEN-1:0] early_jump_target_o
 );
 
   import len5_pkg::*;

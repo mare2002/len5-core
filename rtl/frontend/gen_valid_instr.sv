@@ -1,11 +1,11 @@
 //This
 module gen_valid_instr #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
-    input logic [len5_pkg::XLEN-1:0] pc_i,
-    input fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_i,
-    output logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_o,
-    output fetch_pkg::prediction_t pred_o
+  input  logic                   [              len5_pkg::XLEN-1:0] pc_i,
+  input  fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_i,
+  output logic                   [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_o,
+  output fetch_pkg::prediction_t                                    pred_o
 );
 
   import len5_pkg::*;

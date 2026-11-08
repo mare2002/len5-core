@@ -1,16 +1,16 @@
 module instr_mixer #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
-    input  logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_i,
-    input  len5_pkg::instr_t        [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instructions_i,
-    input  fetch_pkg::prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_i,
-    input  logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_raised_i,
-    input  fetch_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_code_i,
-    output logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_o,
-    output len5_pkg::instr_t        [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instructions_o,
-    output fetch_pkg::prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_o,
-    output logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_raised_o,
-    output fetch_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_code_o
+  input  logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_i,
+  input  len5_pkg::instr_t        [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instructions_i,
+  input  fetch_pkg::prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_i,
+  input  logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_raised_i,
+  input  fetch_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_code_i,
+  output logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] valid_o,
+  output len5_pkg::instr_t        [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] instructions_o,
+  output fetch_pkg::prediction_t  [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_o,
+  output logic                    [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_raised_o,
+  output fetch_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] except_code_o
 );
 
   import len5_config_pkg::*;

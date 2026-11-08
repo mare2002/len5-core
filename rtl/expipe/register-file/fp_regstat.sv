@@ -14,33 +14,33 @@
 // Date: 12/11/2019
 
 module fp_regstat #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam int unsigned REG_NUM = len5_pkg::FREG_NUM,
-    localparam int unsigned RegIdxLen = len5_pkg::FREG_IDX_LEN
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned REG_NUM = len5_pkg::FREG_NUM,
+  localparam int unsigned RegIdxLen = len5_pkg::FREG_IDX_LEN
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Issue Logic (valid lanes are accepted destination writes)
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rob_idx_i,  // allocated ROB index
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs3_idx_i,  // third source register index
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_busy_o,  // rs3 value is in the ROB or has to be computed
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_o,  // the index of the ROB where the result is found
+  // Issue Logic (valid lanes are accepted destination writes)
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rob_idx_i,  // allocated ROB index
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs3_idx_i,  // third source register index
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_busy_o,  // rs3 value is in the ROB or has to be computed
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs3_rob_idx_o,  // the index of the ROB where the result is found
 
-    // Commit Logic
-    input logic                 comm_valid_i,
-    input logic [RegIdxLen-1:0] comm_rd_idx_i,  // destination register of the committing instr.
-    input rob_idx_t comm_rob_idx_i
+  // Commit Logic
+  input logic                     comm_valid_i,
+  input logic     [RegIdxLen-1:0] comm_rd_idx_i,  // destination register of the committing instr.
+  input rob_idx_t                 comm_rob_idx_i
 );
 
   import expipe_pkg::*;
@@ -49,7 +49,7 @@ module fp_regstat #(
   rob_idx_t rob_idx_q[REG_NUM], rob_idx_d[REG_NUM];
 
   for (genvar r = 0; r < REG_NUM; r++) begin : gen_status
-    logic commit_match;
+    logic                           commit_match;
     logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_match;
 
     assign commit_match = comm_valid_i && comm_rd_idx_i == r[RegIdxLen-1:0] && comm_rob_idx_i == rob_idx_q[r];
@@ -79,11 +79,11 @@ module fp_regstat #(
   end
 
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_read_ports
-    assign issue_rs1_busy_o[i] = busy_q[issue_rs1_idx_i[i]];
+    assign issue_rs1_busy_o[i]    = busy_q[issue_rs1_idx_i[i]];
     assign issue_rs1_rob_idx_o[i] = rob_idx_q[issue_rs1_idx_i[i]];
-    assign issue_rs2_busy_o[i] = busy_q[issue_rs2_idx_i[i]];
+    assign issue_rs2_busy_o[i]    = busy_q[issue_rs2_idx_i[i]];
     assign issue_rs2_rob_idx_o[i] = rob_idx_q[issue_rs2_idx_i[i]];
-    assign issue_rs3_busy_o[i] = busy_q[issue_rs3_idx_i[i]];
+    assign issue_rs3_busy_o[i]    = busy_q[issue_rs3_idx_i[i]];
     assign issue_rs3_rob_idx_o[i] = rob_idx_q[issue_rs3_idx_i[i]];
   end
 endmodule

@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Observational metrics only; identical sampling for all memory backends.
 module memory_protocol_monitor #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
-        tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
-    ),
-    parameter int unsigned COUNT_WIDTH = TbCfg.SRAM_COUNT_WIDTH
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  parameter tb_config_pkg::tb_cfg_t TbCfg = tb_config_pkg::build_config(
+      tb_config_pkg::DefaultTbUserCfg, Len5Cfg.IMEM_DATA_WIDTH
+  ),
+  parameter int unsigned COUNT_WIDTH = TbCfg.SRAM_COUNT_WIDTH
 ) (
-    input logic                        clk_i,
-    rst_ni,
-    flush_i,
-    load_flush_i,
-    stop_i,
-    retire_i,
-    input logic [2:0]                  req_i,
-    gnt_i,
-    valid_i,
-    ready_i,
-    input logic [2:0][COUNT_WIDTH-1:0] occupancy_i
+  input logic                        clk_i,
+  rst_ni,
+  flush_i,
+  load_flush_i,
+  stop_i,
+  retire_i,
+  input logic [2:0]                  req_i,
+  gnt_i,
+  valid_i,
+  ready_i,
+  input logic [2:0][COUNT_WIDTH-1:0] occupancy_i
 );
   // Separate queues avoid Verilator 5.040's indexed queue mutation bug.
   longint unsigned instr_times[$], load_times[$], store_times[$];

@@ -13,37 +13,37 @@
 // Date: 03/11/2021
 
 module csrs #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
-    // Clock and reset
-    input logic clk_i,
-    input logic rst_ni,
+  // Clock and reset
+  input logic clk_i,
+  input logic rst_ni,
 
-    // Handshaking with commit logic
-    input logic valid_i,
-    input logic trap_enter_i,  // one-cycle trap-entry event from commit
-    input logic mret_commit_i, // one-cycle accepted return event from commit
+  // Handshaking with commit logic
+  input logic valid_i,
+  input logic trap_enter_i,  // one-cycle trap-entry event from commit
+  input logic mret_commit_i, // one-cycle accepted return event from commit
 
-    // Control from commit logic
-    input expipe_pkg::comm_csr_instr_t comm_insn_i,  // committing instruction type
-    input csr_pkg::csr_op_t            comm_op_i,
+  // Control from commit logic
+  input expipe_pkg::comm_csr_instr_t comm_insn_i,  // committing instruction type
+  input csr_pkg::csr_op_t            comm_op_i,
 
-    // CSR address and data to/from commit logic
-    input logic [csr_pkg::CSR_ADDR_LEN-1:0] addr_i,
-    input logic [len5_pkg::REG_IDX_LEN-1:0] rs1_idx_i,  // source register or unsigned immediate
-    input logic [len5_pkg::XLEN-1:0] data_i,  // data to write to the CSR
-    input logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_i,  // destination register
-    output csr_pkg::csr_t data_o,
-    output csr_pkg::csr_mtvec_t mtvec_o,  // exception base address and mode
-    output csr_pkg::csr_mepc_t mepc_o,  // return address, independent of CSR accesses
-    output logic csr_exc_o,  // exception raised
+  // CSR address and data to/from commit logic
+  input logic [csr_pkg::CSR_ADDR_LEN-1:0] addr_i,
+  input logic [len5_pkg::REG_IDX_LEN-1:0] rs1_idx_i,  // source register or unsigned immediate
+  input logic [len5_pkg::XLEN-1:0] data_i,  // data to write to the CSR
+  input logic [len5_pkg::REG_IDX_LEN-1:0] rd_idx_i,  // destination register
+  output csr_pkg::csr_t data_o,
+  output csr_pkg::csr_mtvec_t mtvec_o,  // exception base address and mode
+  output csr_pkg::csr_mepc_t mepc_o,  // return address, independent of CSR accesses
+  output logic csr_exc_o,  // exception raised
 
-    // Data to the FPU
-    output logic [csr_pkg::FCSR_FRM_LEN-1:0] fpu_frm_o,  // dynamic rounding mode
-    output logic fp_enabled_o,  // FS after any CSR write accepted on this edge
+  // Data to the FPU
+  output logic [csr_pkg::FCSR_FRM_LEN-1:0] fpu_frm_o,  // dynamic rounding mode
+  output logic fp_enabled_o,  // FS after any CSR write accepted on this edge
 
-    // Data to the load/store unit
-    output csr_pkg::csr_priv_t priv_mode_o  // current privilege mode
+  // Data to the load/store unit
+  output csr_pkg::csr_priv_t priv_mode_o  // current privilege mode
 );
 
   import len5_config_pkg::*;

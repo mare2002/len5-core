@@ -14,17 +14,17 @@
 
 
 module bpu #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam int unsigned HLEN = Len5Cfg.BPU_HLEN
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam int unsigned HLEN = Len5Cfg.BPU_HLEN
 ) (
-    input logic                                        clk_i,
-    input logic                                        rst_ni,
-    input logic                                        flush_i,
-    input logic                   [len5_pkg::XLEN-1:0] curr_pc_i,
-    input logic                                        bu_res_valid_i,
-    input fetch_pkg::resolution_t                      bu_res_i,
+  input logic                                        clk_i,
+  input logic                                        rst_ni,
+  input logic                                        flush_i,
+  input logic                   [len5_pkg::XLEN-1:0] curr_pc_i,
+  input logic                                        bu_res_valid_i,
+  input fetch_pkg::resolution_t                      bu_res_i,
 
-    output fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_o
+  output fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] pred_o
 );
 
   import len5_pkg::*;
@@ -38,33 +38,33 @@ module bpu #(
 
   // Gshare branch predictor
   gshare #(
-      .Len5Cfg(Len5Cfg)
+    .Len5Cfg(Len5Cfg)
   ) u_gshare (
-      .clk_i(clk_i),
-      .rst_ni(rst_ni),
-      .flush_i(flush_i),
-      .curr_hist_i(curr_pc_i[HLEN+OFFSET-1:OFFSET+Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS]),
-      .res_valid_i(bu_res_valid_i),
-      .res_taken_i(bu_res_i.taken),
-      .res_hist_i(bu_res_i.pc[HLEN+OFFSET-1:OFFSET]),
-      .taken_o(gshare_taken)
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .flush_i    (flush_i),
+    .curr_hist_i(curr_pc_i[HLEN+OFFSET-1:OFFSET+Len5Cfg.LEN5_MULTIPLE_ISSUES_BITS]),
+    .res_valid_i(bu_res_valid_i),
+    .res_taken_i(bu_res_i.taken),
+    .res_hist_i (bu_res_i.pc[HLEN+OFFSET-1:OFFSET]),
+    .taken_o    (gshare_taken)
   );
 
   // Branch Target Buffer (BTB)
   assign btb_del_entry = bu_res_i.mispredict & ~bu_res_i.taken;
   btb #(
-      .Len5Cfg(Len5Cfg)
+    .Len5Cfg(Len5Cfg)
   ) u_btb (
-      .clk_i       (clk_i),
-      .rst_ni      (rst_ni),
-      .flush_i     (flush_i),
-      .curr_pc_i   (curr_pc_i),
-      .valid_i     (bu_res_valid_i),
-      .del_entry_i (btb_del_entry),
-      .res_pc_i    (bu_res_i.pc),
-      .res_target_i(bu_res_i.target),
-      .hit_o       (btb_hit),
-      .target_o    (btb_target)
+    .clk_i       (clk_i),
+    .rst_ni      (rst_ni),
+    .flush_i     (flush_i),
+    .curr_pc_i   (curr_pc_i),
+    .valid_i     (bu_res_valid_i),
+    .del_entry_i (btb_del_entry),
+    .res_pc_i    (bu_res_i.pc),
+    .res_target_i(bu_res_i.target),
+    .hit_o       (btb_hit),
+    .target_o    (btb_target)
   );
 
   // Output network

@@ -165,7 +165,7 @@ module commit_cu (
   always_comb begin : cu_state_prog
     case (curr_state)
       // Reset state
-      RESET:              next_state = IDLE;
+      RESET:                next_state = IDLE;
       // Idle: wait for a valid instruction
       IDLE: begin
         if (valid_i) next_state = v_next_state;
@@ -207,29 +207,29 @@ module commit_cu (
         else next_state = IDLE;
       end
       // Commit jump with mispredition
-      COMMIT_JUMP_MIS:    next_state = IDLE;
+      COMMIT_JUMP_MIS:      next_state = IDLE;
       // Correctly predicted branch: just commit
       COMMIT_BRANCH: begin
         if (valid_i) next_state = v_next_state;
         else next_state = IDLE;
       end
       // Flush the in-flight instructions
-      COMMIT_BRANCH_MIS:  next_state = IDLE;
+      COMMIT_BRANCH_MIS:    next_state = IDLE;
       // Atomically read and write CSRs
-      COMMIT_CSR:         next_state = IDLE;
+      COMMIT_CSR:           next_state = IDLE;
       /* TODO: properly handle the following instructions */
-      COMMIT_FENCE:       next_state = IDLE;
-      COMMIT_ECALL:       next_state = INT_WRITE_CODE;
-      INT_WRITE_CODE:     next_state = EXCEPT_LOAD_PC;
-      COMMIT_EBREAK:      next_state = IDLE;
+      COMMIT_FENCE:         next_state = IDLE;
+      COMMIT_ECALL:         next_state = INT_WRITE_CODE;
+      INT_WRITE_CODE:       next_state = EXCEPT_LOAD_PC;
+      COMMIT_EBREAK:        next_state = IDLE;
       COMMIT_MRET: begin
         if (fe_ready_i) next_state = MRET_LOAD_PC;
         else next_state = COMMIT_MRET;
       end
-      MRET_LOAD_PC:       next_state = CLEAR_COMM_REG;
-      COMMIT_WFI:         next_state = IDLE;
+      MRET_LOAD_PC:         next_state = CLEAR_COMM_REG;
+      COMMIT_WFI:           next_state = IDLE;
       // Flush the in-flight instructions
-      COMMIT_EXCEPT:      next_state = EXCEPT_WRITE_CODE;
+      COMMIT_EXCEPT:        next_state = EXCEPT_WRITE_CODE;
       EXCEPT_WRITE_CODE: begin
         unique case (except_code_i)
           E_I_ACCESS_FAULT, E_INSTR_PAGE_FAULT: next_state = EXCEPT_SAVE_FETCH_PC;
@@ -250,21 +250,21 @@ module commit_cu (
         endcase
       end
       // Save esception data to mtval and return load ESR PC
-      EXCEPT_SAVE_ADDR:   next_state = EXCEPT_LOAD_PC;
-      EXCEPT_SAVE_INSTR:  next_state = EXCEPT_LOAD_PC;
+      EXCEPT_SAVE_ADDR:     next_state = EXCEPT_LOAD_PC;
+      EXCEPT_SAVE_INSTR:    next_state = EXCEPT_LOAD_PC;
       EXCEPT_SAVE_FETCH_PC: next_state = EXCEPT_LOAD_PC;
-      EXCEPT_CLEAR_MTVAL: next_state = EXCEPT_LOAD_PC;
+      EXCEPT_CLEAR_MTVAL:   next_state = EXCEPT_LOAD_PC;
       // Load the exception handler PC
       EXCEPT_LOAD_PC: begin
         if (fe_ready_i) next_state = CLEAR_COMM_REG;
         else next_state = EXCEPT_LOAD_PC;
       end
       // Clear the commit register and return to IDLE
-      CLEAR_COMM_REG:     next_state = IDLE;
+      CLEAR_COMM_REG:       next_state = IDLE;
       // HALT state (deadlock)
-      HALT:               next_state = HALT;
+      HALT:                 next_state = HALT;
       // Unexpected state
-      default:            next_state = RESET;
+      default:              next_state = RESET;
     endcase
   end
 

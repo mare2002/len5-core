@@ -29,8 +29,8 @@ module int_rf #(
   // Data to the issue stage (operands read ports)
   input  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] issue_rs1_idx_i,
   input  logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] issue_rs2_idx_i,
-  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs1_value_o,
-  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_rs2_value_o
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][       len5_pkg::XLEN-1:0] issue_rs1_value_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][       len5_pkg::XLEN-1:0] issue_rs2_value_o
 );
 
   import len5_pkg::XLEN;

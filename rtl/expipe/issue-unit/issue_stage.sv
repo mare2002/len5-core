@@ -14,424 +14,244 @@
 // Date: 17/11/2021
 
 module issue_stage #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam type issue_count_t = `LEN5_ISSUE_COUNT_T(Len5Cfg)
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg)
 ) (
-    // Clock, reset, and flush
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  // Clock, reset, and flush
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Fetch unit
-    input logic fetch_valid_i,
-    output logic fetch_ready_o,
-    input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_valid_instr_i,
-    input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] fetch_instr_i,
-    input fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_pred_i,
-    input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_except_raised_i,
-    input len5_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_except_code_i,
-    output logic fetch_mis_flush_o,
+  // Fetch unit
+  input logic fetch_valid_i,
+  output logic fetch_ready_o,
+  input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_valid_instr_i,
+  input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0][len5_pkg::ILEN-1:0] fetch_instr_i,
+  input fetch_pkg::prediction_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_pred_i,
+  input logic [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_except_raised_i,
+  input len5_pkg::except_code_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] fetch_except_code_i,
+  output logic fetch_mis_flush_o,
 
-    // Integer register status register
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_valid_o,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs1_busy_i,  // rs1 value is in the ROB or has to be computed
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs1_rob_idx_i,  // the index of the ROB where the result is found
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs2_busy_i,  // rs1 value is in the ROB or has to be computed
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs2_rob_idx_i,  // the index of the ROB where the result is found
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] int_regstat_rd_idx_o,  // destination register of the issuing instruction
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rob_idx_o,  // allocated ROB index
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] int_regstat_rs1_idx_o,  // first source register index
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] int_regstat_rs2_idx_o,  // second source register index
+  // Integer register status register
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_valid_o,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs1_busy_i,  // rs1 value is in the ROB or has to be computed
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs1_rob_idx_i,  // the index of the ROB where the result is found
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs2_busy_i,  // rs1 value is in the ROB or has to be computed
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rs2_rob_idx_i,  // the index of the ROB where the result is found
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] int_regstat_rd_idx_o,  // destination register of the issuing instruction
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] int_regstat_rob_idx_o,  // allocated ROB index
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] int_regstat_rs1_idx_o,  // first source register index
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] int_regstat_rs2_idx_o,  // second source register index
 
-    // Integer register file
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] intrf_rs1_value_i,  // value of the first operand
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] intrf_rs2_value_i,  // value of the second operand
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] intrf_rs1_idx_o,  // RF address of the first operand
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] intrf_rs2_idx_o,  // RF address of the second operand
+  // Integer register file
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] intrf_rs1_value_i,  // value of the first operand
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] intrf_rs2_value_i,  // value of the second operand
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] intrf_rs1_idx_o,  // RF address of the first operand
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] intrf_rs2_idx_o,  // RF address of the second operand
 
-    // Floating-point register status register
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_valid_o,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs1_busy_i,  // rs1 value is in the ROB or has to be computed
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs1_rob_idx_i,  // the index of the ROB where the result is found
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs2_busy_i,  // rs2 value is in the ROB or has to be computed
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs2_rob_idx_i,  // the index of the ROB where the result is found
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs3_busy_i,  // rs3 value is in the ROB or has to be computed
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs3_rob_idx_i,  // the index of the ROB where the result is found
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rd_idx_o,  // destination register of the issuing instruction
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rob_idx_o,  // allocated ROB index
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rs1_idx_o,  // first source register index
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rs2_idx_o,  // second source register index
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rs3_idx_o,  // third source register index
+  // Floating-point register status register
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_valid_o,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs1_busy_i,  // rs1 value is in the ROB or has to be computed
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs1_rob_idx_i,  // the index of the ROB where the result is found
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs2_busy_i,  // rs2 value is in the ROB or has to be computed
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs2_rob_idx_i,  // the index of the ROB where the result is found
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs3_busy_i,  // rs3 value is in the ROB or has to be computed
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rs3_rob_idx_i,  // the index of the ROB where the result is found
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rd_idx_o,  // destination register of the issuing instruction
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] fp_regstat_rob_idx_o,  // allocated ROB index
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rs1_idx_o,  // first source register index
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rs2_idx_o,  // second source register index
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fp_regstat_rs3_idx_o,  // third source register index
 
-    // Floating-point register file data
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] fprf_rs1_value_i,  // value of the first operand
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] fprf_rs2_value_i,  // value of the second operand
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] fprf_rs3_value_i,  // value of the third operand
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs1_idx_o,  // RF address of the first operand
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs2_idx_o,  // RF address of the second operand
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs3_idx_o,  // RF address of the third operand
+  // Floating-point register file data
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] fprf_rs1_value_i,  // value of the first operand
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] fprf_rs2_value_i,  // value of the second operand
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] fprf_rs3_value_i,  // value of the third operand
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs1_idx_o,  // RF address of the first operand
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs2_idx_o,  // RF address of the second operand
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::REG_IDX_LEN-1:0] fprf_rs3_idx_o,  // RF address of the third operand
 
-    // Execution pipeline: candidate requests, per-lane readiness and granted payloads.
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_ready_i,
-    input logic ex_mis_i,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_req_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_valid_o,
-    output expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_assigned_eu_o,
-    output expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_eu_ctl_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] ex_frm_o,
-    output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs1_o,
-    output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs2_o,
-    output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs3_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_imm_value_o,
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rob_idx_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_curr_pc_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_pred_target_o,
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_pred_taken_o,
+  // Execution pipeline: candidate requests, per-lane readiness and granted payloads.
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_ready_i,
+  input logic ex_mis_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_req_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_valid_o,
+  output expipe_pkg::issue_eu_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_assigned_eu_o,
+  output expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_eu_ctl_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] ex_frm_o,
+  output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs1_o,
+  output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs2_o,
+  output op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rs3_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_imm_value_o,
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] ex_rob_idx_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_curr_pc_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] ex_pred_target_o,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] ex_pred_taken_o,
 
-    // Commit stage
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_ready_i,  // the ROB has an empty entry available
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_valid_o,  // a new instruction can be issued
-    input logic comm_resume_i,  // resume after stall
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_tail_idx_i,  // the entry of the ROB allocated for the new instr
-    output expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_data_o,  // data to the ROB
-    // Operand forwarding after same-bundle dependency resolution
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_rob_idx_o,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_ready_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs1_value_i,
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs2_rob_idx_o,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs2_ready_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs2_value_i,
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs3_rob_idx_o,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs3_ready_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs3_value_i,
+  // Commit stage
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_ready_i,  // the ROB has an empty entry available
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_valid_o,  // a new instruction can be issued
+  input logic comm_resume_i,  // resume after stall
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_tail_idx_i,  // the entry of the ROB allocated for the new instr
+  output expipe_pkg::rob_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_data_o,  // data to the ROB
+  // Operand forwarding after same-bundle dependency resolution
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_rob_idx_o,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs1_ready_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs1_value_i,
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs2_rob_idx_o,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs2_ready_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs2_value_i,
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs3_rob_idx_o,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] comm_rs3_ready_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] comm_rs3_value_i,
 
-    // CSRs
-    input csr_pkg::csr_priv_t csr_priv_mode_i,  // current privilege mode
-    input logic               csr_fp_enabled_i
+  // CSRs
+  input csr_pkg::csr_priv_t csr_priv_mode_i,  // current privilege mode
+  input logic               csr_fp_enabled_i
 );
 
   import len5_config_pkg::*;
   import len5_pkg::*;
   import expipe_pkg::*;
 
-  // INTERNAL SIGNALS
-  // ----------------
-  // Issue register data type
-  typedef struct packed {
-    logic [XLEN-1:0]                  curr_pc;
-    instr_t                           instr;
-    issue_type_t                      issue_type;
-    issue_dispatch_t                  dispatch;
-    logic                             skip_eu;
-    issue_eu_t                        assigned_eu;
-    rs1_sel_t                         rs1_sel;
-    logic [REG_IDX_LEN-1:0]           rs1_idx;
-    rs2_sel_t                         rs2_sel;
-    logic [REG_IDX_LEN-1:0]           rs2_idx;
-    rs3_sel_t                         rs3_sel;
-    logic [REG_IDX_LEN-1:0]           rs3_idx;
-    logic [XLEN-1:0]                  imm_value;
-    logic [REG_IDX_LEN-1:0]           rd_idx;
-    logic                             rd_upd;
-    eu_ctl_t                          eu_ctl;
-    logic [csr_pkg::FCSR_FRM_LEN-1:0] frm;
-    logic                             mem_crit;
-    logic                             order_crit;
-    logic                             pred_taken;
-    logic [XLEN-1:0]                  pred_target;
-    logic                             except_raised;  // fetch exception; decode exceptions are in issue_type
-    except_code_t                     except_code;
-  } issue_reg_t;
+  localparam type iq_idx_t = `LEN5_IQ_IDX_T(Len5Cfg);
+  localparam type iq_dep_t = `LEN5_IQ_DEP_T(Len5Cfg);
+  localparam type iq_entry_t = `LEN5_IQ_ENTRY_T(Len5Cfg);
 
-  // Fetch stage <--> issue queue
-  iq_entry_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] new_instr;
-
-  // Issue queue <--> parallel decoders
-  iq_entry_t [Len5Cfg.ISSUE_WIDTH-1:0] iq_data_out;
+  decoded_instr_t [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] decoded_instr;
+  logic           [Len5Cfg.LEN5_MULTIPLE_ISSUES-1:0] decoded_valid_instr;
+  logic decoded_valid, decoded_ready;
+  iq_entry_t      [Len5Cfg.ISSUE_WIDTH-1:0] iq_data_out;
+  decoded_instr_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_data;
+  iq_dep_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_dep, rs2_dep, rs3_dep;
+  iq_idx_t iq_head_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] iq_valid, iq_accepted;
-  issue_count_t iq_pop_count;
-
-  // Ordered decoded instructions, oldest in lane zero.
-  issue_reg_t [Len5Cfg.ISSUE_WIDTH-1:0] ireg_data_in, ireg_data_q, ireg_data_d;
-  issue_reg_t ireg_data_out_unused;
-  issue_count_t ireg_count_q, ireg_count_d, ireg_pop_count, retained_count;
-  logic serialize_q, serialize_d, serialize_hold;
-  issue_count_t refill_space;
-  logic [Len5Cfg.ISSUE_WIDTH-1:0] serializing, id_stall;
-
-  // Issue queue <--> issue logic
-  logic                                cu_iq_ready;
-  logic                                iq_cu_except_raised;
-
-  // Issue logic <--> CU
-  logic                                iq_cu_valid;
-  logic                                iq_flush;
-  logic                                cu_mis_flush;
-  logic                                cu_issue_enable, cu_issue_special, special_grant;
-  logic                                cu_il_res_sel_rs1;
+  logic iq_flush, cu_mis_flush, cu_issue_enable, cu_issue_special, cu_stall_pop;
+  logic special_grant, cu_il_res_sel_rs1;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] operand_serializing, operand_skip_eu;
-
   // Operand fetch
-  logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_grant, ireg_valid;
-  logic [Len5Cfg.ISSUE_WIDTH-1:0] operand_csr, dependency_stall_unused;
-  issue_dispatch_t [Len5Cfg.ISSUE_WIDTH-1:0] operand_dispatch;
-  rs1_sel_t [Len5Cfg.ISSUE_WIDTH-1:0] operand_rs1_sel;
-  rs2_sel_t [Len5Cfg.ISSUE_WIDTH-1:0] operand_rs2_sel;
-  rs3_sel_t [Len5Cfg.ISSUE_WIDTH-1:0] operand_rs3_sel;
-  logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] direct_result;
+  logic            [Len5Cfg.ISSUE_WIDTH-1:0]           issue_grant;
+  issue_dispatch_t [Len5Cfg.ISSUE_WIDTH-1:0]           operand_dispatch;
+  logic            [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] direct_result;
   op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_base, rs2_base, rs3_base;
   // Forwarding queries use resolved tags; bundle producers bypass the old tag contents.
   op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_resolved, rs2_resolved, rs3_resolved;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_bundle, rs2_bundle, rs3_bundle;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] rs1_fwd_en, rs2_fwd_en, rs3_fwd_en;
   op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] rs1_forwarded, rs2_forwarded, rs3_forwarded;
-  logic rs1_ready;
+  logic            rs1_ready;
   logic [XLEN-1:0] rs1_value;
 
-  // -------
-  // MODULES
-  // -------
-  //                              /  ISSUE REGISTER  \.
-  // fetch stage > ISSUE QUEUE > {   ISSUE DECODER    } > execution/commit
-  //                              \     ISSUE CU     /
-  //                               \ OPERANDS FETCH /
-
-  // ISSUE FIFO QUEUE
-  // ----------------
-  // Assemble new queue entry with the data from the fetch unit
-
+  // FRONTEND -> INPUT SPILL -> DECODE -> OPTIONAL SPILL -> DECODED ISSUE QUEUE
   assign iq_flush = flush_i | cu_mis_flush;
-  for (genvar i = 0; i < Len5Cfg.LEN5_MULTIPLE_ISSUES; i++) begin : gen_new_instr_bundle
-    assign new_instr[i].curr_pc       = fetch_pred_i[i].pc;
-    assign new_instr[i].instruction   = fetch_instr_i[i];
-    assign new_instr[i].pred_target   = fetch_pred_i[i].target;
-    assign new_instr[i].pred_taken    = fetch_pred_i[i].hit & fetch_pred_i[i].taken;
-    assign new_instr[i].except_raised = fetch_except_raised_i[i];
-    assign new_instr[i].except_code   = fetch_except_code_i[i];
-  end
+  issue_decode #(
+    .Len5Cfg(Len5Cfg)
+  ) u_issue_decode (
+    .clk_i                (clk_i),
+    .rst_ni               (rst_ni),
+    .flush_i              (iq_flush),
+    .fetch_valid_i        (fetch_valid_i),
+    .fetch_ready_o        (fetch_ready_o),
+    .fetch_valid_instr_i  (fetch_valid_instr_i),
+    .fetch_instr_i        (fetch_instr_i),
+    .fetch_pred_i         (fetch_pred_i),
+    .fetch_except_raised_i(fetch_except_raised_i),
+    .fetch_except_code_i  (fetch_except_code_i),
+    .decoded_valid_o      (decoded_valid),
+    .decoded_ready_i      (decoded_ready),
+    .decoded_valid_instr_o(decoded_valid_instr),
+    .decoded_instr_o      (decoded_instr)
+  );
   issue_queue #(
-      .Len5Cfg(Len5Cfg)
+    .Len5Cfg(Len5Cfg)
   ) u_issue_queue (
-      .clk_i              (clk_i),
-      .rst_ni             (rst_ni),
-      .flush_i            (iq_flush),
-      .fetch_valid_i      (fetch_valid_i),
-      .fetch_valid_instr_i(fetch_valid_instr_i),
-      .issue_accepted_i   (iq_accepted),
-      .issue_pop_count_o  (iq_pop_count),
-      .issue_valid_o      (iq_valid),
-      .fetch_ready_o      (fetch_ready_o),
-      .push_instr_i       (new_instr),
-      .pop_instr_o        (iq_data_out)
+    .clk_i              (clk_i),
+    .rst_ni             (rst_ni),
+    .flush_i            (iq_flush),
+    .fetch_valid_i      (decoded_valid),
+    .fetch_ready_o      (decoded_ready),
+    .fetch_valid_instr_i(decoded_valid_instr),
+    .push_instr_i       (decoded_instr),
+    .issue_accepted_i   (iq_accepted),
+    .issue_valid_o      (iq_valid),
+    .pop_instr_o        (iq_data_out),
+    .head_idx_o         (iq_head_idx)
   );
 
-  // PARALLEL DECODERS
-  // -----------------
-  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_decoders
-    // Instruction data
-    logic [REG_IDX_LEN-1:0] instr_rs1_idx, instr_rs2_idx, instr_rs3_idx, instr_rd_idx;
-    logic      [                  FUNCT3_LEN-1:0] instr_frm;
-    logic      [                        XLEN-1:0] instr_imm_i_value;
-    logic      [                        XLEN-1:0] instr_imm_s_value;
-    logic      [                        XLEN-1:0] instr_imm_b_value;
-    logic      [                        XLEN-1:0] instr_imm_u_value;
-    logic      [                        XLEN-1:0] instr_imm_j_value;
-    logic      [                        XLEN-1:0] instr_imm_rs1_value;  // for CSR immediate instr.
-    logic      [                        XLEN-1:0] imm_value;  // selected immediate
+  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_issue_checks
+    logic privilege_illegal, fp_illegal;
+    assign rs1_dep[i] = iq_data_out[i].rs1_dep;
+    assign rs2_dep[i] = iq_data_out[i].rs2_dep;
+    assign rs3_dep[i] = iq_data_out[i].rs3_dep;
+    assign fp_illegal = iq_data_out[i].data.requires_fp && !csr_fp_enabled_i;
 
-    // Decoder controls
-    except_code_t                        id_except_code;
-    imm_format_t                         id_imm_format;
-
-    // Main instruction decoder
-    issue_decoder #(
-        .Len5Cfg(Len5Cfg)
-    ) u_issue_decoder (
-        .instruction_i(iq_data_out[i].instruction),
-        .priv_mode_i  (csr_priv_mode_i),
-        .fp_enabled_i (csr_fp_enabled_i),
-        .issue_type_o (ireg_data_in[i].issue_type),
-        .stall_o      (id_stall[i]),
-        .dispatch_o   (ireg_data_in[i].dispatch),
-        .except_code_o(id_except_code),
-        .skip_eu_o    (ireg_data_in[i].skip_eu),
-        .assigned_eu_o(ireg_data_in[i].assigned_eu),
-        .eu_ctl_o     (ireg_data_in[i].eu_ctl),
-        .mem_crit_o   (ireg_data_in[i].mem_crit),
-        .order_crit_o (ireg_data_in[i].order_crit),
-        .rs1_sel_o    (ireg_data_in[i].rs1_sel),
-        .rs2_sel_o    (ireg_data_in[i].rs2_sel),
-        .rs3_sel_o    (ireg_data_in[i].rs3_sel),
-        .rd_upd_o     (ireg_data_in[i].rd_upd),
-        .imm_format_o (id_imm_format)
-    );
-
-    // Instruction fields extraction
-    assign instr_rs1_idx = iq_data_out[i].instruction.r.rs1;
-    assign instr_rs2_idx = iq_data_out[i].instruction.r.rs2;
-    assign instr_rd_idx = iq_data_out[i].instruction.r.rd;
-    assign instr_imm_i_value = {
-      {52{iq_data_out[i].instruction.i.imm11[31]}}, iq_data_out[i].instruction.i.imm11
-    };
-    assign instr_imm_s_value = {
-      {52{iq_data_out[i].instruction.s.imm11[31]}},
-      iq_data_out[i].instruction.s.imm11,
-      iq_data_out[i].instruction.s.imm4
-    };
-    assign instr_imm_b_value = {
-      {51{iq_data_out[i].instruction.b.imm12}},
-      iq_data_out[i].instruction.b.imm12,
-      iq_data_out[i].instruction.b.imm11,
-      iq_data_out[i].instruction.b.imm10,
-      iq_data_out[i].instruction.b.imm4,
-      1'b0
-    };
-    assign instr_imm_u_value = {
-      {32{iq_data_out[i].instruction.u.imm31[31]}}, iq_data_out[i].instruction.u.imm31, 12'b0
-    };
-    assign instr_imm_j_value = {
-      {43{iq_data_out[i].instruction.j.imm20}},
-      iq_data_out[i].instruction.j.imm20,
-      iq_data_out[i].instruction.j.imm19,
-      iq_data_out[i].instruction.j.imm11,
-      iq_data_out[i].instruction.j.imm10,
-      1'b0
-    };
-    assign instr_imm_rs1_value = {59'h0, iq_data_out[i].instruction.r.rs1};
-
-    // RV64F-RV64D
-    // rounding mode
-    assign instr_frm = iq_data_out[i].instruction.r4.funct3;
-
-    // rs3 idx, R4 format
-    assign instr_rs3_idx = iq_data_out[i].instruction.r4.rs3;
-
-    // Immediate MUX
-    always_comb begin : imm_mux
-      unique case (id_imm_format)
-        IMM_TYPE_S:   imm_value = instr_imm_s_value;
-        IMM_TYPE_B:   imm_value = instr_imm_b_value;
-        IMM_TYPE_U:   imm_value = instr_imm_u_value;
-        IMM_TYPE_J:   imm_value = instr_imm_j_value;
-        IMM_TYPE_RS1: imm_value = instr_imm_rs1_value;
-        default:      imm_value = instr_imm_i_value;
+    // U < S < M; the reserved encoding is never a legal privilege level.
+    always_comb begin : privilege_check
+      case (csr_priv_mode_i)
+        csr_pkg::PRIV_MODE_U, csr_pkg::PRIV_MODE_S, csr_pkg::PRIV_MODE_M:
+        privilege_illegal = !(csr_priv_mode_i >= iq_data_out[i].data.required_priv) ||
+            (iq_data_out[i].data.required_priv == csr_pkg::PRIV_MODE_R);
+        default: privilege_illegal = 1'b1;
       endcase
     end
 
-    assign ireg_data_in[i].curr_pc = iq_data_out[i].curr_pc;
-    assign ireg_data_in[i].instr = iq_data_out[i].instruction;
-    assign ireg_data_in[i].rs1_idx = instr_rs1_idx;
-    assign ireg_data_in[i].rs2_idx = instr_rs2_idx;
-    assign ireg_data_in[i].rs3_idx = instr_rs3_idx;
-    assign ireg_data_in[i].imm_value = imm_value;
-    assign ireg_data_in[i].rd_idx = instr_rd_idx;
-    assign ireg_data_in[i].pred_taken = iq_data_out[i].pred_taken;
-    assign ireg_data_in[i].pred_target = iq_data_out[i].pred_target;
-    assign ireg_data_in[i].except_raised = iq_data_out[i].except_raised;
-    assign ireg_data_in[i].except_code    = (iq_data_out[i].except_raised) ? iq_data_out[i].except_code : id_except_code;
-    assign ireg_data_in[i].frm = instr_frm;
+    always_comb begin : effective_instruction
+      // Apply shared exception controls; the legal path restores the queued instruction.
+      issue_data[i]               = iq_data_out[i].data;
+      issue_data[i].except_raised = 1'b1;
+      issue_data[i].issue_type    = ISSUE_TYPE_EXCEPT;
+      issue_data[i].dispatch      = '0;
+      issue_data[i].rd_upd        = 1'b0;
+      issue_data[i].skip_eu       = 1'b1;
+      issue_data[i].mem_crit      = 1'b1;
+      issue_data[i].order_crit    = 1'b1;
 
-  end
-
-  // ISSUE REGISTERS
-  // ---------------
-  assign ireg_data_out_unused = ireg_data_q[0];
-
-  // Remove the accepted prefix; a resumed FENCE discards its non-allocating stall token.
-  always_comb begin : dispatch_count
-    ireg_pop_count = '0;
-    for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++)
-      ireg_pop_count += issue_count_t'(issue_grant[i]);
-    if (comm_resume_i && (ireg_count_q != '0) && (ireg_data_out_unused.issue_type == ISSUE_TYPE_STALL))
-      ireg_pop_count = issue_count_t'(1);
-  end
-
-  // Account for removal before admitting the next IQ entries.
-  assign retained_count = ireg_count_q - ireg_pop_count;
-  assign refill_space = issue_count_t'(Len5Cfg.ISSUE_WIDTH) - retained_count;
-  assign ireg_count_d = retained_count + iq_pop_count;
-
-  // A resume must not release a CSR that is still waiting for its operand.
-  assign serialize_hold = serialize_q && !(comm_resume_i && cu_iq_ready &&
-      ((ireg_count_q == '0) || (ireg_data_out_unused.issue_type == ISSUE_TYPE_STALL)));
-  assign serialize_d = serialize_hold || (|(iq_accepted & serializing));
-
-  for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_issue_registers
-    logic older_serializing;
-
-    assign serializing[i] = iq_valid[i] && (ireg_data_in[i].except_raised || id_stall[i]);
-
-    // Accept the first serializing instruction, but none of its younger lanes.
-    if (i == 0) begin : gen_first
-      assign older_serializing = 1'b0;
-    end else begin : gen_younger
-      assign older_serializing = |serializing[i-1:0];
-    end
-    assign iq_accepted[i] = iq_valid[i] && (issue_count_t'(i) < refill_space) &&
-        (cu_iq_ready || (ireg_count_q != '0)) && !serialize_hold && !older_serializing;
-
-    // Retained instructions occupy the low lanes; refill follows them on the same edge.
-    always_comb begin : data_mux
-      ireg_data_d[i] = '0;
-      if (issue_count_t'(i) < retained_count)
-        ireg_data_d[i] = ireg_data_q[issue_count_t'(i) + ireg_pop_count];
-      else if (issue_count_t'(i) < ireg_count_d)
-        ireg_data_d[i] = ireg_data_in[issue_count_t'(i) - retained_count];
+      if (iq_data_out[i].data.except_raised && !iq_data_out[i].data.ecall) begin
+        issue_data[i].except_code = iq_data_out[i].data.except_code;
+      end else if (fp_illegal || privilege_illegal) begin
+        issue_data[i].except_code = E_ILLEGAL_INSTRUCTION;
+      end else if (iq_data_out[i].data.ecall) begin
+        case (csr_priv_mode_i)
+          csr_pkg::PRIV_MODE_U: issue_data[i].except_code = E_ENV_CALL_UMODE;
+          csr_pkg::PRIV_MODE_S: issue_data[i].except_code = E_ENV_CALL_SMODE;
+          default:              issue_data[i].except_code = E_ENV_CALL_MMODE;
+        endcase
+      end else begin
+        issue_data[i] = iq_data_out[i].data;
+      end
     end
   end
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin : issue_reg
-    if (!rst_ni) begin
-      ireg_data_q <= '0;
-      ireg_count_q <= '0;
-      serialize_q <= 1'b0;
-    end else if (iq_flush) begin
-      ireg_data_q <= '0;
-      ireg_count_q <= '0;
-      serialize_q <= 1'b0;
-    end else begin
-      ireg_data_q <= ireg_data_d;
-      ireg_count_q <= ireg_count_d;
-      serialize_q <= serialize_d;
-    end
-  end
-
-  // The CU classifies the head that will be registered on this same edge.
-  assign iq_cu_valid = |ireg_count_d;
-  assign iq_cu_except_raised = ireg_data_d[0].except_raised;
-
-  // ISSUE CU
-  // --------
+  // The CU observes the registered queue head, never a next-head preview.
   issue_cu u_issue_cu (
-      .clk_i              (clk_i),
-      .rst_ni             (rst_ni),
-      .flush_i            (flush_i),
-      .mis_flush_o        (cu_mis_flush),
-      .iq_valid_i         (iq_cu_valid),
-      .iq_ready_o         (cu_iq_ready),
-      .iq_except_raised_i (iq_cu_except_raised),
-      .issue_type_i       (ireg_data_d[0].issue_type),
-      .issue_valid_i      (ireg_valid[0]),
-      .issue_accepted_i   (issue_grant[0]),
-      .issue_rs1_ready_i  (rs1_ready),
-      .issue_enable_o     (cu_issue_enable),
-      .issue_special_o    (cu_issue_special),
-      .issue_res_sel_rs1_o(cu_il_res_sel_rs1),
-      .ex_mis_i           (ex_mis_i),
-      .comm_resume_i      (comm_resume_i)
+    .clk_i              (clk_i),
+    .rst_ni             (rst_ni),
+    .flush_i            (flush_i),
+    .mis_flush_o        (cu_mis_flush),
+    .issue_type_i       (issue_data[0].issue_type),
+    .issue_valid_i      (iq_valid[0]),
+    .issue_accepted_i   (issue_grant[0]),
+    .issue_rs1_ready_i  (rs1_ready),
+    .issue_enable_o     (cu_issue_enable),
+    .issue_special_o    (cu_issue_special),
+    .issue_stall_pop_o  (cu_stall_pop),
+    .issue_res_sel_rs1_o(cu_il_res_sel_rs1),
+    .ex_mis_i           (ex_mis_i),
+    .comm_resume_i      (comm_resume_i)
   );
 
+  // A non-allocating stall token is consumed only by its own resume event.
+  assign iq_accepted = issue_grant | {{(Len5Cfg.ISSUE_WIDTH-1){1'b0}}, cu_stall_pop && iq_valid[0]};
   // ISSUE GRANTS
   // ------------
   // Only the head can use the CU's serialized dispatch path.
-  assign special_grant = cu_issue_special && ireg_valid[0] && comm_ready_i[0];
+  assign special_grant = cu_issue_special && iq_valid[0] && comm_ready_i[0];
 
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_grants
     logic lane_ready, granted;
 
-    assign lane_ready = ireg_valid[i] && comm_ready_i[i] && !operand_serializing[i] &&
+    assign lane_ready = iq_valid[i] && comm_ready_i[i] && !operand_serializing[i] &&
         (operand_dispatch[i].direct_result || operand_skip_eu[i] || ex_ready_i[i]);
 
     // A blocked older lane prevents every younger grant.
@@ -466,56 +286,51 @@ module issue_stage #(
     logic rs1_busy, rs2_busy, rs3_busy;
     op_data_t rs1_selected, rs2_selected, rs3_selected;
 
-    assign ireg_valid[i] = issue_count_t'(i) < ireg_count_q;
-    assign operand_serializing[i] = ireg_data_q[i].except_raised ||
-        (ireg_data_q[i].issue_type inside {ISSUE_TYPE_CSR, ISSUE_TYPE_STALL, ISSUE_TYPE_WFI, ISSUE_TYPE_EXCEPT});
-    assign operand_skip_eu[i] = ireg_data_q[i].skip_eu;
-    assign ex_req_o[i] = ireg_valid[i] && !operand_serializing[i] &&
+    assign operand_serializing[i] = issue_data[i].except_raised ||
+        (issue_data[i].issue_type inside {ISSUE_TYPE_CSR, ISSUE_TYPE_STALL, ISSUE_TYPE_WFI, ISSUE_TYPE_EXCEPT});
+    assign operand_skip_eu[i] = issue_data[i].skip_eu;
+    assign ex_req_o[i] = iq_valid[i] && !operand_serializing[i] &&
         !operand_dispatch[i].direct_result && !operand_skip_eu[i];
-    assign operand_rs1_sel[i] = ireg_data_q[i].rs1_sel;
-    assign operand_rs2_sel[i] = ireg_data_q[i].rs2_sel;
-    assign operand_rs3_sel[i] = ireg_data_q[i].rs3_sel;
-    assign direct_result[i] = ireg_data_q[i].imm_value;
-    assign operand_csr[i] = ireg_data_q[i].issue_type == ISSUE_TYPE_CSR;
-    assign operand_dispatch[i].direct_result = ireg_data_q[i].dispatch.direct_result;
-    assign operand_dispatch[i].int_rd_write = ireg_valid[i] && !ireg_data_q[i].except_raised &&
-        ireg_data_q[i].dispatch.int_rd_write;
-    assign operand_dispatch[i].fp_rd_write = ireg_valid[i] && !ireg_data_q[i].except_raised &&
-        ireg_data_q[i].dispatch.fp_rd_write;
+    assign direct_result[i] = issue_data[i].imm_value;
+    assign operand_dispatch[i].direct_result = issue_data[i].dispatch.direct_result;
+    assign operand_dispatch[i].int_rd_write = iq_valid[i] && !issue_data[i].except_raised &&
+        issue_data[i].dispatch.int_rd_write;
+    assign operand_dispatch[i].fp_rd_write = iq_valid[i] && !issue_data[i].except_raised &&
+        issue_data[i].dispatch.fp_rd_write;
     assign int_regstat_valid_o[i] = issue_grant[i] && operand_dispatch[i].int_rd_write;
     assign fp_regstat_valid_o[i] = issue_grant[i] && operand_dispatch[i].fp_rd_write;
-    assign int_regstat_rd_idx_o[i] = ireg_data_q[i].rd_idx;
-    assign fp_regstat_rd_idx_o[i] = ireg_data_q[i].rd_idx;
+    assign int_regstat_rd_idx_o[i] = issue_data[i].rd_idx;
+    assign fp_regstat_rd_idx_o[i] = issue_data[i].rd_idx;
     assign int_regstat_rob_idx_o[i] = comm_tail_idx_i[i];
     assign fp_regstat_rob_idx_o[i] = comm_tail_idx_i[i];
-    assign int_regstat_rs1_idx_o[i] = ireg_data_q[i].rs1_idx;
-    assign int_regstat_rs2_idx_o[i] = ireg_data_q[i].rs2_idx;
-    assign intrf_rs1_idx_o[i] = ireg_data_q[i].rs1_idx;
-    assign intrf_rs2_idx_o[i] = ireg_data_q[i].rs2_idx;
-    assign fp_regstat_rs1_idx_o[i] = ireg_data_q[i].rs1_idx;
-    assign fp_regstat_rs2_idx_o[i] = ireg_data_q[i].rs2_idx;
-    assign fp_regstat_rs3_idx_o[i] = ireg_data_q[i].rs3_idx;
-    assign fprf_rs1_idx_o[i] = ireg_data_q[i].rs1_idx;
-    assign fprf_rs2_idx_o[i] = ireg_data_q[i].rs2_idx;
-    assign fprf_rs3_idx_o[i] = ireg_data_q[i].rs3_idx;
+    assign int_regstat_rs1_idx_o[i] = issue_data[i].rs1_idx;
+    assign int_regstat_rs2_idx_o[i] = issue_data[i].rs2_idx;
+    assign intrf_rs1_idx_o[i] = issue_data[i].rs1_idx;
+    assign intrf_rs2_idx_o[i] = issue_data[i].rs2_idx;
+    assign fp_regstat_rs1_idx_o[i] = issue_data[i].rs1_idx;
+    assign fp_regstat_rs2_idx_o[i] = issue_data[i].rs2_idx;
+    assign fp_regstat_rs3_idx_o[i] = issue_data[i].rs3_idx;
+    assign fprf_rs1_idx_o[i] = issue_data[i].rs1_idx;
+    assign fprf_rs2_idx_o[i] = issue_data[i].rs2_idx;
+    assign fprf_rs3_idx_o[i] = issue_data[i].rs3_idx;
 
     always_comb begin : lookup_rs1
       rs1_busy = 1'b0;
       rs1_selected = '0;
       rs1_selected.ready = 1'b1;
-      rs1_selected.rob_idx = (ireg_data_q[i].rs1_sel == RS1_SEL_FP) ?
+      rs1_selected.rob_idx = (issue_data[i].rs1_sel == RS1_SEL_FP) ?
           fp_regstat_rs1_rob_idx_i[i] : int_regstat_rs1_rob_idx_i[i];
-      case (ireg_data_q[i].rs1_sel)
+      case (issue_data[i].rs1_sel)
         RS1_SEL_INT: begin
-          rs1_busy = int_regstat_rs1_busy_i[i];
+          rs1_busy           = int_regstat_rs1_busy_i[i];
           rs1_selected.value = intrf_rs1_value_i[i];
         end
         RS1_SEL_FP: begin
-          rs1_busy = fp_regstat_rs1_busy_i[i];
+          rs1_busy           = fp_regstat_rs1_busy_i[i];
           rs1_selected.value = fprf_rs1_value_i[i];
         end
-        RS1_SEL_PC: rs1_selected.value = ireg_data_q[i].curr_pc;
-        default: ;
+        RS1_SEL_PC: rs1_selected.value = issue_data[i].curr_pc;
+        default:    ;
       endcase
     end
 
@@ -531,19 +346,19 @@ module issue_stage #(
       rs2_busy = 1'b0;
       rs2_selected = '0;
       rs2_selected.ready = 1'b1;
-      rs2_selected.rob_idx = (ireg_data_q[i].rs2_sel == RS2_SEL_FP) ?
+      rs2_selected.rob_idx = (issue_data[i].rs2_sel == RS2_SEL_FP) ?
           fp_regstat_rs2_rob_idx_i[i] : int_regstat_rs2_rob_idx_i[i];
-      case (ireg_data_q[i].rs2_sel)
+      case (issue_data[i].rs2_sel)
         RS2_SEL_INT: begin
-          rs2_busy = int_regstat_rs2_busy_i[i];
+          rs2_busy           = int_regstat_rs2_busy_i[i];
           rs2_selected.value = intrf_rs2_value_i[i];
         end
         RS2_SEL_FP: begin
-          rs2_busy = fp_regstat_rs2_busy_i[i];
+          rs2_busy           = fp_regstat_rs2_busy_i[i];
           rs2_selected.value = fprf_rs2_value_i[i];
         end
-        RS2_SEL_IMM: rs2_selected.value = ireg_data_q[i].imm_value;
-        default: ;
+        RS2_SEL_IMM: rs2_selected.value = issue_data[i].imm_value;
+        default:     ;
       endcase
     end
 
@@ -556,13 +371,13 @@ module issue_stage #(
     end
 
     always_comb begin : lookup_rs3
-      rs3_busy = 1'b0;
-      rs3_selected = '0;
-      rs3_selected.ready = 1'b1;
+      rs3_busy             = 1'b0;
+      rs3_selected         = '0;
+      rs3_selected.ready   = 1'b1;
       rs3_selected.rob_idx = fp_regstat_rs3_rob_idx_i[i];
-      case (ireg_data_q[i].rs3_sel)
+      case (issue_data[i].rs3_sel)
         RS3_SEL_FP: begin
-          rs3_busy = fp_regstat_rs3_busy_i[i];
+          rs3_busy           = fp_regstat_rs3_busy_i[i];
           rs3_selected.value = fprf_rs3_value_i[i];
         end
         default: ;
@@ -578,36 +393,33 @@ module issue_stage #(
     end
   end
 
-  issue_dependencies #(.Len5Cfg(Len5Cfg)) u_issue_dependencies (
-      .issue_valid_i(ireg_valid),
-      .issue_grant_i(issue_grant),
-      .issue_csr_i(operand_csr),
-      .issue_dispatch_i(operand_dispatch),
-      .issue_rd_idx_i(int_regstat_rd_idx_o),
-      .issue_rob_idx_i(comm_tail_idx_i),
-      .issue_result_i(direct_result),
-      .rs1_sel_i(operand_rs1_sel),
-      .rs2_sel_i(operand_rs2_sel),
-      .rs3_sel_i(operand_rs3_sel),
-      .rs1_idx_i(intrf_rs1_idx_o),
-      .rs2_idx_i(intrf_rs2_idx_o),
-      .rs3_idx_i(fprf_rs3_idx_o),
-      .rs1_i(rs1_base),
-      .rs2_i(rs2_base),
-      .rs3_i(rs3_base),
-      .rs1_o(rs1_resolved),
-      .rs2_o(rs2_resolved),
-      .rs3_o(rs3_resolved),
-      .dependency_stall_o(dependency_stall_unused),
-      .rs1_bundle_o(rs1_bundle),
-      .rs2_bundle_o(rs2_bundle),
-      .rs3_bundle_o(rs3_bundle)
+  issue_dependencies #(
+    .Len5Cfg(Len5Cfg)
+  ) u_issue_dependencies (
+    .head_idx_i      (iq_head_idx),
+    .rs1_dep_i       (rs1_dep),
+    .rs2_dep_i       (rs2_dep),
+    .rs3_dep_i       (rs3_dep),
+    .issue_valid_i   (iq_valid),
+    .issue_grant_i   (issue_grant),
+    .issue_dispatch_i(operand_dispatch),
+    .issue_rob_idx_i (comm_tail_idx_i),
+    .issue_result_i  (direct_result),
+    .rs1_i           (rs1_base),
+    .rs2_i           (rs2_base),
+    .rs3_i           (rs3_base),
+    .rs1_o           (rs1_resolved),
+    .rs2_o           (rs2_resolved),
+    .rs3_o           (rs3_resolved),
+    .rs1_bundle_o    (rs1_bundle),
+    .rs2_bundle_o    (rs2_bundle),
+    .rs3_bundle_o    (rs3_bundle)
   );
-// %TODO check with Michele we don't need the value mux
+  // %TODO check with Michele we don't need the value mux
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_forwarding
     // Same-bundle operands must not consume old ROB/CDB/buffer contents.
     assign comm_rs1_rob_idx_o[i] = rs1_resolved[i].rob_idx;
-    assign rs1_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs1_resolved[i].ready && !rs1_bundle[i];
+    assign rs1_fwd_en[i] = iq_valid[i] && !iq_flush && !rs1_resolved[i].ready && !rs1_bundle[i];
 
     always_comb begin : forward_rs1
       rs1_forwarded[i] = rs1_resolved[i];
@@ -618,7 +430,7 @@ module issue_stage #(
     end
 
     assign comm_rs2_rob_idx_o[i] = rs2_resolved[i].rob_idx;
-    assign rs2_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs2_resolved[i].ready && !rs2_bundle[i];
+    assign rs2_fwd_en[i] = iq_valid[i] && !iq_flush && !rs2_resolved[i].ready && !rs2_bundle[i];
 
     always_comb begin : forward_rs2
       rs2_forwarded[i] = rs2_resolved[i];
@@ -629,7 +441,7 @@ module issue_stage #(
     end
 
     assign comm_rs3_rob_idx_o[i] = rs3_resolved[i].rob_idx;
-    assign rs3_fwd_en[i] = ireg_valid[i] && !iq_flush && !rs3_resolved[i].ready && !rs3_bundle[i];
+    assign rs3_fwd_en[i] = iq_valid[i] && !iq_flush && !rs3_resolved[i].ready && !rs3_bundle[i];
 
     always_comb begin : forward_rs3
       rs3_forwarded[i] = rs3_resolved[i];
@@ -641,71 +453,58 @@ module issue_stage #(
 
   end
 
-  assign rs1_ready = rs1_forwarded[0].ready;
-  assign rs1_value = rs1_forwarded[0].value;
+  assign rs1_ready         = rs1_forwarded[0].ready;
+  assign rs1_value         = rs1_forwarded[0].value;
   // -----------------
   // OUTPUT EVALUATION
   // -----------------
 
   // Fetch stage
-  assign fetch_mis_flush_o         = cu_mis_flush;
+  assign fetch_mis_flush_o = cu_mis_flush;
 
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_dispatch_data
-    assign ex_assigned_eu_o[i] = ireg_data_q[i].assigned_eu;
-    assign ex_eu_ctl_o[i] = ireg_data_q[i].eu_ctl;
-    assign ex_frm_o[i] = ireg_data_q[i].frm;
-    assign ex_rs1_o[i] = rs1_forwarded[i];
-    assign ex_rs2_o[i] = rs2_forwarded[i];
-    assign ex_rs3_o[i] = rs3_forwarded[i];
-    assign ex_imm_value_o[i] = ireg_data_q[i].imm_value;
-    assign ex_rob_idx_o[i] = comm_tail_idx_i[i];
-    assign ex_curr_pc_o[i] = ireg_data_q[i].curr_pc;
-    assign ex_pred_target_o[i] = ireg_data_q[i].pred_target;
-    assign ex_pred_taken_o[i] = ireg_data_q[i].pred_taken;
+    assign ex_assigned_eu_o[i] = issue_data[i].assigned_eu;
+    assign ex_eu_ctl_o[i]      = issue_data[i].eu_ctl;
+    assign ex_frm_o[i]         = issue_data[i].frm;
+    assign ex_rs1_o[i]         = rs1_forwarded[i];
+    assign ex_rs2_o[i]         = rs2_forwarded[i];
+    assign ex_rs3_o[i]         = rs3_forwarded[i];
+    assign ex_imm_value_o[i]   = issue_data[i].imm_value;
+    assign ex_rob_idx_o[i]     = comm_tail_idx_i[i];
+    assign ex_curr_pc_o[i]     = issue_data[i].curr_pc;
+    assign ex_pred_target_o[i] = issue_data[i].pred_target;
+    assign ex_pred_taken_o[i]  = issue_data[i].pred_taken;
   end
 
   // Each accepted lane initializes its own ROB entry. Only the head can be a CSR.
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_commit_data
-    assign comm_data_o[i].instruction   = ireg_data_q[i].instr;
-    assign comm_data_o[i].instr_pc      = ireg_data_q[i].curr_pc;
+    assign comm_data_o[i].instruction = issue_data[i].instr;
+    assign comm_data_o[i].instr_pc = issue_data[i].curr_pc;
     assign comm_data_o[i].res_ready     = operand_dispatch[i].direct_result || ((i == 0) && special_grant);
-    assign comm_data_o[i].res_value     = ((i == 0) && cu_il_res_sel_rs1) ? rs1_value : ireg_data_q[i].imm_value;
-    assign comm_data_o[i].rd_idx        = ireg_data_q[i].rd_idx;
-    assign comm_data_o[i].rd_upd        = ireg_data_q[i].rd_upd;
-    assign comm_data_o[i].mem_crit      = ireg_data_q[i].mem_crit;
-    assign comm_data_o[i].order_crit    = ireg_data_q[i].order_crit;
-    assign comm_data_o[i].except_raised = ireg_data_q[i].except_raised ||
-        (ireg_data_q[i].issue_type == ISSUE_TYPE_EXCEPT);
-    assign comm_data_o[i].except_code   = ireg_data_q[i].except_code;
-    assign comm_data_o[i].mem_clear     = 1'b0;
-    assign comm_data_o[i].flags.raw     = '0;
+    assign comm_data_o[i].res_value     = ((i == 0) && cu_il_res_sel_rs1) ? rs1_value : issue_data[i].imm_value;
+    assign comm_data_o[i].rd_idx = issue_data[i].rd_idx;
+    assign comm_data_o[i].rd_upd = issue_data[i].rd_upd;
+    assign comm_data_o[i].mem_crit = issue_data[i].mem_crit;
+    assign comm_data_o[i].order_crit = issue_data[i].order_crit;
+    assign comm_data_o[i].except_raised = issue_data[i].except_raised ||
+        (issue_data[i].issue_type == ISSUE_TYPE_EXCEPT);
+    assign comm_data_o[i].except_code = issue_data[i].except_code;
+    assign comm_data_o[i].mem_clear = 1'b0;
+    assign comm_data_o[i].flags.raw = '0;
   end
 
   // ----------
   // DEBUG CODE
   // ----------
 `ifndef SYNTHESIS
-  always @(posedge clk_i) begin : check_issue_registers
-    if (rst_ni && !iq_flush) begin
-      assert (ireg_pop_count <= ireg_count_q)
-      else $error("issue-register removal count is invalid");
-      assert ((issue_grant & ~ireg_valid) == '0)
-      else $error("dispatch requires a registered instruction");
-    end
-  end
-  if (Len5Cfg.ISSUE_WIDTH > 1) begin : gen_check_occupancy
-    always @(posedge clk_i) begin
-      if (rst_ni && !iq_flush) begin
-        assert (int'(ireg_count_q) <= Len5Cfg.ISSUE_WIDTH)
-        else $error("issue-register occupancy is invalid");
-      end
-    end
-  end
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_check_dispatch
     always @(posedge clk_i) begin
       if (rst_ni) begin
         assert (!issue_grant[i] || (comm_ready_i[i] && !iq_flush && !ex_mis_i))
         else $error("dispatch without ROB capacity or during recovery");
+        assert (!issue_grant[i] || ((!rs1_dep[i].valid || rs1_bundle[i]) &&
+            (!rs2_dep[i].valid || rs2_bundle[i]) && (!rs3_dep[i].valid || rs3_bundle[i])))
+        else $error("accepted queue dependency requires an older granted producer");
         assert (!ex_valid_o[i] || issue_grant[i])
         else $error("execution insertion without ROB allocation");
       end

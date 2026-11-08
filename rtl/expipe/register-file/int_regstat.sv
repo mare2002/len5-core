@@ -14,30 +14,30 @@
 // Date: 12/11/2019
 
 module int_regstat #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
-    localparam int unsigned REG_NUM = len5_pkg::XREG_NUM,
-    localparam int unsigned RegIdxLen = len5_pkg::REG_IDX_LEN
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
+  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned REG_NUM = len5_pkg::XREG_NUM,
+  localparam int unsigned RegIdxLen = len5_pkg::REG_IDX_LEN
 ) (
-    input logic clk_i,
-    input logic rst_ni,
-    input logic flush_i,
+  input logic clk_i,
+  input logic rst_ni,
+  input logic flush_i,
 
-    // Issue Logic (valid lanes are accepted destination writes)
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
-    input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rob_idx_i,  // allocated ROB index
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
-    input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
-    output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
-    output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
+  // Issue Logic (valid lanes are accepted destination writes)
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rd_idx_i,  // destination register of the issuing instruction
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rob_idx_i,  // allocated ROB index
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs1_idx_i,  // first source register index
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][RegIdxLen-1:0] issue_rs2_idx_i,  // second source register index
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_busy_o,  // rs1 value is in the ROB or has to be computed
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_rob_idx_o,  // the index of the ROB where the result is found
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_busy_o,  // rs1 value is in the ROB or has to be computed
+  output rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_rob_idx_o,  // the index of the ROB where the result is found
 
-    // Commit Logic
-    input logic                 comm_valid_i,
-    input logic [RegIdxLen-1:0] comm_rd_idx_i,  // destination register of the committing instr.
-    input rob_idx_t comm_rob_idx_i
+  // Commit Logic
+  input logic                     comm_valid_i,
+  input logic     [RegIdxLen-1:0] comm_rd_idx_i,  // destination register of the committing instr.
+  input rob_idx_t                 comm_rob_idx_i
 );
 
   import expipe_pkg::*;
@@ -46,16 +46,16 @@ module int_regstat #(
   rob_idx_t rob_idx_q[1:REG_NUM-1], rob_idx_d[1:REG_NUM-1];
 
   for (genvar r = 1; r < REG_NUM; r++) begin : gen_status
-    logic commit_match;
-	logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_match;
-    
-	assign commit_match = comm_valid_i && comm_rd_idx_i == r[RegIdxLen-1:0] && comm_rob_idx_i == rob_idx_q[r];
+    logic                           commit_match;
+    logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_match;
 
-	// A new writer keeps the register busy even when the old writer commits.
+    assign commit_match = comm_valid_i && comm_rd_idx_i == r[RegIdxLen-1:0] && comm_rob_idx_i == rob_idx_q[r];
+
+    // A new writer keeps the register busy even when the old writer commits.
     assign busy_d[r] = (|issue_match) || (busy_q[r] && !commit_match);
 
 
-	always_comb begin : status_next
+    always_comb begin : status_next
       // The tag mux gives the youngest matching issue lane priority.
       rob_idx_d[r] = rob_idx_q[r];
       for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
@@ -77,9 +77,9 @@ module int_regstat #(
   end
 
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_read_ports
-    assign issue_rs1_busy_o[i] = (|issue_rs1_idx_i[i]) ? busy_q[issue_rs1_idx_i[i]] : 1'b0;
+    assign issue_rs1_busy_o[i]    = (|issue_rs1_idx_i[i]) ? busy_q[issue_rs1_idx_i[i]] : 1'b0;
     assign issue_rs1_rob_idx_o[i] = (|issue_rs1_idx_i[i]) ? rob_idx_q[issue_rs1_idx_i[i]] : '0;
-    assign issue_rs2_busy_o[i] = (|issue_rs2_idx_i[i]) ? busy_q[issue_rs2_idx_i[i]] : 1'b0;
+    assign issue_rs2_busy_o[i]    = (|issue_rs2_idx_i[i]) ? busy_q[issue_rs2_idx_i[i]] : 1'b0;
     assign issue_rs2_rob_idx_o[i] = (|issue_rs2_idx_i[i]) ? rob_idx_q[issue_rs2_idx_i[i]] : '0;
   end
 endmodule

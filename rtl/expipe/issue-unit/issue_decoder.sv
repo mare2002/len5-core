@@ -13,30 +13,30 @@
 // Date: 13/11/2019
 
 module issue_decoder #(
-    parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
+  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
 ) (
-    // Instruction from the issue logic
-    input len5_pkg::instr_t   instruction_i,  // the issuing instruction
-    input csr_pkg::csr_priv_t priv_mode_i,    // current privilege mode
-    input logic               fp_enabled_i,   // mstatus.FS is nonzero
+  // Instruction from the issue logic
+  input len5_pkg::instr_t instruction_i,  // the issuing instruction
 
-    // Issue decoder <--> issue CU
-    output expipe_pkg::issue_type_t issue_type_o,  // issue operation type
+  // Issue decoder <--> issue CU
+  output expipe_pkg::issue_type_t issue_type_o,  // issue operation type
 
-    // Information to the issue logic
-    output logic stall_o,  // stall decoding of younger instructions
-    output expipe_pkg::issue_dispatch_t dispatch_o,
-    output len5_pkg::except_code_t except_code_o,  // exception code to send to the ROB
-    output expipe_pkg::issue_eu_t assigned_eu_o,  // assigned EU
-    output logic skip_eu_o,  // do not assign to any EU
-    output expipe_pkg::eu_ctl_t eu_ctl_o,  // controls for the assigned EU
-    output logic mem_crit_o,  // memory accesses shall wait for this instruction to complete
-    output logic order_crit_o,  // out-of-order commit not allowed
-    output expipe_pkg::rs1_sel_t rs1_sel_o,  // rs1 source
-    output expipe_pkg::rs2_sel_t rs2_sel_o,  // rs2 source
-    output expipe_pkg::rs3_sel_t rs3_sel_o,  // rs3 source
-    output logic rd_upd_o,  // the instruction updates a destination register rd
-    output expipe_pkg::imm_format_t imm_format_o  // immediate format
+  // Information to the issue logic
+  output logic requires_fp_o,
+  output csr_pkg::csr_priv_t required_priv_o,
+  output logic ecall_o,
+  output expipe_pkg::issue_dispatch_t dispatch_o,
+  output len5_pkg::except_code_t except_code_o,  // exception code to send to the ROB
+  output expipe_pkg::issue_eu_t assigned_eu_o,  // assigned EU
+  output logic skip_eu_o,  // do not assign to any EU
+  output expipe_pkg::eu_ctl_t eu_ctl_o,  // controls for the assigned EU
+  output logic mem_crit_o,  // memory accesses shall wait for this instruction to complete
+  output logic order_crit_o,  // out-of-order commit not allowed
+  output expipe_pkg::rs1_sel_t rs1_sel_o,  // rs1 source
+  output expipe_pkg::rs2_sel_t rs2_sel_o,  // rs2 source
+  output expipe_pkg::rs3_sel_t rs3_sel_o,  // rs3 source
+  output logic rd_upd_o,  // the instruction updates a destination register rd
+  output expipe_pkg::imm_format_t imm_format_o  // immediate format
 );
 
   import len5_config_pkg::*;
@@ -508,11 +508,7 @@ module issue_decoder #(
         skip_eu       = 1'b1;
         order_crit    = 1'b1;
         opcode_except = 1'b1;
-        unique case (priv_mode_i)
-          PRIV_MODE_U: except_code = E_ENV_CALL_UMODE;
-          PRIV_MODE_S: except_code = E_ENV_CALL_SMODE;
-          default:     except_code = E_ENV_CALL_MMODE;
-        endcase
+        except_code   = E_ENV_CALL_UMODE;  // selected from the current mode at issue
       end
       EBREAK: begin  // TODO: add EBREAK support
         issue_type    = ISSUE_TYPE_EXCEPT;
@@ -1625,44 +1621,58 @@ module issue_decoder #(
         opcode_except = 1'b1;
       end
     endcase
-    // FS=Off forbids all FP register accesses (including loads/stores and moves)
-    // and explicit accesses to fflags/frm/fcsr. CSR instructions serialize issue,
-    // and fp_enabled_i includes the committing mstatus write on the resume edge.
-    if (!fp_enabled_i &&
-        (assigned_eu == EU_FPU || rs1_sel == RS1_SEL_FP || rs2_sel == RS2_SEL_FP ||
-         rs3_sel == RS3_SEL_FP || issue_type == ISSUE_TYPE_FP ||
-         (issue_type == ISSUE_TYPE_CSR &&
-          (instruction_i.raw[31:20] == CSR_FFLAGS ||
-           instruction_i.raw[31:20] == CSR_FRM || instruction_i.raw[31:20] == CSR_FCSR)))) begin
+    // FP CSRs do not exist when both floating-point extensions are absent.
+    if (!Len5Cfg.LEN5_F_EN && !Len5Cfg.LEN5_D_EN && issue_type == ISSUE_TYPE_CSR &&
+        instruction_i.raw[14:12] != '0 &&
+        instruction_i.raw[31:20] inside {CSR_FFLAGS, CSR_FRM, CSR_FCSR}) begin
       opcode_except = 1'b1;
-      except_code   = E_ILLEGAL_INSTRUCTION;
       rd_upd        = 1'b0;
-      mem_crit      = 1'b1;
-      order_crit    = 1'b1;
+    end
+    // Read-only CSR encodings permit reads, but not writes.
+    if (issue_type == ISSUE_TYPE_CSR && instruction_i.raw[14:12] != '0 &&
+        instruction_i.raw[31:30] == 2'b11 &&
+        (instruction_i.raw[13:12] == 2'b01 || (|instruction_i.raw[19:15]))) begin
+      opcode_except = 1'b1;
+      rd_upd        = 1'b0;
+    end
+
+  end
+
+  // Runtime FP and privilege state must not affect queued decode results.
+  assign requires_fp_o = assigned_eu == EU_FPU || rs1_sel == RS1_SEL_FP ||
+      rs2_sel == RS2_SEL_FP || rs3_sel == RS3_SEL_FP || issue_type == ISSUE_TYPE_FP ||
+      (issue_type == ISSUE_TYPE_CSR && instruction_i.raw[14:12] != '0 &&
+       instruction_i.raw[31:20] inside {CSR_FFLAGS, CSR_FRM, CSR_FCSR});
+  assign ecall_o = instruction_i.raw == 32'h00000073;
+
+  always_comb begin : privilege_requirement
+    required_priv_o = PRIV_MODE_U;
+    if (issue_type == ISSUE_TYPE_CSR) begin
+      if (instruction_i.raw[14:12] != '0) required_priv_o = csr_priv_t'(instruction_i.raw[29:28]);
+      else if (instruction_i.raw == 32'h30200073) required_priv_o = PRIV_MODE_M;
     end
   end
 
-  assign issue_type_o  = (opcode_except) ? ISSUE_TYPE_EXCEPT : issue_type;
-  assign skip_eu_o     = (opcode_except) ? 1'b1 : skip_eu;
+  assign issue_type_o = (opcode_except) ? ISSUE_TYPE_EXCEPT : issue_type;
+  assign skip_eu_o = (opcode_except) ? 1'b1 : skip_eu;
 
   // -----------------
   // OUTPUT GENERATION
   // -----------------
-  assign stall_o = issue_type_o inside {ISSUE_TYPE_CSR, ISSUE_TYPE_STALL, ISSUE_TYPE_WFI, ISSUE_TYPE_EXCEPT};
   assign dispatch_o.direct_result = issue_type_o inside {ISSUE_TYPE_NONE, ISSUE_TYPE_LUI};
   assign dispatch_o.int_rd_write = rd_upd &&
       (issue_type_o inside {ISSUE_TYPE_INT, ISSUE_TYPE_LUI, ISSUE_TYPE_JUMP, ISSUE_TYPE_CSR});
   assign dispatch_o.fp_rd_write = rd_upd && (issue_type_o == ISSUE_TYPE_FP);
   assign except_code_o = except_code;
   assign assigned_eu_o = assigned_eu;
-  assign eu_ctl_o      = eu_ctl;
-  assign mem_crit_o    = mem_crit;
-  assign order_crit_o  = order_crit;
-  assign rs1_sel_o     = rs1_sel;
-  assign rs2_sel_o     = rs2_sel;
-  assign rs3_sel_o     = rs3_sel;
-  assign rd_upd_o      = rd_upd;
-  assign imm_format_o  = imm_format;
+  assign eu_ctl_o = eu_ctl;
+  assign mem_crit_o = mem_crit;
+  assign order_crit_o = order_crit;
+  assign rs1_sel_o = rs1_sel;
+  assign rs2_sel_o = rs2_sel;
+  assign rs3_sel_o = rs3_sel;
+  assign rd_upd_o = rd_upd;
+  assign imm_format_o = imm_format;
 
   // ----------
   // ASSERTIONS
