@@ -257,7 +257,7 @@ module serdiv
       op_b_q         <= '0;
       res_q          <= '0;
       cnt_q          <= '0;
-      rs_idx_q           <= '0;
+      rs_idx_q       <= '0;
       rem_sel_q      <= 1'b0;
       comp_inv_q     <= 1'b0;
       res_inv_q      <= 1'b0;
@@ -270,7 +270,7 @@ module serdiv
       op_b_q         <= op_b_d;
       res_q          <= res_d;
       cnt_q          <= cnt_d;
-      rs_idx_q           <= rs_idx_d;
+      rs_idx_q       <= rs_idx_d;
       rem_sel_q      <= rem_sel_d;
       comp_inv_q     <= comp_inv_d;
       res_inv_q      <= res_inv_d;

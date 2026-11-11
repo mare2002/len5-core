@@ -125,9 +125,9 @@ module arith_rs_fpu #(
   // New, execution, and CDB write pointers
   logic [ RsIdxLen-1:0]               cdb_idx;
   logic [NUM_UNITS-1:0][RsIdxLen-1:0] ex_idx;
-  logic [NUM_UNITS-1:0] ex_valid;
+  logic [NUM_UNITS-1:0]               ex_valid;
   logic [NUM_UNITS-1:0] selected_valid, selected_accepted;
-  logic [NUM_UNITS-1:0][RsIdxLen-1:0] selected_idx;
+  logic [          NUM_UNITS-1:0][RsIdxLen-1:0] selected_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0][RsIdxLen-1:0] new_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] alloc_valid, issue_accept;
   logic [DEPTH-1:0][           EU_CTL_LEN-1:0] insert_eu_ctl;
@@ -150,13 +150,13 @@ module arith_rs_fpu #(
   logic             remove;
   logic [NUM_UNITS-1:0] ex_accepted, save_res, completion_valid;
   logic [DEPTH-1:0] dispatched, completed;
-  logic [    DEPTH-1:0][UnitIdxLen-1:0] completion_unit;
-  rob_idx_t [NUM_UNITS-1:0] completion_rob_idx;
+  logic     [    DEPTH-1:0][UnitIdxLen-1:0] completion_unit;
+  rob_idx_t [NUM_UNITS-1:0]                 completion_rob_idx;
   logic [DEPTH-1:0] fwd_rs1_eu, fwd_rs2_eu, fwd_rs3_eu;
   logic [DEPTH-1:0] fwd_rs1_cdb, fwd_rs2_cdb, fwd_rs3_cdb;
   logic [DEPTH-1:0] fwd_rs1, fwd_rs2, fwd_rs3;
   logic [DEPTH-1:0][UnitIdxLen-1:0] fwd_rs1_unit, fwd_rs2_unit, fwd_rs3_unit;
-  arith_op_t [DEPTH-1:0]           arith_op;
+  arith_op_t [DEPTH-1:0] arith_op;
 
   // Ready signals for the selectors
   always_comb begin : p_enc_signals
@@ -242,8 +242,8 @@ module arith_rs_fpu #(
       if (save_res[u]) begin
         completed[eu_rs_idx_i[u]]       = 1'b1;
         completion_unit[eu_rs_idx_i[u]] = UnitIdxLen'(u);
-        completion_valid[u]            = 1'b1;
-        completion_rob_idx[u]          = data[eu_rs_idx_i[u]].dest_rob_idx;
+        completion_valid[u]             = 1'b1;
+        completion_rob_idx[u]           = data[eu_rs_idx_i[u]].dest_rob_idx;
       end
     end
   end
@@ -546,11 +546,11 @@ module arith_rs_fpu #(
   assign eu_ready_o               = {NUM_UNITS{!flush_i && rst_ni}};
   assign eu_valid_o               = ex_valid;
   for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_requests
-    assign eu_ctl_o[u]     = data[ex_idx[u]].eu_ctl;
-    assign eu_rs1_o[u]     = data[ex_idx[u]].rs1_value;
-    assign eu_rs2_o[u]     = data[ex_idx[u]].rs2_value;
-    assign eu_rs3_o[u]     = data[ex_idx[u]].rs3_value;
-    assign eu_frm_o[u]     = data[ex_idx[u]].frm_value;
+    assign eu_ctl_o[u]    = data[ex_idx[u]].eu_ctl;
+    assign eu_rs1_o[u]    = data[ex_idx[u]].rs1_value;
+    assign eu_rs2_o[u]    = data[ex_idx[u]].rs2_value;
+    assign eu_rs3_o[u]    = data[ex_idx[u]].rs3_value;
+    assign eu_frm_o[u]    = data[ex_idx[u]].frm_value;
     assign eu_rs_idx_o[u] = ex_idx[u];
   end
 
@@ -582,7 +582,7 @@ module arith_rs_fpu #(
       end
       assign selected_accepted[0] = ex_accepted[0];
     end else begin : gen_multi_unit_match
-      logic [NUM_UNITS-1:0] ex_ready;
+      logic [NUM_UNITS-1:0]                ex_ready;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] ready_channel;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] channel_select;
 
@@ -593,8 +593,7 @@ module arith_rs_fpu #(
         ready_channel    = '0;
         ready_channel[0] = NUM_UNITS'(1);
         for (int u = 1; u < NUM_UNITS; u++) begin
-          ready_channel[u] = ex_ready[u-1] ?
-              ready_channel[u-1] << 1 : ready_channel[u-1];
+          ready_channel[u] = ex_ready[u-1] ? ready_channel[u-1] << 1 : ready_channel[u-1];
         end
       end
 
@@ -614,8 +613,7 @@ module arith_rs_fpu #(
         always_comb begin : request_index_mux
           ex_idx[u] = '0;
           for (int k = 0; k < NUM_UNITS; k++) begin
-            ex_idx[u] |= selected_idx[k] &
-                {RsIdxLen{channel_select[u][k] && selected_valid[k]}};
+            ex_idx[u] |= selected_idx[k] & {RsIdxLen{channel_select[u][k] && selected_valid[k]}};
           end
         end
       end
@@ -692,12 +690,14 @@ module arith_rs_fpu #(
 `ifndef SYNTHESIS
   if (NUM_UNITS > 1) begin : gen_routing_assertions
     for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_unit
-      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i)
-        $onehot0(gen_multi_unit_match.channel_select[u]));
+      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i) $onehot0(
+          gen_multi_unit_match.channel_select[u]
+      ));
     end
     for (genvar k = 0; k < NUM_UNITS; k++) begin : gen_channel
-      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i)
-        $onehot0(gen_multi_unit_match.gen_acceptance[k].unit_select));
+      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i) $onehot0(
+          gen_multi_unit_match.gen_acceptance[k].unit_select
+      ));
     end
   end
 

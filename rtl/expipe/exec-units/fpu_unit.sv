@@ -58,14 +58,14 @@ module fpu_unit #(
   logic                  [NUM_UNITS-1:0]                            fpu_rs_ready;
 
   // Data from/to the execution unit
-  rs_idx_t              [NUM_UNITS-1:0]                            rs_fpu_idx;
+  rs_idx_t               [NUM_UNITS-1:0]                            rs_fpu_idx;
   logic                  [NUM_UNITS-1:0][           EU_CTL_LEN-1:0] rs_fpu_ctl;
   logic                  [NUM_UNITS-1:0][csr_pkg::FCSR_FRM_LEN-1:0] rs_fpu_rm;
   logic                  [NUM_UNITS-1:0][csr_pkg::FCSR_FRM_LEN-1:0] fpu_rm;
   logic                  [NUM_UNITS-1:0][                 XLEN-1:0] rs_fpu_rs1_value;
   logic                  [NUM_UNITS-1:0][                 XLEN-1:0] rs_fpu_rs2_value;
   logic                  [NUM_UNITS-1:0][                 XLEN-1:0] rs_fpu_rs3_value;
-  rs_idx_t              [NUM_UNITS-1:0]                            fpu_rs_idx;
+  rs_idx_t               [NUM_UNITS-1:0]                            fpu_rs_idx;
   logic                  [NUM_UNITS-1:0][                 XLEN-1:0] fpu_rs_result;
   logic                  [NUM_UNITS-1:0]                            fpu_rs_except_raised;
   except_code_t          [NUM_UNITS-1:0]                            fpu_rs_except_code;
@@ -96,7 +96,7 @@ module fpu_unit #(
     .eu_valid_i          (fpu_rs_valid),
     .eu_valid_o          (rs_fpu_valid),
     .eu_ready_o          (rs_fpu_ready),
-    .eu_rs_idx_i        (fpu_rs_idx),
+    .eu_rs_idx_i         (fpu_rs_idx),
     .eu_result_i         (fpu_rs_result),
     .eu_except_raised_i  (fpu_rs_except_raised),
     .eu_except_code_i    (fpu_rs_except_code),
@@ -106,7 +106,7 @@ module fpu_unit #(
     .eu_rs1_o            (rs_fpu_rs1_value),
     .eu_rs2_o            (rs_fpu_rs2_value),
     .eu_rs3_o            (rs_fpu_rs3_value),
-    .eu_rs_idx_o        (rs_fpu_idx)
+    .eu_rs_idx_o         (rs_fpu_idx)
   );
 
   // Resolve the rounding mode for the currently selected instruction.
@@ -128,11 +128,11 @@ module fpu_unit #(
       .valid_o        (fpu_rs_valid[u]),
       .ctl_i          (rs_fpu_ctl[u]),
       .rm_i           (fpu_rm[u]),
-      .rs_idx_i      (rs_fpu_idx[u]),
+      .rs_idx_i       (rs_fpu_idx[u]),
       .rs1_value_i    (rs_fpu_rs1_value[u]),
       .rs2_value_i    (rs_fpu_rs2_value[u]),
       .rs3_value_i    (rs_fpu_rs3_value[u]),
-      .rs_idx_o      (fpu_rs_idx[u]),
+      .rs_idx_o       (fpu_rs_idx[u]),
       .result_o       (fpu_rs_result[u]),
       .except_raised_o(fpu_rs_except_raised[u]),
       .except_code_o  (fpu_rs_except_code[u]),

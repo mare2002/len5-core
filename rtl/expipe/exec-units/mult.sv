@@ -34,10 +34,10 @@ module mult #(
 
   // Data from/to the reservation station unit
   input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-  input  rs_idx_t                                    rs_idx_i,
+  input  rs_idx_t                                     rs_idx_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-  output rs_idx_t                                    rs_idx_o,
+  output rs_idx_t                                     rs_idx_o,
   output logic                   [len5_pkg::XLEN-1:0] result_o,
   output logic                                        except_raised_o,
   output len5_pkg::except_code_t                      except_code_o
@@ -48,24 +48,24 @@ module mult #(
 
   // MULT temporary inputs, on XLEN+1 bits to manage signed*signed, signed*unsigned, unsigned*unsigned
   logic [XLEN:0] mult_a, mult_b;
-  logic     [          1:0] s;  // sign extension of the operands
+  logic    [          1:0] s;  // sign extension of the operands
   // MULT output
-  logic     [     XLEN-1:0] result;
-  logic     [(XLEN<<1)-1:0] result_full;
-  logic                     except_raised;
+  logic    [     XLEN-1:0] result;
+  logic    [(XLEN<<1)-1:0] result_full;
+  logic                    except_raised;
   // Pipeline registers
-  logic     [     XLEN-1:0] pipe_result_d                        [PIPE_DEPTH+1];
-  rs_idx_t                 pipe_rs_idx_d                       [PIPE_DEPTH+1];
-  logic                     pipe_except_raised_d                 [PIPE_DEPTH+1];
-  logic                     pipe_valid_d                         [PIPE_DEPTH+1];
+  logic    [     XLEN-1:0] pipe_result_d                        [PIPE_DEPTH+1];
+  rs_idx_t                 pipe_rs_idx_d                        [PIPE_DEPTH+1];
+  logic                    pipe_except_raised_d                 [PIPE_DEPTH+1];
+  logic                    pipe_valid_d                         [PIPE_DEPTH+1];
   // Ready signal from the spill cell
-  logic                     ready_spill;
+  logic                    ready_spill;
 
   // Input registers
   logic [XLEN-1:0] rs1_value_q, rs2_value_q;
-  logic     [EU_CTL_LEN-1:0] ctl_q;
+  logic    [EU_CTL_LEN-1:0] ctl_q;
   rs_idx_t                  rs_idx_q;
-  logic                      valid_q;  //, ready_q;
+  logic                     valid_q;  //, ready_q;
 
 
   //////////////////////////////
@@ -133,7 +133,7 @@ module mult #(
       assign rs1_value_q = rs1_value_i;
       assign rs2_value_q = rs2_value_i;
       assign ctl_q       = ctl_i;
-      assign rs_idx_q   = rs_idx_i;
+      assign rs_idx_q    = rs_idx_i;
       assign valid_q     = valid_i;
     end else begin : gen_out_reg
       always_ff @(posedge clk_i or negedge rst_ni) begin : mult_input_reg
@@ -141,21 +141,21 @@ module mult #(
           rs1_value_q <= '0;
           rs2_value_q <= '0;
           ctl_q       <= '0;
-          rs_idx_q   <= '0;
+          rs_idx_q    <= '0;
           valid_q     <= '0;
           //ready_q     <= '0;
         end else if (flush_i) begin
           rs1_value_q <= '0;
           rs2_value_q <= '0;
           ctl_q       <= '0;
-          rs_idx_q   <= '0;
+          rs_idx_q    <= '0;
           valid_q     <= '0;
           //ready_q     <= '0;
         end else begin
           rs1_value_q <= rs1_value_i;
           rs2_value_q <= rs2_value_i;
           ctl_q       <= ctl_i;
-          rs_idx_q   <= rs_idx_i;
+          rs_idx_q    <= rs_idx_i;
           valid_q     <= valid_i;
           //ready_q     <= ready_i;
         end
@@ -168,7 +168,7 @@ module mult #(
   ////////////////////////
 
   assign pipe_result_d[0]        = result;
-  assign pipe_rs_idx_d[0]       = rs_idx_q;
+  assign pipe_rs_idx_d[0]        = rs_idx_q;
   assign pipe_except_raised_d[0] = except_raised;
 
   // Generate PIPE_DEPTH-1 pipeline registers
@@ -177,15 +177,15 @@ module mult #(
       always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
           pipe_result_d[i]        <= '0;
-          pipe_rs_idx_d[i]       <= '0;
+          pipe_rs_idx_d[i]        <= '0;
           pipe_except_raised_d[i] <= 1'b0;
         end else if (flush_i) begin
           pipe_result_d[i]        <= '0;
-          pipe_rs_idx_d[i]       <= '0;
+          pipe_rs_idx_d[i]        <= '0;
           pipe_except_raised_d[i] <= 1'b0;
         end else if (pipe_valid_d[i-1] & ready_spill) begin
           pipe_result_d[i]        <= pipe_result_d[i-1];
-          pipe_rs_idx_d[i]       <= pipe_rs_idx_d[i-1];
+          pipe_rs_idx_d[i]        <= pipe_rs_idx_d[i-1];
           pipe_except_raised_d[i] <= pipe_except_raised_d[i-1];
         end
       end
@@ -221,19 +221,19 @@ module mult #(
   // Interface data type
   typedef struct packed {
     logic [XLEN-1:0] res;            // the ALU result
-    rs_idx_t        rs_idx;        // instruction RS index
+    rs_idx_t         rs_idx;         // instruction RS index
     logic            except_raised;  // exception flag
   } out_reg_data_t;
   out_reg_data_t out_reg_data_in, out_reg_data_out;
 
   // Input data
   assign out_reg_data_in.res           = pipe_result_d[PIPE_DEPTH-1];
-  assign out_reg_data_in.rs_idx       = pipe_rs_idx_d[PIPE_DEPTH-1];
+  assign out_reg_data_in.rs_idx        = pipe_rs_idx_d[PIPE_DEPTH-1];
   assign out_reg_data_in.except_raised = pipe_except_raised_d[PIPE_DEPTH-1];
 
   // Output data
   assign result_o                      = out_reg_data_out.res;
-  assign rs_idx_o                     = out_reg_data_out.rs_idx;
+  assign rs_idx_o                      = out_reg_data_out.rs_idx;
   assign except_raised_o               = out_reg_data_out.except_raised;
 
   // Output register

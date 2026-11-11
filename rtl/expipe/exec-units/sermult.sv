@@ -41,10 +41,10 @@ module sermult #(
 
   // Data from/to the reservation station unit
   input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-  input  rs_idx_t                                    rs_idx_i,
+  input  rs_idx_t                                     rs_idx_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-  output rs_idx_t                                    rs_idx_o,
+  output rs_idx_t                                     rs_idx_o,
   output logic                   [len5_pkg::XLEN-1:0] result_o,
   output logic                                        except_raised_o,
   output len5_pkg::except_code_t                      except_code_o
@@ -325,7 +325,7 @@ module sermult #(
   // Output evaluation //
   ///////////////////////
   assign result_o        = mulw_next ? {{32{acc_result[31]}}, acc_result[31:0]} : acc_result[63:0];
-  assign rs_idx_o       = rs_idx_i;
+  assign rs_idx_o        = rs_idx_i;
   assign except_raised_o = except_raised;
   assign except_code_o   = E_ILLEGAL_INSTRUCTION;
 

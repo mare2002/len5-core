@@ -55,11 +55,11 @@ module mult_unit #(
   logic         [NUM_UNITS-1:0]                 mult_rs_ready;
 
   // Data from/to the execution unit
-  rs_idx_t     [NUM_UNITS-1:0]                 rs_mult_idx;
+  rs_idx_t      [NUM_UNITS-1:0]                 rs_mult_idx;
   logic         [NUM_UNITS-1:0][EU_CTL_LEN-1:0] rs_mult_ctl;
   logic         [NUM_UNITS-1:0][      XLEN-1:0] rs_mult_rs1_value;
   logic         [NUM_UNITS-1:0][      XLEN-1:0] rs_mult_rs2_value;
-  rs_idx_t     [NUM_UNITS-1:0]                 mult_rs_idx;
+  rs_idx_t      [NUM_UNITS-1:0]                 mult_rs_idx;
   logic         [NUM_UNITS-1:0][      XLEN-1:0] mult_rs_result;
   logic         [NUM_UNITS-1:0]                 mult_rs_except_raised;
   except_code_t [NUM_UNITS-1:0]                 mult_rs_except_code;
@@ -92,14 +92,14 @@ module mult_unit #(
         .eu_valid_i          (mult_rs_valid),
         .eu_valid_o          (rs_mult_valid),
         .eu_ready_o          (rs_mult_ready),
-        .eu_rs_idx_i        (mult_rs_idx),
+        .eu_rs_idx_i         (mult_rs_idx),
         .eu_result_i         (mult_rs_result),
         .eu_except_raised_i  (mult_rs_except_raised),
         .eu_except_code_i    (mult_rs_except_code),
         .eu_ctl_o            (rs_mult_ctl),
         .eu_rs1_o            (rs_mult_rs1_value),
         .eu_rs2_o            (rs_mult_rs2_value),
-        .eu_rs_idx_o        (rs_mult_idx)
+        .eu_rs_idx_o         (rs_mult_idx)
       );
       for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_sermult
 
@@ -114,10 +114,10 @@ module mult_unit #(
           .valid_o        (mult_rs_valid[u]),
           .ready_o        (mult_rs_ready[u]),
           .ctl_i          (rs_mult_ctl[u]),
-          .rs_idx_i      (rs_mult_idx[u]),
+          .rs_idx_i       (rs_mult_idx[u]),
           .rs1_value_i    (rs_mult_rs1_value[u]),
           .rs2_value_i    (rs_mult_rs2_value[u]),
-          .rs_idx_o      (mult_rs_idx[u]),
+          .rs_idx_o       (mult_rs_idx[u]),
           .result_o       (mult_rs_result[u]),
           .except_raised_o(mult_rs_except_raised[u]),
           .except_code_o  (mult_rs_except_code[u])
@@ -151,14 +151,14 @@ module mult_unit #(
         .eu_valid_i          (mult_rs_valid),
         .eu_valid_o          (rs_mult_valid),
         .eu_ready_o          (rs_mult_ready),
-        .eu_rs_idx_i        (mult_rs_idx),
+        .eu_rs_idx_i         (mult_rs_idx),
         .eu_result_i         (mult_rs_result),
         .eu_except_raised_i  (mult_rs_except_raised),
         .eu_except_code_i    (mult_rs_except_code),
         .eu_ctl_o            (rs_mult_ctl),
         .eu_rs1_o            (rs_mult_rs1_value),
         .eu_rs2_o            (rs_mult_rs2_value),
-        .eu_rs_idx_o        (rs_mult_idx)
+        .eu_rs_idx_o         (rs_mult_idx)
       );
       for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_mult
 
@@ -173,10 +173,10 @@ module mult_unit #(
           .valid_o        (mult_rs_valid[u]),
           .ready_o        (mult_rs_ready[u]),
           .ctl_i          (rs_mult_ctl[u]),
-          .rs_idx_i      (rs_mult_idx[u]),
+          .rs_idx_i       (rs_mult_idx[u]),
           .rs1_value_i    (rs_mult_rs1_value[u]),
           .rs2_value_i    (rs_mult_rs2_value[u]),
-          .rs_idx_o      (mult_rs_idx[u]),
+          .rs_idx_o       (mult_rs_idx[u]),
           .result_o       (mult_rs_result[u]),
           .except_raised_o(mult_rs_except_raised[u]),
           .except_code_o  (mult_rs_except_code[u])

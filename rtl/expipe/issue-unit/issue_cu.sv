@@ -36,7 +36,7 @@ module issue_cu (
   // Commit stage <--> CU
   input logic comm_resume_i
 );
-//%TODO CSR commits directly from the issue_cu, only one stall state necessary
+  //%TODO CSR commits directly from the issue_cu, only one stall state necessary
   import expipe_pkg::*;
   // INTERNAL SIGNALS
   // ----------------

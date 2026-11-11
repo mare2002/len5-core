@@ -56,14 +56,14 @@ module arith_rs #(
   input  logic                   [NUM_UNITS-1:0]                     eu_valid_i,
   output logic                   [NUM_UNITS-1:0]                     eu_valid_o,
   output logic                   [NUM_UNITS-1:0]                     eu_ready_o,
-  input  rs_idx_t               [NUM_UNITS-1:0]                     eu_rs_idx_i,
+  input  rs_idx_t                [NUM_UNITS-1:0]                     eu_rs_idx_i,
   input  logic                   [NUM_UNITS-1:0][len5_pkg::XLEN-1:0] eu_result_i,
   input  logic                   [NUM_UNITS-1:0]                     eu_except_raised_i,
   input  len5_pkg::except_code_t [NUM_UNITS-1:0]                     eu_except_code_i,
   output logic                   [NUM_UNITS-1:0][    EU_CTL_LEN-1:0] eu_ctl_o,
   output logic                   [NUM_UNITS-1:0][len5_pkg::XLEN-1:0] eu_rs1_o,
   output logic                   [NUM_UNITS-1:0][len5_pkg::XLEN-1:0] eu_rs2_o,
-  output rs_idx_t               [NUM_UNITS-1:0]                     eu_rs_idx_o
+  output rs_idx_t                [NUM_UNITS-1:0]                     eu_rs_idx_o
 );
 
   import len5_config_pkg::*;
@@ -116,9 +116,9 @@ module arith_rs #(
   // New, execution, and CDB write pointers
   logic [ RsIdxLen-1:0]               cdb_idx;
   logic [NUM_UNITS-1:0][RsIdxLen-1:0] ex_idx;
-  logic [NUM_UNITS-1:0] ex_valid;
+  logic [NUM_UNITS-1:0]               ex_valid;
   logic [NUM_UNITS-1:0] selected_valid, selected_accepted;
-  logic [NUM_UNITS-1:0][RsIdxLen-1:0] selected_idx;
+  logic [          NUM_UNITS-1:0][RsIdxLen-1:0] selected_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0][RsIdxLen-1:0] new_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] alloc_valid, issue_accept;
   logic [DEPTH-1:0][EU_CTL_LEN-1:0] insert_eu_ctl;
@@ -139,13 +139,13 @@ module arith_rs #(
   logic             remove;
   logic [NUM_UNITS-1:0] ex_accepted, save_res, completion_valid;
   logic [DEPTH-1:0] dispatched, completed;
-  logic [    DEPTH-1:0][UnitIdxLen-1:0] completion_unit;
-  rob_idx_t [NUM_UNITS-1:0] completion_rob_idx;
+  logic     [    DEPTH-1:0][UnitIdxLen-1:0] completion_unit;
+  rob_idx_t [NUM_UNITS-1:0]                 completion_rob_idx;
   logic [DEPTH-1:0] fwd_rs1_eu, fwd_rs2_eu;
   logic [DEPTH-1:0] fwd_rs1_cdb, fwd_rs2_cdb;
   logic [DEPTH-1:0] fwd_rs1, fwd_rs2;
   logic [DEPTH-1:0][UnitIdxLen-1:0] fwd_rs1_unit, fwd_rs2_unit;
-  arith_op_t [DEPTH-1:0]           arith_op;
+  arith_op_t [DEPTH-1:0] arith_op;
 
   // Ready signals for the selectors
   always_comb begin : p_enc_signals
@@ -222,8 +222,8 @@ module arith_rs #(
       if (save_res[u]) begin
         completed[eu_rs_idx_i[u]]       = 1'b1;
         completion_unit[eu_rs_idx_i[u]] = UnitIdxLen'(u);
-        completion_valid[u]            = 1'b1;
-        completion_rob_idx[u]          = data[eu_rs_idx_i[u]].dest_rob_idx;
+        completion_valid[u]             = 1'b1;
+        completion_rob_idx[u]           = data[eu_rs_idx_i[u]].dest_rob_idx;
       end
     end
   end
@@ -409,7 +409,7 @@ module arith_rs #(
   for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_requests
     logic [RsIdxLen-1:0] data_idx;
     if (EU == EU_INT_MULT && Len5Cfg.LEN5_MULT_SERIAL) begin : gen_serial_context
-      logic active_q;
+      logic                active_q;
       logic [RsIdxLen-1:0] ex_idx_hold;
       // Serial multipliers read their operands throughout execution. Do not
       // present another request until the held operation has completed.
@@ -431,12 +431,12 @@ module arith_rs #(
       assign data_idx      = active_q ? ex_idx_hold : ex_idx[u];
       assign eu_valid_o[u] = ex_valid[u] && !active_q;
     end else begin : gen_sampled_inputs
-      assign data_idx       = ex_idx[u];
-      assign eu_valid_o[u]  = ex_valid[u];
+      assign data_idx      = ex_idx[u];
+      assign eu_valid_o[u] = ex_valid[u];
     end
-    assign eu_ctl_o[u]     = data[data_idx].eu_ctl;
-    assign eu_rs1_o[u]     = data[data_idx].rs1_value;
-    assign eu_rs2_o[u]     = data[data_idx].rs2_value;
+    assign eu_ctl_o[u]    = data[data_idx].eu_ctl;
+    assign eu_rs1_o[u]    = data[data_idx].rs1_value;
+    assign eu_rs2_o[u]    = data[data_idx].rs2_value;
     assign eu_rs_idx_o[u] = data_idx;
   end
 
@@ -458,11 +458,11 @@ module arith_rs #(
   generate
     if (NUM_UNITS == 1) begin : gen_single_unit_match
       // Present valid independently of operation-dependent unit readiness.
-	  assign ex_valid = selected_valid;
-	  assign ex_idx = selected_idx;
+      assign ex_valid             = selected_valid;
+      assign ex_idx               = selected_idx;
       assign selected_accepted[0] = ex_accepted[0];
     end else begin : gen_multi_unit_match
-      logic [NUM_UNITS-1:0] ex_ready;
+      logic [NUM_UNITS-1:0]                ex_ready;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] ready_channel;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] channel_select;
 
@@ -471,8 +471,7 @@ module arith_rs #(
         ready_channel    = '0;
         ready_channel[0] = NUM_UNITS'(1);
         for (int u = 1; u < NUM_UNITS; u++) begin
-          ready_channel[u] = ex_ready[u-1] ?
-              ready_channel[u-1] << 1 : ready_channel[u-1];
+          ready_channel[u] = ex_ready[u-1] ? ready_channel[u-1] << 1 : ready_channel[u-1];
         end
       end
 
@@ -499,8 +498,7 @@ module arith_rs #(
         always_comb begin : request_index_mux
           ex_idx[u] = '0;
           for (int k = 0; k < NUM_UNITS; k++) begin
-            ex_idx[u] |= selected_idx[k] &
-                {RsIdxLen{channel_select[u][k] && selected_valid[k]}};
+            ex_idx[u] |= selected_idx[k] & {RsIdxLen{channel_select[u][k] && selected_valid[k]}};
           end
         end
       end
@@ -577,12 +575,14 @@ module arith_rs #(
 `ifndef SYNTHESIS
   if (NUM_UNITS > 1) begin : gen_routing_assertions
     for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_unit
-      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i)
-        $onehot0(gen_multi_unit_match.channel_select[u]));
+      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i) $onehot0(
+          gen_multi_unit_match.channel_select[u]
+      ));
     end
     for (genvar k = 0; k < NUM_UNITS; k++) begin : gen_channel
-      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i)
-        $onehot0(gen_multi_unit_match.gen_acceptance[k].unit_select));
+      assert property (@(posedge clk_i) disable iff (!rst_ni || flush_i) $onehot0(
+          gen_multi_unit_match.gen_acceptance[k].unit_select
+      ));
     end
   end
 

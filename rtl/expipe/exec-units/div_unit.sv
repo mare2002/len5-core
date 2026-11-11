@@ -53,11 +53,11 @@ module div_unit #(
   logic         [NUM_UNITS-1:0]                 div_rs_ready;
 
   // Data from/to the execution unit
-  rs_idx_t     [NUM_UNITS-1:0]                 rs_div_idx;
+  rs_idx_t      [NUM_UNITS-1:0]                 rs_div_idx;
   logic         [NUM_UNITS-1:0][EU_CTL_LEN-1:0] rs_div_ctl;
   logic         [NUM_UNITS-1:0][      XLEN-1:0] rs_div_rs1_value;
   logic         [NUM_UNITS-1:0][      XLEN-1:0] rs_div_rs2_value;
-  rs_idx_t     [NUM_UNITS-1:0]                 div_rs_idx;
+  rs_idx_t      [NUM_UNITS-1:0]                 div_rs_idx;
   logic         [NUM_UNITS-1:0][      XLEN-1:0] div_rs_result;
   logic         [NUM_UNITS-1:0]                 div_rs_except_raised;
   except_code_t [NUM_UNITS-1:0]                 div_rs_except_code;
@@ -86,14 +86,14 @@ module div_unit #(
     .eu_valid_i          (div_rs_valid),
     .eu_valid_o          (rs_div_valid),
     .eu_ready_o          (rs_div_ready),
-    .eu_rs_idx_i        (div_rs_idx),
+    .eu_rs_idx_i         (div_rs_idx),
     .eu_result_i         (div_rs_result),
     .eu_except_raised_i  (div_rs_except_raised),
     .eu_except_code_i    (div_rs_except_code),
     .eu_ctl_o            (rs_div_ctl),
     .eu_rs1_o            (rs_div_rs1_value),
     .eu_rs2_o            (rs_div_rs2_value),
-    .eu_rs_idx_o        (rs_div_idx)
+    .eu_rs_idx_o         (rs_div_idx)
   );
   for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_div
 
@@ -108,10 +108,10 @@ module div_unit #(
       .ready_o        (div_rs_ready[u]),
       .valid_o        (div_rs_valid[u]),
       .ctl_i          (rs_div_ctl[u]),
-      .rs_idx_i      (rs_div_idx[u]),
+      .rs_idx_i       (rs_div_idx[u]),
       .rs1_value_i    (rs_div_rs1_value[u]),
       .rs2_value_i    (rs_div_rs2_value[u]),
-      .rs_idx_o      (div_rs_idx[u]),
+      .rs_idx_o       (div_rs_idx[u]),
       .result_o       (div_rs_result[u]),
       .except_raised_o(div_rs_except_raised[u]),
       .except_code_o  (div_rs_except_code[u])

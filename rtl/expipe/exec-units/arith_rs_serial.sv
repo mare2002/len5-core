@@ -56,14 +56,14 @@ module arith_rs_serial #(
   input  logic                   [NUM_UNITS-1:0]                     eu_valid_i,
   output logic                   [NUM_UNITS-1:0]                     eu_valid_o,
   output logic                   [NUM_UNITS-1:0]                     eu_ready_o,
-  input  rs_idx_t               [NUM_UNITS-1:0]                     eu_rs_idx_i,
+  input  rs_idx_t                [NUM_UNITS-1:0]                     eu_rs_idx_i,
   input  logic                   [NUM_UNITS-1:0][len5_pkg::XLEN-1:0] eu_result_i,
   input  logic                   [NUM_UNITS-1:0]                     eu_except_raised_i,
   input  len5_pkg::except_code_t [NUM_UNITS-1:0]                     eu_except_code_i,
   output logic                   [NUM_UNITS-1:0][    EU_CTL_LEN-1:0] eu_ctl_o,
   output logic                   [NUM_UNITS-1:0][len5_pkg::XLEN-1:0] eu_rs1_o,
   output logic                   [NUM_UNITS-1:0][len5_pkg::XLEN-1:0] eu_rs2_o,
-  output rs_idx_t               [NUM_UNITS-1:0]                     eu_rs_idx_o
+  output rs_idx_t                [NUM_UNITS-1:0]                     eu_rs_idx_o
 );
   // arith_rs holds one independent instruction context per serial multiplier.
   arith_rs #(

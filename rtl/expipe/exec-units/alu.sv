@@ -31,12 +31,12 @@ module alu #(
   output logic ready_o,
 
   // Data from/to the reservation station unit
-  input  logic     [    EU_CTL_LEN-1:0] ctl_i,
+  input  logic    [    EU_CTL_LEN-1:0] ctl_i,
   input  rs_idx_t                      rs_idx_i,
-  input  logic     [len5_pkg::XLEN-1:0] rs1_i,
-  input  logic     [len5_pkg::XLEN-1:0] rs2_i,
+  input  logic    [len5_pkg::XLEN-1:0] rs1_i,
+  input  logic    [len5_pkg::XLEN-1:0] rs2_i,
   output rs_idx_t                      rs_idx_o,
-  output logic     [len5_pkg::XLEN-1:0] result_o
+  output logic    [len5_pkg::XLEN-1:0] result_o
 );
 
   import len5_pkg::*;
@@ -184,18 +184,18 @@ module alu #(
 
   // Interface data type
   typedef struct packed {
-    logic [XLEN-1:0] res;      // the ALU result
-    rs_idx_t        rs_idx;  // instruction RS index
+    logic [XLEN-1:0] res;     // the ALU result
+    rs_idx_t         rs_idx;  // instruction RS index
   } out_reg_data_t;
 
   out_reg_data_t out_reg_data_in, out_reg_data_out;
 
   // Input data
-  assign out_reg_data_in.res     = result;
+  assign out_reg_data_in.res    = result;
   assign out_reg_data_in.rs_idx = rs_idx_i;
 
   // Output data
-  assign result_o                = out_reg_data_out.res;
+  assign result_o               = out_reg_data_out.res;
   assign rs_idx_o               = out_reg_data_out.rs_idx;
 
   // Output register

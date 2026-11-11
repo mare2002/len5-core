@@ -36,11 +36,11 @@ module fpu_wrapper #(
   // Data from/to the reservation station unit
   input  logic                   [           EU_CTL_LEN-1:0] ctl_i,
   input  logic                   [csr_pkg::FCSR_FRM_LEN-1:0] rm_i,
-  input  rs_idx_t                                           rs_idx_i,
+  input  rs_idx_t                                            rs_idx_i,
   input  logic                   [       len5_pkg::XLEN-1:0] rs1_value_i,
   input  logic                   [       len5_pkg::XLEN-1:0] rs2_value_i,
   input  logic                   [       len5_pkg::XLEN-1:0] rs3_value_i,
-  output rs_idx_t                                           rs_idx_o,
+  output rs_idx_t                                            rs_idx_o,
   output logic                   [       len5_pkg::XLEN-1:0] result_o,
   output logic                                               except_raised_o,
   output len5_pkg::except_code_t                             except_code_o,
@@ -90,7 +90,7 @@ module fpu_wrapper #(
   // Keep the result destination type aligned across FPnew's different pipelines.
   typedef struct packed {
     rs_idx_t rs_idx;
-    logic     is_int;
+    logic    is_int;
   } fpu_tag_t;
   fpu_tag_t fpu_tag, fpu_result_tag;
   // Output from FPU
@@ -107,7 +107,7 @@ module fpu_wrapper #(
     logic [XLEN-1:0]       rs3_value;  // second input operand
     logic [EU_CTL_LEN-1:0] ctl;        // control bits
     logic [FUNCT3_LEN-1:0] rm;         // rounding mode
-    rs_idx_t              rs_idx;    // instruction RS index
+    rs_idx_t               rs_idx;     // instruction RS index
   } in_reg_data_t;
   in_reg_data_t in_reg_data_in, in_reg_data_out;
 
@@ -120,7 +120,7 @@ module fpu_wrapper #(
   assign in_reg_data_in.rs3_value = rs3_value_i;
   assign in_reg_data_in.ctl       = ctl_i;
   assign in_reg_data_in.rm        = rm_i;
-  assign in_reg_data_in.rs_idx   = rs_idx_i;
+  assign in_reg_data_in.rs_idx    = rs_idx_i;
 
   // Input reservation station
   spill_cell_flush #(
@@ -139,7 +139,7 @@ module fpu_wrapper #(
   );
 
   assign fpu_tag.rs_idx = in_reg_data_out.rs_idx;
-  assign fpu_tag.is_int  = (fpu_op inside {F2I, CMP, CLASSIFY}) || (fpu_op == SGNJ && fpu_op_mod);
+  assign fpu_tag.is_int = (fpu_op inside {F2I, CMP, CLASSIFY}) || (fpu_op == SGNJ && fpu_op_mod);
   //assign fpu_op_mod = in_reg_data_out.clt[0];   //check whether always true
 
   always_comb begin : fpnew_operands

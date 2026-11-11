@@ -35,10 +35,10 @@ module div #(
 
   // Data from/to the reservation station unit
   input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-  input  rs_idx_t                                    rs_idx_i,
+  input  rs_idx_t                                     rs_idx_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-  output rs_idx_t                                    rs_idx_o,
+  output rs_idx_t                                     rs_idx_o,
   output logic                   [len5_pkg::XLEN-1:0] result_o,
   output logic                                        except_raised_o,
   output len5_pkg::except_code_t                      except_code_o
@@ -62,7 +62,7 @@ module div #(
     logic [XLEN-1:0]       rs1_value;  // first input operand
     logic [XLEN-1:0]       rs2_value;  // second input operand
     logic [EU_CTL_LEN-1:0] ctl;        // control bits
-    rs_idx_t              rs_idx;    // instruction RS index
+    rs_idx_t               rs_idx;     // instruction RS index
   } in_reg_data_t;
   in_reg_data_t in_reg_data_in, in_reg_data_out;
   // ready from downstream (EU) to spill cell, valid from upstream (RS) to EU
@@ -72,7 +72,7 @@ module div #(
   assign in_reg_data_in.rs1_value = rs1_value_i;
   assign in_reg_data_in.rs2_value = rs2_value_i;
   assign in_reg_data_in.ctl       = ctl_i;
-  assign in_reg_data_in.rs_idx   = rs_idx_i;
+  assign in_reg_data_in.rs_idx    = rs_idx_i;
 
   // Input reservation station
   spill_cell_flush #(

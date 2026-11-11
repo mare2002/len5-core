@@ -6,14 +6,14 @@ module rr_arbiter_multi #(
   parameter int unsigned NUM_OUTPUTS = 1,
   localparam int unsigned IDX_LEN = N > 1 ? $clog2(N) : 1
 ) (
-  input  logic                               clk_i,
-  input  logic                               rst_ni,
-  input  logic                               flush_i,
-  input  logic [          N-1:0]             valid_i,
-  output logic [          N-1:0]             ready_o,
-  output logic [NUM_OUTPUTS-1:0]             valid_o,
+  input  logic                                clk_i,
+  input  logic                                rst_ni,
+  input  logic                                flush_i,
+  input  logic [          N-1:0]              valid_i,
+  output logic [          N-1:0]              ready_o,
+  output logic [NUM_OUTPUTS-1:0]              valid_o,
   // Acceptance feedback for selection slots, not physical execution units.
-  input  logic [NUM_OUTPUTS-1:0]             ready_i,
+  input  logic [NUM_OUTPUTS-1:0]              ready_i,
   output logic [NUM_OUTPUTS-1:0][IDX_LEN-1:0] served_o
 );
   logic [N-1:0] rem_valid_q, rem_valid_d;
@@ -22,8 +22,8 @@ module rr_arbiter_multi #(
   logic [NUM_OUTPUTS-1:0] pending_valid, new_valid;
   logic [NUM_OUTPUTS-1:0][IDX_LEN-1:0] pending_idx, new_idx;
   logic [NUM_OUTPUTS-1:0] new_shift_select, aligned_new_valid;
-  logic [NUM_OUTPUTS-1:0][     IDX_LEN-1:0]             aligned_new_idx;
-  logic [NUM_OUTPUTS-1:0][NUM_OUTPUTS-1:0]             shifted_new_valid;
+  logic [NUM_OUTPUTS-1:0][    IDX_LEN-1:0]              aligned_new_idx;
+  logic [NUM_OUTPUTS-1:0][NUM_OUTPUTS-1:0]              shifted_new_valid;
   logic [NUM_OUTPUTS-1:0][NUM_OUTPUTS-1:0][IDX_LEN-1:0] shifted_new_idx;
 
   always_comb begin : eligible_request_masks
@@ -36,9 +36,9 @@ module rr_arbiter_multi #(
     .NUM_RESULTS(NUM_OUTPUTS),
     .INV        (1'b1)
   ) u_pending_sel (
-      .lines_i(pending_requests),
-      .enc_o  (pending_idx),
-      .valid_o(pending_valid)
+    .lines_i(pending_requests),
+    .enc_o  (pending_idx),
+    .valid_o(pending_valid)
   );
 
   prio_enc_multi #(
@@ -46,9 +46,9 @@ module rr_arbiter_multi #(
     .NUM_RESULTS(NUM_OUTPUTS),
     .INV        (1'b1)
   ) u_new_sel (
-      .lines_i(new_requests),
-      .enc_o  (new_idx),
-      .valid_o(new_valid)
+    .lines_i(new_requests),
+    .enc_o  (new_idx),
+    .valid_o(new_valid)
   );
 
   // The end of the pending-valid prefix selects one constant shift.
