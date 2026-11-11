@@ -54,15 +54,11 @@ module fpu_units_multi_tb #(
   int completion_count, written_count, max_dispatch_count, max_completion_count;
   int dispatch_sequence, dispatch_order[64];
   int in_flight[NUM_UNITS];
-  int stalled_requests = 0, independent_accepts = 0, dynamic_stall_changes = 0;
-  int                       reassigned_requests = 0;
-  bit                       offered                 [64];
-  bit                       dynamic_divide          [64];
-  bit                       out_of_order = 1'b0;
-  logic     [NUM_UNITS-1:0] last_stalled = '0;
-  rs_idx_t [NUM_UNITS-1:0] prior_request_idx;
+  int backpressure_cycles = 0, independent_accepts = 0, dynamic_wait_changes = 0;
+  bit out_of_order = 1'b0;
+  bit dynamic_divide[64];
   rob_idx_t [NUM_UNITS-1:0] request_rob_tag, completion_rob_tag;
-  logic     [          2:0] prior_csr_frm = '0;
+  logic [2:0] prior_csr_frm = '0;
 
   fpu_unit #(
     .Len5Cfg(Cfg)
@@ -119,28 +115,32 @@ module fpu_units_multi_tb #(
     int tag, dispatches, completions;
     logic [63:0] completing_tags;
     logic [ 2:0] expected_mode;
+    bit waiting_request, waiting_dynamic;
     dispatches      = 0;
     completions     = 0;
     completing_tags = '0;
+    waiting_request = 1'b0;
+    waiting_dynamic = 1'b0;
     if (rst_n && !flush) begin
       for (int u = 0; u < NUM_UNITS; u++) begin
         if (dut.fpu_rs_valid[u] && dut.rs_fpu_ready[u])
           completing_tags[completion_rob_tag[u]] = 1'b1;
       end
-      if (|(dut.rs_fpu_valid & ~dut.fpu_rs_ready)) stalled_requests++;
-      if (|(dut.rs_fpu_valid & ~dut.fpu_rs_ready) && |(dut.rs_fpu_valid & dut.fpu_rs_ready))
+      for (int i = 0; i < 64; i++) begin
+        waiting_request |= pending[i] && !dispatched[i];
+        waiting_dynamic |= pending[i] && !dispatched[i] && dynamic_divide[i];
+      end
+      if (waiting_request && !(&dut.fpu_rs_ready)) backpressure_cycles++;
+      if (waiting_request && |(dut.rs_fpu_valid & dut.fpu_rs_ready) && !(&dut.fpu_rs_ready))
         independent_accepts++;
+      if (waiting_dynamic && csr_frm != prior_csr_frm) dynamic_wait_changes++;
       for (int u = 0; u < NUM_UNITS; u++) begin
-        if (last_stalled[u] && csr_frm != prior_csr_frm && dut.rs_fpu_rm[u] == 3'b111)
-          dynamic_stall_changes++;
         if (dut.rs_fpu_valid[u]) begin
           tag = int'(request_rob_tag[u]);
           assert (pending[tag])
           else $fatal(1, "unknown FPU offer %0d", tag);
-          if (last_stalled[u] && dut.rs_fpu_idx[u] != prior_request_idx[u])
-            reassigned_requests++;
-          // RR resolves the accepted instruction; fixed priority retains its first-offer mode.
-          if ((RR && dut.fpu_rs_ready[u]) || (!RR && !offered[tag])) begin
+          // Both arbitration modes resolve the accepted instruction's rounding mode.
+          if (dut.fpu_rs_ready[u]) begin
             expected_mode = instruction_rm[tag] == 3'b111 ? csr_frm : instruction_rm[tag];
             assert (dut.fpu_rm[u] == expected_mode)
             else
@@ -158,7 +158,6 @@ module fpu_units_multi_tb #(
                 expected_result[tag] = fp32(expected_mode == 3'b011 ? 32'h3eaaaaab : 32'h3eaaaaaa);
             end
           end
-          offered[tag] = 1'b1;
         end
         if (dut.rs_fpu_valid[u] && dut.fpu_rs_ready[u]) begin
           tag = int'(request_rob_tag[u]);
@@ -221,18 +220,20 @@ module fpu_units_multi_tb #(
         written_count++;
       end
     end
-    last_stalled      = rst_n && !flush ? dut.rs_fpu_valid & ~dut.fpu_rs_ready : '0;
-    prior_request_idx = dut.rs_fpu_idx;
     prior_csr_frm     = csr_frm;
   end
 
-  for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_request_stability
-    assert property (@(posedge clk) disable iff (!rst_n || flush)
-      !RR && dut.rs_fpu_valid[u] && !dut.fpu_rs_ready[u] |=> dut.rs_fpu_valid[u] &&
-      $stable(
-        {dut.rs_fpu_idx[u], dut.rs_fpu_ctl[u], dut.rs_fpu_rm[u], dut.fpu_rm[u],
-               dut.rs_fpu_rs1_value[u], dut.rs_fpu_rs2_value[u], dut.rs_fpu_rs3_value[u]}
-    ));
+  if (NUM_UNITS > 1) begin : gen_request_checks
+    for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_unit
+      assert property (@(posedge clk) disable iff (!rst_n || flush)
+        dut.rs_fpu_valid[u] |-> dut.fpu_rs_ready[u]);
+      // Once accepted by the input spill cell, the FPnew request must stay stable.
+      assert property (@(posedge clk) disable iff (!rst_n || flush)
+        dut.gen_fpu_wrapper[u].u_fpu_wrapper.valid_fpu &&
+        !dut.gen_fpu_wrapper[u].u_fpu_wrapper.ready_fpu |=>
+        dut.gen_fpu_wrapper[u].u_fpu_wrapper.valid_fpu &&
+        $stable(dut.gen_fpu_wrapper[u].u_fpu_wrapper.in_reg_data_out));
+    end
   end
 
   task automatic clear_scoreboard();
@@ -244,7 +245,6 @@ module fpu_units_multi_tb #(
       expected_result[tag] = '0;
       expected_flags[tag]  = '0;
       instruction_rm[tag]  = '0;
-      offered[tag]         = 1'b0;
       dynamic_divide[tag]  = 1'b0;
       dispatch_order[tag]  = 0;
     end
@@ -431,7 +431,7 @@ module fpu_units_multi_tb #(
     drain_results(ForwardProducers + 2);
   endtask
 
-  task automatic reassigned_rounding_batch();
+  task automatic queued_rounding_batch();
     int cycles;
     logic [63:0] truncated_third, rounded_third;
     clear_scoreboard();
@@ -458,25 +458,26 @@ module fpu_units_multi_tb #(
                  '0, truncated_third, 5'b00001, 3'b001);
     insert_batch(1);
     @(negedge clk);
-    assert (dut.fpu_rs_ready == '0 && dut.rs_fpu_valid[0] && request_rob_tag[0] == 46)
-    else $fatal(1, "missing first stalled rounding-mode offer");
+    assert (dut.fpu_rs_ready == '0 && dut.rs_fpu_valid == '0 && !dispatched[46])
+    else $fatal(1, "queued instruction was offered to a non-ready FPU");
 
-    // The later insertion occupies a lower RS index and replaces lane zero's offer.
+    // Distinct static modes must remain associated with both queued instructions.
     prepare_slot(0, 47, DOUBLE_PRECISION ? FPU_DIV_D : FPU_DIV_S, small_float(1), small_float(3),
                  '0, rounded_third, 5'b00001, 3'b011);
     insert_batch(1);
     #1;
-    assert (dut.fpu_rs_ready == '0 && dut.rs_fpu_valid[0] && request_rob_tag[0] == 47)
-    else $fatal(1, "higher-priority request did not replace stalled offer");
+    assert (dut.fpu_rs_ready == '0 && dut.rs_fpu_valid == '0 &&
+            !dispatched[46] && !dispatched[47])
+    else $fatal(1, "queued rounding instructions escaped FPU backpressure");
     wait_completions(16);
     drain_results(16);
   endtask
 
   task automatic stalled_divides();
-    int cycles, prior_stalls;
+    int cycles, prior_backpressure;
     clear_scoreboard();
     csr_frm      = 3'b001;
-    prior_stalls = stalled_requests;
+    prior_backpressure = backpressure_cycles;
     // Fill all 16 RS entries: two pipelined FPUs can absorb eight requests
     // without stalling, including the mandatory per-unit input spill cells.
     for (int batch = 0; batch < 2; batch++) begin
@@ -502,17 +503,17 @@ module fpu_units_multi_tb #(
     end
     cycles = 0;
     while (completion_count < 16 && cycles < 600) begin
-      if (stalled_requests > prior_stalls) csr_frm = csr_frm == 3'b001 ? 3'b011 : 3'b001;
+      if (backpressure_cycles > prior_backpressure) csr_frm = csr_frm == 3'b001 ? 3'b011 : 3'b001;
       @(negedge clk);
       cycles++;
     end
-    assert (completion_count == 16 && stalled_requests > prior_stalls)
+    assert (completion_count == 16 && backpressure_cycles > prior_backpressure)
     else
       $fatal(
           1,
-          "FPU backpressure scenario failed: completed=%0d stalls=%0d",
+          "FPU backpressure scenario failed: completed=%0d blocked=%0d",
           completion_count,
-          stalled_requests - prior_stalls
+          backpressure_cycles - prior_backpressure
       );
     drain_results(16);
   endtask
@@ -550,7 +551,7 @@ module fpu_units_multi_tb #(
     mixed_batch(1'b1);
     out_of_order_batch();
     forwarding_batch();
-    if (RR && NUM_UNITS == 2) reassigned_rounding_batch();
+    if (NUM_UNITS == 2) queued_rounding_batch();
     stalled_divides();
 
     clear_scoreboard();
@@ -592,27 +593,23 @@ module fpu_units_multi_tb #(
       assert (!cdb_valid_out && dut.fpu_rs_valid == '0)
       else $fatal(1, "flushed FPU result escaped");
     end
-    assert (out_of_order && stalled_requests > 0 && dynamic_stall_changes > 0)
+    assert (out_of_order && backpressure_cycles > 0 && dynamic_wait_changes > 0)
     else
       $fatal(
           1,
-          "missing coverage: ooo=%0b stalls=%0d dynamic_changes=%0d",
+          "missing coverage: ooo=%0b blocked=%0d dynamic_changes=%0d",
           out_of_order,
-          stalled_requests,
-          dynamic_stall_changes
+          backpressure_cycles,
+          dynamic_wait_changes
       );
     if (NUM_UNITS == 2) begin
       assert (independent_accepts > 0)
       else $fatal(1, "no independent progress while another FPU stalled");
-      if (RR)
-        assert (reassigned_requests > 0)
-        else $fatal(1, "missing stalled-request reassignment coverage");
     end
     $display(
-        "PASS real FPU N=%0d RR=%0b D=%0b PIPE=%0d dispatch=%0d completion=%0d stalls=%0d independent=%0d dynamic=%0d ooo=%0b reassigned=%0d",
+        "PASS real FPU N=%0d RR=%0b D=%0b PIPE=%0d dispatch=%0d completion=%0d blocked=%0d independent=%0d dynamic=%0d ooo=%0b",
         NUM_UNITS, RR, DOUBLE_PRECISION, PIPE_DEPTH, max_dispatch_count, max_completion_count,
-        stalled_requests, independent_accepts, dynamic_stall_changes, out_of_order,
-        reassigned_requests);
+        backpressure_cycles, independent_accepts, dynamic_wait_changes, out_of_order);
     $finish;
   end
 

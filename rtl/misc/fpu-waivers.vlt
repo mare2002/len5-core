@@ -9,6 +9,9 @@
 
 `verilator_config
 // FPU waivers
+// The asynchronous input-buffer reset is also referenced by PULP's clocked
+// rr_arb_tree assertion. Keep the assertion and waive only this FPU reset net.
+lint_off -rule SYNCASYNCNET -file "*/expipe/exec-units/fpu_wrapper.sv" -match "Signal flopped as both synchronous and async: '*.gen_fpu_wrapper*.u_fpu_wrapper.rst_ni'"
 // The scalar T-Head divider does not use the PULP lane synchronization signals.
 lint_off -rule UNUSEDSIGNAL -file "*/vendor/cvfpu/src/fpnew_opgroup_multifmt_slice.sv" -match "Bits of signal are not driven, nor used: 'divsqrt_done'[0]"
 lint_off -rule UNUSEDSIGNAL -file "*/vendor/cvfpu/src/fpnew_opgroup_multifmt_slice.sv" -match "Bits of signal are not driven, nor used: 'divsqrt_ready'[0]"

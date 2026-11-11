@@ -34,15 +34,17 @@ void clkGen(Valu_tb *dut);
 void rstDut(Valu_tb *dut, vluint64_t sim_time);
 
 // Generate an input transaction
-ReqTx *genReqTx(unsigned int rob_depth);
+ReqTx *genReqTx(unsigned int rs_depth);
 
 int main(int argc, char* argv[])
 {
+    unsigned long prg_seed = time(NULL);
     // Define command line options
     const option longopts[] = {
         {"max_cycles",  required_argument, NULL, 'c'},
         {"dump_waves",  required_argument, NULL, 'w'},
         {"log_level",   required_argument, NULL, 'l'},
+        {"seed",        required_argument, NULL, 's'},
         {"help",        no_argument,       NULL, 'h'},
         {NULL, 0, NULL, 0}
     };
@@ -52,13 +54,16 @@ int main(int argc, char* argv[])
     bool              dump_waves = false;
     unsigned long int max_cycles = ((unsigned long int) MAX_SIM_TIME) >> 1;
     int     opt;
-    while ((opt = getopt_long(argc, argv, "l:w:t:h", longopts, NULL)) >= 0) {
+    while ((opt = getopt_long(argc, argv, "c:l:w:s:h", longopts, NULL)) >= 0) {
         switch (opt) {
             case 'c':
                 max_cycles = strtoul(optarg, NULL, 0);
                 break;
             case 'l':
                 logger.setLogLvl(optarg);
+                break;
+            case 's':
+                prg_seed = strtoul(optarg, NULL, 0);
                 break;
             case 'w':
                 if (!strcmp(optarg, "true") || !strcmp(optarg, "1")) {
@@ -70,6 +75,7 @@ int main(int argc, char* argv[])
                 printf("Options:\n");
                 printf("  -c, --max_cycles <cycles>        Set maximum simulation cycles\n");
                 printf("  -l, --log_level <level>          Set log level (0-3)\n");
+                printf("  -s, --seed <seed>                Set the random seed\n");
                 printf("  -h, --help                       Show this help message\n");
                 exit(EXIT_SUCCESS);
                 break;
@@ -85,7 +91,6 @@ int main(int argc, char* argv[])
     TB_CONFIG("Log level set to %u", logger.getLogLvl());
 
     // Simulation options
-    unsigned long prg_seed = time(NULL);
 
     // Create log directory
     Verilated::mkdir("logs");
@@ -100,6 +105,7 @@ int main(int argc, char* argv[])
 
     // Instatiate DUT
     Valu_tb *dut = new Valu_tb(cntx); // Create instance of module
+    dut->clk_i = 0;
 
     // VCD file where to store waveforms
     VerilatedFstC* m_trace = new VerilatedFstC;
@@ -124,7 +130,6 @@ int main(int argc, char* argv[])
 
     // Test sequence
     // -------------+
-    unsigned int exit_timer = 0;
     TB_LOG(LOG_LOW, "Starting simulation...");
     while (!cntx->gotFinish() && cntx->time() < (max_cycles << 1)) {
         // Reset DUT
@@ -134,25 +139,22 @@ int main(int argc, char* argv[])
 
         clkGen(dut);
 
-        // Evaluate simulation step
-        dut->eval();
-
-        if (dut->clk_i == 1 && cntx->time() > END_OF_RESET_TIME)
+        // Drive on falling edges and leave four cycles to drain the scoreboard.
+        if (dut->clk_i == 0 && dut->rst_ni)
         {
-            // Generate a request
-            req = genReqTx(dut->config_rob_depth_o);
-            if (req != NULL)
-            {
-                // Drive the DUT
-                drv->drive(req);
-                // reset req value
-                req = NULL;
-            }
-
-            // Monitor inputs and outputs
+            if (sim_cycles + 4 < max_cycles)
+                req = genReqTx(dut->config_rs_depth_o);
+            drv->drive(req);
+            delete req;
+            req = NULL;
+        }
+        // Sample the handshakes before the rising edge updates DUT state.
+        if (dut->clk_i == 1 && dut->rst_ni)
+        {
             reqMon->monitor();
             rspMon->monitor();
         }
+        dut->eval();
 
         // Dump waveforms and advance simulation time
         m_trace->dump(cntx->time());
@@ -164,7 +166,8 @@ int main(int argc, char* argv[])
     dut->final();
 
     // Print simulation summary
-    if (scb->getErrNum() > 0)
+    const bool failed = scb->getErrNum() != 0 || scb->getTxNum() == 0 || !scb->isDone();
+    if (failed)
     {
         TB_ERR("TEST FAILED > errors: %u/%u", scb->getErrNum(), scb->getTxNum());
     }
@@ -177,7 +180,7 @@ int main(int argc, char* argv[])
     m_trace->close();
     delete dut;
     delete cntx;
-    return 0;
+    return failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
 
@@ -188,15 +191,15 @@ void clkGen(Valu_tb *dut)
 
 void rstDut(Valu_tb *dut, vluint64_t sim_time)
 {
-    dut -> rst_ni = 1;
-    if (sim_time > 1 && sim_time < END_OF_RESET_TIME)
+    dut->rst_ni = sim_time >= END_OF_RESET_TIME;
+    if (!dut->rst_ni)
     {
         dut->rst_ni = 0;
         dut->flush_i = 0;
         dut->valid_i = 0;
         dut->ready_i = 1;
         dut->ctl_i = 0;
-        dut->rob_idx_i = 0;
+        dut->rs_idx_i = 0;
         dut->rs1_i = 0;
         dut->rs2_i = 0;
     }
@@ -225,7 +228,7 @@ const vluint64_t corner_cases[] = {
 
 /* Generate an input transaction
    Return a request object*/
-ReqTx *genReqTx(unsigned int rob_depth)
+ReqTx *genReqTx(unsigned int rs_depth)
 {
     // Generate transaction
     int p = rand() % 100;
@@ -253,8 +256,8 @@ ReqTx *genReqTx(unsigned int rob_depth)
         req->flush = 0;
         req->rs1 = corner_cases[rand() % (array_size(corner_cases)-1)];
         req->rs2 = corner_cases[rand() % (array_size(corner_cases)-1)];
-        // rob_ix assigned randomly, it does not have an actual effect on ALU
-        req->rob_idx = rand() % (rob_depth - 1);
+        // RS index travels with the result independently of the arithmetic.
+        req->rs_idx = rand() % rs_depth;
         p = rand() % 14;
         req->alu_ctl= Valu_tb_expipe_pkg::alu_ctl_t(p);
         return req;
@@ -264,8 +267,8 @@ ReqTx *genReqTx(unsigned int rob_depth)
     req->flush = 0;
     req->rs1 = vl_rand64();
     req->rs2 = vl_rand64();
-    // rob_ix assigned randomly, it does not have an actual effect on ALU
-    req->rob_idx = rand() % (rob_depth - 1);
+    // RS index travels with the result independently of the arithmetic.
+    req->rs_idx = rand() % rs_depth;
     p = rand() % 14;
     req->alu_ctl= Valu_tb_expipe_pkg::alu_ctl_t(p);
     return req;

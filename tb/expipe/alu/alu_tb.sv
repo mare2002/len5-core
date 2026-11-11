@@ -131,9 +131,9 @@ module alu_tb #(
     input  logic     [len5_pkg::XLEN-1:0] rs2_i,
     output rs_idx_t                      rs_idx_o,
     output logic     [len5_pkg::XLEN-1:0] result_o,
-    output logic     [              31:0] config_rob_depth_o
+    output logic     [              31:0] config_rs_depth_o
 );
-  assign config_rob_depth_o = Len5Cfg.ROB_DEPTH;
+  assign config_rs_depth_o = Len5Cfg.ALU_RS_DEPTH;
   alu #(
       .Len5Cfg(Len5Cfg)
   ) dut (

@@ -125,7 +125,7 @@ module arith_rs_fpu #(
   // New, execution, and CDB write pointers
   logic [ RsIdxLen-1:0]               cdb_idx;
   logic [NUM_UNITS-1:0][RsIdxLen-1:0] ex_idx;
-  logic [NUM_UNITS-1:0] ex_valid, ex_ready;
+  logic [NUM_UNITS-1:0] ex_valid;
   logic [NUM_UNITS-1:0] selected_valid, selected_accepted;
   logic [NUM_UNITS-1:0][RsIdxLen-1:0] selected_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0][RsIdxLen-1:0] new_idx;
@@ -545,7 +545,6 @@ module arith_rs_fpu #(
   // Execution unit request interfaces.
   assign eu_ready_o               = {NUM_UNITS{!flush_i && rst_ni}};
   assign eu_valid_o               = ex_valid;
-  assign ex_ready                 = eu_ready_i;
   for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_requests
     assign eu_ctl_o[u]     = data[ex_idx[u]].eu_ctl;
     assign eu_rs1_o[u]     = data[ex_idx[u]].rs1_value;
@@ -583,8 +582,11 @@ module arith_rs_fpu #(
       end
       assign selected_accepted[0] = ex_accepted[0];
     end else begin : gen_multi_unit_match
+      logic [NUM_UNITS-1:0] ex_ready;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] ready_channel;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] channel_select;
+
+      assign ex_ready = eu_ready_i;
 
       // Ready units get the first channels, regardless of their physical position.
       always_comb begin : ready_channel_assignment

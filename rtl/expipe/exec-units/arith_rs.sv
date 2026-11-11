@@ -116,7 +116,7 @@ module arith_rs #(
   // New, execution, and CDB write pointers
   logic [ RsIdxLen-1:0]               cdb_idx;
   logic [NUM_UNITS-1:0][RsIdxLen-1:0] ex_idx;
-  logic [NUM_UNITS-1:0] ex_valid, ex_ready;
+  logic [NUM_UNITS-1:0] ex_valid;
   logic [NUM_UNITS-1:0] selected_valid, selected_accepted;
   logic [NUM_UNITS-1:0][RsIdxLen-1:0] selected_idx;
   logic [Len5Cfg.ISSUE_WIDTH-1:0][RsIdxLen-1:0] new_idx;
@@ -406,39 +406,33 @@ module arith_rs #(
 
   // Execution unit request interfaces.
   assign eu_ready_o               = {NUM_UNITS{!flush_i && rst_ni}};
-  logic [NUM_UNITS-1:0]               active_q;
-  logic [NUM_UNITS-1:0][RsIdxLen-1:0] ex_idx_hold;
   for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_requests
     logic [RsIdxLen-1:0] data_idx;
     if (EU == EU_INT_MULT && Len5Cfg.LEN5_MULT_SERIAL) begin : gen_serial_context
+      logic active_q;
+      logic [RsIdxLen-1:0] ex_idx_hold;
       // Serial multipliers read their operands throughout execution. Do not
       // present another request until the held operation has completed.
       always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
-          active_q[u]    <= 1'b0;
-          ex_idx_hold[u] <= '0;
+          active_q    <= 1'b0;
+          ex_idx_hold <= '0;
         end else if (flush_i) begin
-          active_q[u]    <= 1'b0;
-          ex_idx_hold[u] <= '0;
+          active_q    <= 1'b0;
+          ex_idx_hold <= '0;
         end else begin
-          if (save_res[u]) active_q[u] <= 1'b0;
+          if (save_res[u]) active_q <= 1'b0;
           if (ex_accepted[u]) begin
-            active_q[u]    <= 1'b1;
-            ex_idx_hold[u] <= ex_idx[u];
+            active_q    <= 1'b1;
+            ex_idx_hold <= ex_idx[u];
           end
         end
       end
-      assign data_idx      = active_q[u] ? ex_idx_hold[u] : ex_idx[u];
-      assign eu_valid_o[u] = ex_valid[u] && !active_q[u];
-      // Inactive held context means the serial unit is idle. Use registered
-      // availability instead of its operand-dependent ready for lane selection.
-      assign ex_ready[u]   = !active_q[u];
+      assign data_idx      = active_q ? ex_idx_hold : ex_idx[u];
+      assign eu_valid_o[u] = ex_valid[u] && !active_q;
     end else begin : gen_sampled_inputs
-      assign active_q[u]    = 1'b0;
-      assign ex_idx_hold[u] = '0;
       assign data_idx       = ex_idx[u];
       assign eu_valid_o[u]  = ex_valid[u];
-      assign ex_ready[u]    = eu_ready_i[u];
     end
     assign eu_ctl_o[u]     = data[data_idx].eu_ctl;
     assign eu_rs1_o[u]     = data[data_idx].rs1_value;
@@ -468,6 +462,7 @@ module arith_rs #(
 	  assign ex_idx = selected_idx;
       assign selected_accepted[0] = ex_accepted[0];
     end else begin : gen_multi_unit_match
+      logic [NUM_UNITS-1:0] ex_ready;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] ready_channel;
       logic [NUM_UNITS-1:0][NUM_UNITS-1:0] channel_select;
 
@@ -489,6 +484,13 @@ module arith_rs #(
       end
 
       for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_unit_routes
+        if (EU == EU_INT_MULT && Len5Cfg.LEN5_MULT_SERIAL) begin : gen_serial_ready
+          // Registered serial context avoids an operand-dependent readiness path.
+          assign ex_ready[u] = !gen_requests[u].gen_serial_context.active_q;
+        end else begin : gen_sampled_ready
+          assign ex_ready[u] = eu_ready_i[u];
+        end
+
         always_comb begin : request_valid
           ex_valid[u] = 1'b0;
           if (ex_ready[u]) ex_valid[u] = |(channel_select[u] & selected_valid);

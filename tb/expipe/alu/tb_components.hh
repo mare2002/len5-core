@@ -12,7 +12,7 @@ public:
     vluint8_t alu_ctl;
     vluint8_t valid;
     vluint8_t flush;
-    vluint32_t rob_idx;
+    vluint32_t rs_idx;
 
     ReqTx();
     ~ReqTx();
@@ -24,6 +24,7 @@ public:
     vluint8_t valid;
     vluint8_t ready;
     vluint64_t res;
+    vluint32_t rs_idx;
 
     RspTx();
     ~RspTx();

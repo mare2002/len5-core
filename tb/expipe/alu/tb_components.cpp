@@ -60,7 +60,7 @@ void Drv::drive(ReqTx *req)
         dut-> ctl_i = req->alu_ctl;
         dut->valid_i = req->valid;
         dut->flush_i = req->flush;
-        dut->rob_idx_i = req->rob_idx;
+        dut->rs_idx_i = req->rs_idx;
     }
 }
 
@@ -192,6 +192,11 @@ void Scb::checkRes()
         exp_res = (vluint64_t) req->rs1 + req->rs2;
         break;
     }
+    if (rsp->rs_idx != req->rs_idx)
+    {
+        TB_ERR("RS index mismatch: received %u, expected %u", rsp->rs_idx, req->rs_idx);
+        err_num++;
+    }
     if ( rsp->res != exp_res)
     {
         TB_ERR("Received wrong result!");
@@ -247,14 +252,14 @@ void ReqMonitor::monitor()
         return;
     }
     // Else, check if there's a new request
-    else if (dut->valid_i)
+    else if (dut->valid_i && dut->ready_o)
     {
         // Fetch the data from the DUT interface
         this->req = new ReqTx();
         this->req->rs1 = dut->rs1_i;
         this->req->rs2 = dut->rs2_i;
         this->req->alu_ctl = dut->ctl_i;
-        this->req->rob_idx = dut->rob_idx_i;
+        this->req->rs_idx = dut->rs_idx_i;
         // Send the request to the scoreboard
         scb->writeReq(this->req);
 
@@ -276,11 +281,12 @@ RspMonitor::~RspMonitor()
 void RspMonitor::monitor()
 {
     // Check if the DUT produced any response
-    if (dut->valid_o && !dut->flush_i)
+    if (dut->valid_o && dut->ready_i && !dut->flush_i)
     {
         // Fetch the data from the DUT interface
         RspTx *rsp = new RspTx();
         rsp->res = dut->result_o;
+        rsp->rs_idx = dut->rs_idx_o;
         scb->writeRsp(rsp);
     }
 }

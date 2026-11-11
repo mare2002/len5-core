@@ -225,3 +225,20 @@ module ex_request_selector_tb;
     $fatal(1, "execution selector regression timed out");
   end
 endmodule
+
+module ex_request_selector_single_tb #(
+  parameter int N = 11,
+  parameter int NUM_OUTPUTS = 2
+);
+  logic done;
+  ex_request_selector_case #(.N(N), .NUM_OUTPUTS(NUM_OUTPUTS)) test_case (.done(done));
+  initial begin
+    wait (done);
+    $display("PASS round-robin selection N=%0d outputs=%0d", N, NUM_OUTPUTS);
+    $finish;
+  end
+  initial begin
+    #100000;
+    $fatal(1, "execution selector regression timed out");
+  end
+endmodule

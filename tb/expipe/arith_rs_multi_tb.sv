@@ -56,6 +56,8 @@ module arith_rs_multi_case #(
   rs_idx_t [NUM_UNITS-1:0] manual_tag;
   rs_idx_t saved_rs_idx[64];
   logic zero_latency;
+  logic [NUM_UNITS-1:0] selected_valid, selected_accepted;
+  logic [NUM_UNITS-1:0][RsIdxLen-1:0] selected_idx;
 
   int issued[64], dispatched[64], completed[64], written[64], tag_lane[64];
   bit cancelled[64];
@@ -76,6 +78,9 @@ module arith_rs_multi_case #(
       .eu_rs1_o(request_rs1), .eu_rs2_o(request_rs2), .eu_rs3_o(request_rs3),
       .eu_rs_idx_o(request_tag)
     );
+    assign selected_valid = dut.selected_valid;
+    assign selected_idx = dut.selected_idx;
+    assign selected_accepted = dut.selected_accepted;
     for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_reference_tags
       assign request_rob_tag[u] = dut.data[request_tag[u]].dest_rob_idx;
       assign completion_rob_tag[u] = dut.data[completion_tag[u]].dest_rob_idx;
@@ -94,17 +99,40 @@ module arith_rs_multi_case #(
       .eu_ctl_o(request_ctl), .eu_rs1_o(request_rs1), .eu_rs2_o(request_rs2),
       .eu_rs_idx_o(request_tag)
     );
+    assign selected_valid = dut.selected_valid;
+    assign selected_idx = dut.selected_idx;
+    assign selected_accepted = dut.selected_accepted;
     for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_reference_tags
       assign request_rob_tag[u] = dut.data[request_tag[u]].dest_rob_idx;
       assign completion_rob_tag[u] = dut.data[completion_tag[u]].dest_rob_idx;
     end
   end
 
-  for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_stall_checks
-    assert property (@(posedge clk_i) disable iff (!rst_ni || flush)
-      !RR && request_valid[u] && !request_ready[u] |=> request_valid[u] &&
-      $stable({request_tag[u], request_ctl[u], request_frm[u], request_rs1[u], request_rs2[u], request_rs3[u]}));
-  end
+  // The reference counts ready units; the RTL uses one-hot channel masks.
+  task automatic check_request_routing();
+    int channel;
+    logic [NUM_UNITS-1:0] expected_accepted;
+    channel = 0;
+    expected_accepted = '0;
+    if (NUM_UNITS > 1) begin
+      for (int u = 0; u < NUM_UNITS; u++) begin
+        if (request_ready[u]) begin
+          assert (request_valid[u] == selected_valid[channel])
+            else $fatal(1, "valid routing mismatch unit=%0d channel=%0d", u, channel);
+          if (request_valid[u]) begin
+            assert (request_tag[u] == selected_idx[channel])
+              else $fatal(1, "index routing mismatch unit=%0d channel=%0d", u, channel);
+            expected_accepted[channel] = 1'b1;
+          end
+          channel++;
+        end else begin
+          assert (!request_valid[u]) else $fatal(1, "request offered to non-ready unit %0d", u);
+        end
+      end
+      assert (selected_accepted == expected_accepted)
+        else $fatal(1, "acceptance routed to incorrect selection channel");
+    end
+  endtask
 
   function automatic logic [XLEN-1:0] result_for(int tag);
     return 64'h1000 + 64'(tag) * 17;
@@ -133,6 +161,7 @@ module arith_rs_multi_case #(
   always @(posedge clk_i) begin : p_scoreboard
     int tag;
     if (rst_ni && !flush) begin
+      check_request_routing();
       last_dispatch_count = 0;
       last_completion_count = 0;
       for (int u = 0; u < NUM_UNITS; u++) begin
@@ -285,6 +314,16 @@ module arith_rs_multi_case #(
 
     // Simultaneous requests and completions, with result buffering behind CDB stalls.
     for (int k = 0; k < NUM_UNITS; k++) enqueue(1 + k);
+    if (NUM_UNITS > 1) begin
+      // Sample every readiness pattern without accepting work at a clock edge.
+      for (int mask = 0; mask < (1 << NUM_UNITS); mask++) begin
+        request_ready = NUM_UNITS'(mask);
+        #1;
+        check_request_routing();
+        request_ready = '0;
+        @(negedge clk_i);
+      end
+    end
     request_ready = '1;
     tick();
     assert (last_dispatch_count == NUM_UNITS) else $fatal(1, "parallel dispatch missing");
@@ -436,5 +475,29 @@ module arith_rs_multi_tb;
         );
       end
     end
+  end
+endmodule
+
+module arith_rs_single_tb #(
+  parameter int unsigned NUM_UNITS = 1,
+  parameter bit RR = 1'b0,
+  parameter bit FPU = 1'b0
+);
+  logic clk = 1'b0;
+  logic rst_n = 1'b0;
+  logic done;
+  always #5 clk = ~clk;
+  arith_rs_multi_case #(.NUM_UNITS(NUM_UNITS), .RR(RR), .FPU(FPU)) test_case (
+    .clk_i(clk), .rst_ni(rst_n), .done_o(done)
+  );
+  initial begin
+    repeat (4) @(negedge clk);
+    rst_n = 1'b1;
+    wait (done);
+    $finish;
+  end
+  initial begin
+    #100000;
+    $fatal(1, "RS test watchdog");
   end
 endmodule

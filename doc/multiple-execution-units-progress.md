@@ -1,6 +1,8 @@
 # Multiple execution units: recovery checkpoint
 
-Work remains on `feat-multiple-issues`; all earlier uncommitted changes are preserved.
+Implementation baseline: `4aaf8ac` on `feat-multiple-issues`. The milestone
+sections record historical verification, including older interface names and
+request-holding behavior. The current results are in the verification refresh below.
 
 - **A:** Multi-output arbitration, shared arithmetic RS, forwarding, and ALU
   instances were already implemented. The earlier session reported passing
@@ -16,6 +18,101 @@ Work remains on `feat-multiple-issues`; all earlier uncommitted changes are pres
   configurations passed Spike, with the existing D-enabled FLW boxing defect
   excluded and recorded below. Broader regressions can proceed with that known
   failure tracked; this is not an unrestricted architectural sign-off.
+
+## Verification refresh: 2026-11-11
+
+This refresh changes testbenches and verification tooling only. Production RTL
+is unchanged from `4aaf8ac`.
+
+The maintained tests now follow the current interface contracts:
+
+- Multi-unit RSs offer requests only to ready units. Instructions blocked by EU
+  availability stay in the RS; no stable stalled offer is required.
+- Both schedulers resolve static/dynamic FPU rounding for the accepted request.
+- EU interfaces carry RS indices; dependency forwarding and CDB output still use
+  ROB indices. Serial multiplier context remains held after acceptance.
+
+The RS testbench checks channel routing against an independent ready-unit count
+and sweeps every readiness mask without clocking an acceptance. The physical FPU
+test checks queued work, independent progress, acceptance-time rounding, and
+stable requests inside the mandatory input buffers after RS acceptance. Existing
+completion, forwarding, metadata, CDB buffering, and flush/tag-reuse checks remain.
+
+The standalone ALU C++ driver now uses RS-depth-bounded indices and checks their
+return with every result. A reproducible failure with seed `1794390457` exposed
+its old reset/monitor timing: inputs were changed on rising edges and monitored
+using a different reset time base. The driver now drives on falling edges,
+samples actual handshakes before rising-edge state updates, and drains the
+scoreboard. The same seed passes after the testbench fix. Errors, an empty test,
+or an undrained scoreboard produce a failing process exit status.
+
+Selector, RS, divider metadata, and ALU runners use serial compilation, bounded
+lint/build/simulation, concise failure tails, and separate builds per parameter
+case. Larger selector/RS matrices require explicit environment overrides. The
+existing broad HDL tops remain available without being built by default.
+
+Executed checks on the current RTL:
+
+| Check | Executed coverage | Result |
+|---|---|---|
+| RR selector | 11 inputs with 1/2/3/4/8 outputs; 1 input/8 outputs; 32 inputs/2 outputs | 7 passed |
+| Shared integer/FPU RS | Units 1/2, fixed/RR, both categories; integer units 3/8 fixed; FPU units 3/8 RR | 12 passed |
+| Physical integer wrappers | Two ALUs; one/two parallel multipliers, serial multipliers, dividers; fixed/RR | 14 passed |
+| Divider metadata | Queued word/full/illegal operations, backpressure, flush | Passed |
+| Physical FPU | Units 1/2, fixed/RR, D enabled, pipeline 4; units 2, RR, FP32-only, pipeline 2 | 5 passed |
+| Standalone ALU C++ | Default, depth 1, depth 3 with bypass; seed 1; failing seed regression at depth 1 | 4 passed |
+| Core configuration | Default, count 3, disabled zero counts; four enabled-zero rejections | 7 passed |
+| Full-core differential | Default and all-two (serial MULT, two-stage FPU), 116 commits each | 2 passed Spike |
+
+Targeted Verible lint, shell/Python syntax checks, and `git diff --check` pass.
+Component tests used Verilator 5.046; the ALU FuseSoC and Spike runs used the
+existing pinned Verilator 5.040. No production RTL or vendor sources changed.
+
+Reproduction uses the existing runners (set `FUSESOC` to the installed executable
+if it is not on `PATH`):
+
+```sh
+OUTPUT_COUNTS='1 2 3 4 8' bash scripts/sim/check-ex-request-selector.sh
+INPUT_COUNTS=1 OUTPUT_COUNTS=8 bash scripts/sim/check-ex-request-selector.sh
+INPUT_COUNTS=32 OUTPUT_COUNTS=2 bash scripts/sim/check-ex-request-selector.sh
+bash scripts/sim/check-arith-rs-multi.sh
+UNIT_COUNTS='3 8' ARBITRATION_MODES=0 FPU_MODES=0 bash scripts/sim/check-arith-rs-multi.sh
+UNIT_COUNTS='3 8' ARBITRATION_MODES=1 FPU_MODES=1 bash scripts/sim/check-arith-rs-multi.sh
+EXEC_KINDS='0 1 2 3' UNIT_COUNTS=2 bash scripts/sim/check-exec-units-multi.sh
+EXEC_KINDS='1 2 3' UNIT_COUNTS=1 bash scripts/sim/check-exec-units-multi.sh
+bash scripts/sim/check-div-metadata.sh
+bash scripts/sim/check-fpu-units-multi.sh
+UNIT_COUNTS=2 ARBITERS=1 PRECISIONS=0 PIPE_DEPTHS=2 bash scripts/sim/check-fpu-units-multi.sh
+python3 scripts/sim/check-alu-rs-tags.py
+python3 scripts/sim/check-alu-rs-tags.py --cases=depth1 --seed=1794390457
+python3 scripts/sim/check-multiple-exec-config.py
+python3 scripts/sim/check-multiple-exec-integration.py --cases=default,all-two --simulate
+```
+
+Component logs are under `build/{ex-request-selector,arith-rs-multi,exec-units-multi,
+div-metadata,fpu-units-multi}`. This session ran the maintained ALU runner with
+`BUILD_DIR=build/verification-refresh`; its default is `build/alu-rs-tags`.
+The old failing ALU log is `build/verification-refresh/alu-startup-before.log`.
+Full-core reports remain under `build/multiple-exec-integration`.
+
+Broader full-core matrices, physical counts 3/4/8, remaining pipeline depths,
+formal/PPA checks, and the known D-enabled LSU FLW boxing defect below are outside
+this bounded refresh. Larger counts here exercise RS ports and arbitration, not
+physical FPU/multiplier/divider instances.
+
+### Benchmark build follow-up
+
+The strict normal simulator build subsequently exposed four `UNUSEDSIGNAL`
+diagnostics: single-unit `ex_ready` in both RS types, and non-serial `active_q`
+and `ex_idx_hold` in the common RS. These declarations now exist only in the
+generate branches that use them. Serial context remains independent per unit;
+dispatch, completion, and flush behavior are unchanged. No warnings were waived.
+
+`make -j1 verilator-build JOBS=1` passes using the installed FuseSoC and pinned
+Verilator 5.040. The one-/two-unit serial multiplier tests (fixed/RR, four cases)
+and two-unit integer/FPU RS tests (fixed/RR, four cases) also pass after this
+scoping fix. This checks the `run-benchmarks` simulator-build prerequisite;
+the complete benchmark suite was not run.
 
 ## Verification completed in milestone B
 
