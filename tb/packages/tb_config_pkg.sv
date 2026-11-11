@@ -52,11 +52,11 @@ package tb_config_pkg;
   } tb_cfg_t;
 
   localparam tb_user_cfg_t DefaultTbUserCfg = '{
-      MEMORY_BACKEND: MEM_BACKEND_AXI_SIM,
+      MEMORY_BACKEND: MEM_BACKEND_TC_SRAM,
       AXI_CLOCK_HALF_PERIOD_PS: 1000,
       IMEM_BASE_ADDR: 64'h0001_0000,
       IMEM_SIZE_BYTES: 256 * 1024,
-      IMEM_LATENCY: 10,
+      IMEM_LATENCY: 1,
       DMEM_BASE_ADDR: 64'h0005_0000,
       DMEM_SIZE_BYTES: 768 * 1024,
       DMEM_LATENCY: 1,

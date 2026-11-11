@@ -71,8 +71,9 @@ module mult_unit #(
       // serial multiplier
       // MULT reservation station
       // -----------------------
-      arith_rs_serial #(
-        .Len5Cfg(Len5Cfg)
+      arith_rs #(
+        .Len5Cfg(Len5Cfg),
+        .EU     (expipe_pkg::EU_INT_MULT)
       ) u_mult_rs (
         .clk_i               (clk_i),
         .rst_ni              (rst_ni),

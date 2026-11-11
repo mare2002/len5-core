@@ -121,8 +121,8 @@ module exec_units_multi_case #(
     assign execution_control = dut.rs_mult_ctl;
     for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_reference_tags
       if (KIND == 2) begin : gen_serial
-        assign dispatch_tag[u] = dut.gen_serial_mult_unit.u_mult_rs.u_rs.data[dispatch_idx[u]].dest_rob_idx;
-        assign completion_tag[u] = dut.gen_serial_mult_unit.u_mult_rs.u_rs.data[completion_idx[u]].dest_rob_idx;
+        assign dispatch_tag[u] = dut.gen_serial_mult_unit.u_mult_rs.data[dispatch_idx[u]].dest_rob_idx;
+        assign completion_tag[u] = dut.gen_serial_mult_unit.u_mult_rs.data[completion_idx[u]].dest_rob_idx;
       end else begin : gen_parallel
         assign dispatch_tag[u] = dut.gen_parallel_mult_unit.u_mult_rs.data[dispatch_idx[u]].dest_rob_idx;
         assign completion_tag[u] = dut.gen_parallel_mult_unit.u_mult_rs.data[completion_idx[u]].dest_rob_idx;

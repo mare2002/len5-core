@@ -14,7 +14,7 @@ rtl/misc/packages-waivers.vlt rtl/misc/common-waivers.vlt rtl/misc/expipe-waiver
   rtl/common/prio_enc.sv rtl/common/prio_enc_multi.sv rtl/common/rr_arbiter.sv
   rtl/common/rr_arbiter_multi.sv
   rtl/common/spill_cell_flush_cu.sv rtl/common/spill_cell_flush.sv
-  rtl/expipe/exec-units/arith_rs.sv rtl/expipe/exec-units/arith_rs_serial.sv
+  rtl/expipe/exec-units/arith_rs.sv
   rtl/expipe/exec-units/alu.sv rtl/expipe/exec-units/alu_unit.sv
   rtl/expipe/exec-units/mult.sv rtl/expipe/exec-units/sermult.sv rtl/expipe/exec-units/mult_unit.sv
   rtl/expipe/exec-units/serdiv.sv rtl/expipe/exec-units/div.sv rtl/expipe/exec-units/div_unit.sv
