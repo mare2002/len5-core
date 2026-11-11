@@ -93,15 +93,19 @@ targets:
     - LDBUFF_DEPTH
     - STBUFF_DEPTH
     - LSU_SPILL_SKIP
+    - ALU_NUM_UNITS
     - ALU_RS_DEPTH
     - ALU_SPILL_SKIP
     - ALU_RR_ARBITER
+    - MULT_NUM_UNITS
     - MULT_RS_DEPTH
     - LEN5_MULT_SERIAL
     - MULT_PIPE_DEPTH
     - MULT_RR_ARBITER
+    - DIV_NUM_UNITS
     - DIV_RS_DEPTH
     - DIV_RR_ARBITER
+    - FPU_NUM_UNITS
     - FPU_RS_DEPTH
     - FPU_RR_ARBITER
     - FPU_PIPE_DEPTH
@@ -224,6 +228,11 @@ parameters:
   LSU_SPILL_SKIP:
     datatype: int
     paramtype: vlogparam
+  ALU_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical ALU execution units sharing one reservation station.
   ALU_RS_DEPTH:
     datatype: int
     paramtype: vlogparam
@@ -233,6 +242,11 @@ parameters:
   ALU_RR_ARBITER:
     datatype: int
     paramtype: vlogparam
+  MULT_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical MULT execution units sharing one reservation station.
   MULT_RS_DEPTH:
     datatype: int
     paramtype: vlogparam
@@ -245,12 +259,22 @@ parameters:
   MULT_RR_ARBITER:
     datatype: int
     paramtype: vlogparam
+  DIV_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical DIV execution units sharing one reservation station.
   DIV_RS_DEPTH:
     datatype: int
     paramtype: vlogparam
   DIV_RR_ARBITER:
     datatype: int
     paramtype: vlogparam
+  FPU_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical FPU execution units sharing one reservation station.
   FPU_RS_DEPTH:
     datatype: int
     paramtype: vlogparam

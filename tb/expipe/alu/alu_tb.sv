@@ -33,15 +33,19 @@ module alu_tb #(
     parameter int unsigned LDBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_DEPTH,
     parameter int unsigned STBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_DEPTH,
     parameter bit LSU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_SPILL_SKIP,
+    parameter int unsigned ALU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_NUM_UNITS,
     parameter int unsigned ALU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RS_DEPTH,
     parameter bit ALU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_SPILL_SKIP,
     parameter bit ALU_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RR_ARBITER,
+    parameter int unsigned MULT_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_NUM_UNITS,
     parameter int unsigned MULT_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_RS_DEPTH,
     parameter bit LEN5_MULT_SERIAL = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_MULT_SERIAL,
     parameter int unsigned MULT_PIPE_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_PIPE_DEPTH,
     parameter bit MULT_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_RR_ARBITER,
+    parameter int unsigned DIV_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_NUM_UNITS,
     parameter int unsigned DIV_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_RS_DEPTH,
     parameter bit DIV_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_RR_ARBITER,
+    parameter int unsigned FPU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_NUM_UNITS,
     parameter int unsigned FPU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_RS_DEPTH,
     parameter bit FPU_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_RR_ARBITER,
     parameter int unsigned FPU_PIPE_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_PIPE_DEPTH,
@@ -81,15 +85,19 @@ module alu_tb #(
             LDBUFF_DEPTH: LDBUFF_DEPTH,
             STBUFF_DEPTH: STBUFF_DEPTH,
             LSU_SPILL_SKIP: LSU_SPILL_SKIP,
+            ALU_NUM_UNITS: ALU_NUM_UNITS,
             ALU_RS_DEPTH: ALU_RS_DEPTH,
             ALU_SPILL_SKIP: SKIP_REG,
             ALU_RR_ARBITER: ALU_RR_ARBITER,
+            MULT_NUM_UNITS: MULT_NUM_UNITS,
             MULT_RS_DEPTH: MULT_RS_DEPTH,
             LEN5_MULT_SERIAL: LEN5_MULT_SERIAL,
             MULT_PIPE_DEPTH: MULT_PIPE_DEPTH,
             MULT_RR_ARBITER: MULT_RR_ARBITER,
+            DIV_NUM_UNITS: DIV_NUM_UNITS,
             DIV_RS_DEPTH: DIV_RS_DEPTH,
             DIV_RR_ARBITER: DIV_RR_ARBITER,
+            FPU_NUM_UNITS: FPU_NUM_UNITS,
             FPU_RS_DEPTH: FPU_RS_DEPTH,
             FPU_RR_ARBITER: FPU_RR_ARBITER,
             FPU_PIPE_DEPTH: FPU_PIPE_DEPTH,
@@ -101,7 +109,8 @@ module alu_tb #(
             BPU_INIT_C2B: 2'(BPU_INIT_C2B)
         }
     ),
-    localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+    localparam int unsigned RsIdxLen = ALU_RS_DEPTH > 1 ? $clog2(ALU_RS_DEPTH) : 1,
+    localparam type rs_idx_t = logic [RsIdxLen-1:0],
     parameter bit SKIP_REG = ALU_SPILL_SKIP,
     localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
@@ -117,10 +126,10 @@ module alu_tb #(
 
     // Data from/to the reservation station unit
     input  logic     [    EU_CTL_LEN-1:0] ctl_i,
-    input  rob_idx_t                      rob_idx_i,
+    input  rs_idx_t                      rs_idx_i,
     input  logic     [len5_pkg::XLEN-1:0] rs1_i,
     input  logic     [len5_pkg::XLEN-1:0] rs2_i,
-    output rob_idx_t                      rob_idx_o,
+    output rs_idx_t                      rs_idx_o,
     output logic     [len5_pkg::XLEN-1:0] result_o,
     output logic     [              31:0] config_rob_depth_o
 );

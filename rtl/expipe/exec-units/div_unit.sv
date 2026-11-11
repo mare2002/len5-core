@@ -18,6 +18,9 @@ module div_unit #(
   localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
   localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
   localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned RsIdxLen = Len5Cfg.DIV_RS_DEPTH > 1 ? $clog2(Len5Cfg.DIV_RS_DEPTH) : 1,
+  localparam type rs_idx_t = logic [RsIdxLen-1:0],
+  localparam int unsigned NUM_UNITS = Len5Cfg.DIV_NUM_UNITS > 0 ? Len5Cfg.DIV_NUM_UNITS : 1,
   localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
   // Clock, reset, and flush
@@ -44,20 +47,20 @@ module div_unit #(
   import expipe_pkg::*;
 
   // Divider handshaking
-  logic                          rs_div_valid;
-  logic                          rs_div_ready;
-  logic                          div_rs_valid;
-  logic                          div_rs_ready;
+  logic         [NUM_UNITS-1:0]                 rs_div_valid;
+  logic         [NUM_UNITS-1:0]                 rs_div_ready;
+  logic         [NUM_UNITS-1:0]                 div_rs_valid;
+  logic         [NUM_UNITS-1:0]                 div_rs_ready;
 
   // Data from/to the execution unit
-  rob_idx_t                      rs_div_rob_idx;
-  logic         [EU_CTL_LEN-1:0] rs_div_ctl;
-  logic         [      XLEN-1:0] rs_div_rs1_value;
-  logic         [      XLEN-1:0] rs_div_rs2_value;
-  rob_idx_t                      div_rs_rob_idx;
-  logic         [      XLEN-1:0] div_rs_result;
-  logic                          div_rs_except_raised;
-  except_code_t                  div_rs_except_code;
+  rs_idx_t     [NUM_UNITS-1:0]                 rs_div_idx;
+  logic         [NUM_UNITS-1:0][EU_CTL_LEN-1:0] rs_div_ctl;
+  logic         [NUM_UNITS-1:0][      XLEN-1:0] rs_div_rs1_value;
+  logic         [NUM_UNITS-1:0][      XLEN-1:0] rs_div_rs2_value;
+  rs_idx_t     [NUM_UNITS-1:0]                 div_rs_idx;
+  logic         [NUM_UNITS-1:0][      XLEN-1:0] div_rs_result;
+  logic         [NUM_UNITS-1:0]                 div_rs_except_raised;
+  except_code_t [NUM_UNITS-1:0]                 div_rs_except_code;
 
   // DIV reservation station
   // -----------------------
@@ -83,34 +86,36 @@ module div_unit #(
     .eu_valid_i          (div_rs_valid),
     .eu_valid_o          (rs_div_valid),
     .eu_ready_o          (rs_div_ready),
-    .eu_rob_idx_i        (div_rs_rob_idx),
+    .eu_rs_idx_i        (div_rs_idx),
     .eu_result_i         (div_rs_result),
     .eu_except_raised_i  (div_rs_except_raised),
     .eu_except_code_i    (div_rs_except_code),
     .eu_ctl_o            (rs_div_ctl),
     .eu_rs1_o            (rs_div_rs1_value),
     .eu_rs2_o            (rs_div_rs2_value),
-    .eu_rob_idx_o        (rs_div_rob_idx)
+    .eu_rs_idx_o        (rs_div_idx)
   );
+  for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_div
 
-  div #(
-    .Len5Cfg(Len5Cfg)
-  ) u_div (
-    .clk_i          (clk_i),
-    .rst_ni         (rst_ni),
-    .flush_i        (flush_i),
-    .valid_i        (rs_div_valid),
-    .ready_i        (rs_div_ready),
-    .ready_o        (div_rs_ready),
-    .valid_o        (div_rs_valid),
-    .ctl_i          (rs_div_ctl),
-    .rob_idx_i      (rs_div_rob_idx),
-    .rs1_value_i    (rs_div_rs1_value),
-    .rs2_value_i    (rs_div_rs2_value),
-    .rob_idx_o      (div_rs_rob_idx),
-    .result_o       (div_rs_result),
-    .except_raised_o(div_rs_except_raised),
-    .except_code_o  (div_rs_except_code)
-  );
+    div #(
+      .Len5Cfg(Len5Cfg)
+    ) u_div (
+      .clk_i          (clk_i),
+      .rst_ni         (rst_ni),
+      .flush_i        (flush_i),
+      .valid_i        (rs_div_valid[u]),
+      .ready_i        (rs_div_ready[u]),
+      .ready_o        (div_rs_ready[u]),
+      .valid_o        (div_rs_valid[u]),
+      .ctl_i          (rs_div_ctl[u]),
+      .rs_idx_i      (rs_div_idx[u]),
+      .rs1_value_i    (rs_div_rs1_value[u]),
+      .rs2_value_i    (rs_div_rs2_value[u]),
+      .rs_idx_o      (div_rs_idx[u]),
+      .result_o       (div_rs_result[u]),
+      .except_raised_o(div_rs_except_raised[u]),
+      .except_code_o  (div_rs_except_code[u])
+    );
+  end
 
 endmodule

@@ -144,21 +144,25 @@ package len5_config_pkg;
     bit LSU_SPILL_SKIP;  // make address adder fully combinational
 
     // ALU UNIT
+    int unsigned ALU_NUM_UNITS;
     int unsigned ALU_RS_DEPTH;
     bit ALU_SPILL_SKIP;  // make the ALU fully combinational
     bit ALU_RR_ARBITER;  // round-robin arbiter for the reservation station
 
     // MULT UNIT
+    int unsigned MULT_NUM_UNITS;
     int unsigned MULT_RS_DEPTH;
     bit LEN5_MULT_SERIAL;
     int unsigned MULT_PIPE_DEPTH;  // pipeline stages (only if 'LEN5_MULT_SERIAL' is 0)
     bit MULT_RR_ARBITER;  // round-robin arbiter for the reservation station
 
     // DIV UNIT
+    int unsigned DIV_NUM_UNITS;
     int unsigned DIV_RS_DEPTH;
     bit DIV_RR_ARBITER;  // round-robin arbiter for the reservation station
 
     // FPU UNIT
+    int unsigned FPU_NUM_UNITS;
     int unsigned FPU_RS_DEPTH;
     bit FPU_RR_ARBITER;  // round-robin arbiter for the reservation station
     int unsigned FPU_PIPE_DEPTH;  // pipeline stages
@@ -203,15 +207,19 @@ package len5_config_pkg;
     int unsigned LDBUFF_DEPTH;
     int unsigned STBUFF_DEPTH;
     bit LSU_SPILL_SKIP;
+    int unsigned ALU_NUM_UNITS;
     int unsigned ALU_RS_DEPTH;
     bit ALU_SPILL_SKIP;
     bit ALU_RR_ARBITER;
+    int unsigned MULT_NUM_UNITS;
     int unsigned MULT_RS_DEPTH;
     bit LEN5_MULT_SERIAL;
     int unsigned MULT_PIPE_DEPTH;
     bit MULT_RR_ARBITER;
+    int unsigned DIV_NUM_UNITS;
     int unsigned DIV_RS_DEPTH;
     bit DIV_RR_ARBITER;
+    int unsigned FPU_NUM_UNITS;
     int unsigned FPU_RS_DEPTH;
     bit FPU_RR_ARBITER;
     int unsigned FPU_PIPE_DEPTH;
@@ -272,15 +280,19 @@ package len5_config_pkg;
       LDBUFF_DEPTH: 32'd8,
       STBUFF_DEPTH: 32'd16,
       LSU_SPILL_SKIP: 1'b1,
+      ALU_NUM_UNITS: 32'd1,
       ALU_RS_DEPTH: 32'd8,
       ALU_SPILL_SKIP: 1'b1,
       ALU_RR_ARBITER: 1'b1,
+      MULT_NUM_UNITS: 32'd1,
       MULT_RS_DEPTH: 32'd4,
       LEN5_MULT_SERIAL: 1'b0,
       MULT_PIPE_DEPTH: 32'd1,
       MULT_RR_ARBITER: 1'b1,
+      DIV_NUM_UNITS: 32'd1,
       DIV_RS_DEPTH: 32'd4,
       DIV_RR_ARBITER: 1'b1,
+      FPU_NUM_UNITS: 32'd1,
       FPU_RS_DEPTH: 32'd8,
       FPU_RR_ARBITER: 1'b1,
       FPU_PIPE_DEPTH: 32'd4,
@@ -322,15 +334,19 @@ package len5_config_pkg;
     cfg.LDBUFF_DEPTH = user_cfg.LDBUFF_DEPTH;
     cfg.STBUFF_DEPTH = user_cfg.STBUFF_DEPTH;
     cfg.LSU_SPILL_SKIP = user_cfg.LSU_SPILL_SKIP;
+    cfg.ALU_NUM_UNITS = user_cfg.ALU_NUM_UNITS;
     cfg.ALU_RS_DEPTH = user_cfg.ALU_RS_DEPTH;
     cfg.ALU_SPILL_SKIP = user_cfg.ALU_SPILL_SKIP;
     cfg.ALU_RR_ARBITER = user_cfg.ALU_RR_ARBITER;
+    cfg.MULT_NUM_UNITS = user_cfg.MULT_NUM_UNITS;
     cfg.MULT_RS_DEPTH = user_cfg.MULT_RS_DEPTH;
     cfg.LEN5_MULT_SERIAL = user_cfg.LEN5_MULT_SERIAL;
     cfg.MULT_PIPE_DEPTH = user_cfg.MULT_PIPE_DEPTH;
     cfg.MULT_RR_ARBITER = user_cfg.MULT_RR_ARBITER;
+    cfg.DIV_NUM_UNITS = user_cfg.DIV_NUM_UNITS;
     cfg.DIV_RS_DEPTH = user_cfg.DIV_RS_DEPTH;
     cfg.DIV_RR_ARBITER = user_cfg.DIV_RR_ARBITER;
+    cfg.FPU_NUM_UNITS = user_cfg.FPU_NUM_UNITS;
     cfg.FPU_RS_DEPTH = user_cfg.FPU_RS_DEPTH;
     cfg.FPU_RR_ARBITER = user_cfg.FPU_RR_ARBITER;
     cfg.FPU_PIPE_DEPTH = user_cfg.FPU_PIPE_DEPTH;
@@ -378,6 +394,12 @@ package len5_config_pkg;
         (cfg.FETCH_MEMIF_FIFO_DEPTH & (cfg.FETCH_MEMIF_FIFO_DEPTH - 1)) != 0)
       $fatal(1, "check_build: FETCH_MEMIF_FIFO_DEPTH must be a positive power of two");
     if (cfg.IQ_DEPTH < 2) $fatal(1, "check_build: IQ_DEPTH must be at least two");
+    if (cfg.ALU_NUM_UNITS == 0 || (cfg.LEN5_M_EN && cfg.MULT_NUM_UNITS == 0) ||
+        (cfg.LEN5_DIV_EN && cfg.DIV_NUM_UNITS == 0) ||
+        ((cfg.LEN5_F_EN || cfg.LEN5_D_EN) && cfg.FPU_NUM_UNITS == 0))
+      $fatal(
+          1, "check_build: enabled execution-unit categories require at least one physical unit"
+      );
     depths = '{
         cfg.RAS_DEPTH,
         cfg.LDBUFF_DEPTH,

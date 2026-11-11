@@ -18,6 +18,9 @@ module alu_unit #(
   localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
   localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
   localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned RsIdxLen = Len5Cfg.ALU_RS_DEPTH > 1 ? $clog2(Len5Cfg.ALU_RS_DEPTH) : 1,
+  localparam type rs_idx_t = logic [RsIdxLen-1:0],
+  localparam int unsigned NUM_UNITS = Len5Cfg.ALU_NUM_UNITS > 0 ? Len5Cfg.ALU_NUM_UNITS : 1,
   localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
   // Clock, reset, and flush
@@ -46,18 +49,18 @@ module alu_unit #(
   import expipe_pkg::*;
 
   // ALU handshake
-  logic                      rs_alu_valid;
-  logic                      rs_alu_ready;
-  logic                      alu_rs_valid;
-  logic                      alu_rs_ready;
+  logic     [NUM_UNITS-1:0]                 rs_alu_valid;
+  logic     [NUM_UNITS-1:0]                 rs_alu_ready;
+  logic     [NUM_UNITS-1:0]                 alu_rs_valid;
+  logic     [NUM_UNITS-1:0]                 alu_rs_ready;
 
   // Data from/to the execution unit
-  rob_idx_t                  rs_alu_rob_idx;
-  logic     [EU_CTL_LEN-1:0] rs_alu_ctl;
-  logic     [      XLEN-1:0] rs_alu_rs1_value;
-  logic     [      XLEN-1:0] rs_alu_rs2_value;
-  rob_idx_t                  alu_rs_rob_idx;
-  logic     [      XLEN-1:0] alu_rs_result;
+  rs_idx_t [NUM_UNITS-1:0]                 rs_alu_idx;
+  logic     [NUM_UNITS-1:0][EU_CTL_LEN-1:0] rs_alu_ctl;
+  logic     [NUM_UNITS-1:0][      XLEN-1:0] rs_alu_rs1_value;
+  logic     [NUM_UNITS-1:0][      XLEN-1:0] rs_alu_rs2_value;
+  rs_idx_t [NUM_UNITS-1:0]                 alu_rs_idx;
+  logic     [NUM_UNITS-1:0][      XLEN-1:0] alu_rs_result;
 
   // ALU reservation station
   // -----------------------
@@ -83,32 +86,34 @@ module alu_unit #(
     .eu_valid_i          (alu_rs_valid),
     .eu_valid_o          (rs_alu_valid),
     .eu_ready_o          (rs_alu_ready),
-    .eu_rob_idx_i        (alu_rs_rob_idx),
+    .eu_rs_idx_i        (alu_rs_idx),
     .eu_result_i         (alu_rs_result),
-    .eu_except_raised_i  (1'b0),                  // ALU cannot raise exceptions
-    .eu_except_code_i    (E_UNKNOWN),
+    .eu_except_raised_i  ('0),                      // ALU cannot raise exceptions
+    .eu_except_code_i    ({NUM_UNITS{E_UNKNOWN}}),
     .eu_ctl_o            (rs_alu_ctl),
     .eu_rs1_o            (rs_alu_rs1_value),
     .eu_rs2_o            (rs_alu_rs2_value),
-    .eu_rob_idx_o        (rs_alu_rob_idx)
+    .eu_rs_idx_o        (rs_alu_idx)
   );
+  for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_alu
 
-  alu #(
-    .Len5Cfg(Len5Cfg)
-  ) u_alu (
-    .clk_i    (clk_i),
-    .rst_ni   (rst_ni),
-    .flush_i  (flush_i),
-    .valid_i  (rs_alu_valid),
-    .ready_i  (rs_alu_ready),
-    .valid_o  (alu_rs_valid),
-    .ready_o  (alu_rs_ready),
-    .ctl_i    (rs_alu_ctl),
-    .rs1_i    (rs_alu_rs1_value),
-    .rs2_i    (rs_alu_rs2_value),
-    .rob_idx_i(rs_alu_rob_idx),
-    .rob_idx_o(alu_rs_rob_idx),
-    .result_o (alu_rs_result)
-  );
+    alu #(
+      .Len5Cfg(Len5Cfg)
+    ) u_alu (
+      .clk_i    (clk_i),
+      .rst_ni   (rst_ni),
+      .flush_i  (flush_i),
+      .valid_i  (rs_alu_valid[u]),
+      .ready_i  (rs_alu_ready[u]),
+      .valid_o  (alu_rs_valid[u]),
+      .ready_o  (alu_rs_ready[u]),
+      .ctl_i    (rs_alu_ctl[u]),
+      .rs1_i    (rs_alu_rs1_value[u]),
+      .rs2_i    (rs_alu_rs2_value[u]),
+      .rs_idx_i(rs_alu_idx[u]),
+      .rs_idx_o(alu_rs_idx[u]),
+      .result_o (alu_rs_result[u])
+    );
+  end
 
 endmodule

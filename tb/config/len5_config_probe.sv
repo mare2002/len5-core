@@ -67,15 +67,19 @@ module len5_config_probe #(
     parameter int unsigned LDBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_DEPTH,
     parameter int unsigned STBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_DEPTH,
     parameter bit LSU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_SPILL_SKIP,
+    parameter int unsigned ALU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_NUM_UNITS,
     parameter int unsigned ALU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RS_DEPTH,
     parameter bit ALU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_SPILL_SKIP,
     parameter bit ALU_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RR_ARBITER,
+    parameter int unsigned MULT_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_NUM_UNITS,
     parameter int unsigned MULT_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_RS_DEPTH,
     parameter bit LEN5_MULT_SERIAL = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_MULT_SERIAL,
     parameter int unsigned MULT_PIPE_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_PIPE_DEPTH,
     parameter bit MULT_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.MULT_RR_ARBITER,
+    parameter int unsigned DIV_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_NUM_UNITS,
     parameter int unsigned DIV_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_RS_DEPTH,
     parameter bit DIV_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.DIV_RR_ARBITER,
+    parameter int unsigned FPU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_NUM_UNITS,
     parameter int unsigned FPU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_RS_DEPTH,
     parameter bit FPU_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_RR_ARBITER,
     parameter int unsigned FPU_PIPE_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.FPU_PIPE_DEPTH,
@@ -115,15 +119,19 @@ module len5_config_probe #(
             LDBUFF_DEPTH: LDBUFF_DEPTH,
             STBUFF_DEPTH: STBUFF_DEPTH,
             LSU_SPILL_SKIP: LSU_SPILL_SKIP,
+            ALU_NUM_UNITS: ALU_NUM_UNITS,
             ALU_RS_DEPTH: ALU_RS_DEPTH,
             ALU_SPILL_SKIP: ALU_SPILL_SKIP,
             ALU_RR_ARBITER: ALU_RR_ARBITER,
+            MULT_NUM_UNITS: MULT_NUM_UNITS,
             MULT_RS_DEPTH: MULT_RS_DEPTH,
             LEN5_MULT_SERIAL: LEN5_MULT_SERIAL,
             MULT_PIPE_DEPTH: MULT_PIPE_DEPTH,
             MULT_RR_ARBITER: MULT_RR_ARBITER,
+            DIV_NUM_UNITS: DIV_NUM_UNITS,
             DIV_RS_DEPTH: DIV_RS_DEPTH,
             DIV_RR_ARBITER: DIV_RR_ARBITER,
+            FPU_NUM_UNITS: FPU_NUM_UNITS,
             FPU_RS_DEPTH: FPU_RS_DEPTH,
             FPU_RR_ARBITER: FPU_RR_ARBITER,
             FPU_PIPE_DEPTH: FPU_PIPE_DEPTH,
@@ -174,15 +182,19 @@ module len5_config_probe #(
       $write(",\"LDBUFF_DEPTH\":%0d", Len5Cfg.LDBUFF_DEPTH);
       $write(",\"STBUFF_DEPTH\":%0d", Len5Cfg.STBUFF_DEPTH);
       $write(",\"LSU_SPILL_SKIP\":%0d", Len5Cfg.LSU_SPILL_SKIP);
+      $write(",\"ALU_NUM_UNITS\":%0d", Len5Cfg.ALU_NUM_UNITS);
       $write(",\"ALU_RS_DEPTH\":%0d", Len5Cfg.ALU_RS_DEPTH);
       $write(",\"ALU_SPILL_SKIP\":%0d", Len5Cfg.ALU_SPILL_SKIP);
       $write(",\"ALU_RR_ARBITER\":%0d", Len5Cfg.ALU_RR_ARBITER);
+      $write(",\"MULT_NUM_UNITS\":%0d", Len5Cfg.MULT_NUM_UNITS);
       $write(",\"MULT_RS_DEPTH\":%0d", Len5Cfg.MULT_RS_DEPTH);
       $write(",\"LEN5_MULT_SERIAL\":%0d", Len5Cfg.LEN5_MULT_SERIAL);
       $write(",\"MULT_PIPE_DEPTH\":%0d", Len5Cfg.MULT_PIPE_DEPTH);
       $write(",\"MULT_RR_ARBITER\":%0d", Len5Cfg.MULT_RR_ARBITER);
+      $write(",\"DIV_NUM_UNITS\":%0d", Len5Cfg.DIV_NUM_UNITS);
       $write(",\"DIV_RS_DEPTH\":%0d", Len5Cfg.DIV_RS_DEPTH);
       $write(",\"DIV_RR_ARBITER\":%0d", Len5Cfg.DIV_RR_ARBITER);
+      $write(",\"FPU_NUM_UNITS\":%0d", Len5Cfg.FPU_NUM_UNITS);
       $write(",\"FPU_RS_DEPTH\":%0d", Len5Cfg.FPU_RS_DEPTH);
       $write(",\"FPU_RR_ARBITER\":%0d", Len5Cfg.FPU_RR_ARBITER);
       $write(",\"FPU_PIPE_DEPTH\":%0d", Len5Cfg.FPU_PIPE_DEPTH);

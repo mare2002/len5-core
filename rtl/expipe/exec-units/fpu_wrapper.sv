@@ -15,9 +15,12 @@
 
 module fpu_wrapper #(
   parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned RsIdxLen = Len5Cfg.FPU_RS_DEPTH > 1 ? $clog2(Len5Cfg.FPU_RS_DEPTH) : 1,
+  localparam type rs_idx_t = logic [RsIdxLen-1:0],
   localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN,
-  localparam bit SKIP_IN_REG = Len5Cfg.FPU_SPILL_SKIP,
+  // FPnew ready depends on operation control. Multi-unit requests must be
+  // registered to break the path back through readiness-based RS selection.
+  localparam bit SKIP_IN_REG = Len5Cfg.FPU_SPILL_SKIP && Len5Cfg.FPU_NUM_UNITS <= 1,
   localparam int unsigned PIPE_DEPTH = Len5Cfg.FPU_PIPE_DEPTH
 ) (
   input logic clk_i,
@@ -33,11 +36,11 @@ module fpu_wrapper #(
   // Data from/to the reservation station unit
   input  logic                   [           EU_CTL_LEN-1:0] ctl_i,
   input  logic                   [csr_pkg::FCSR_FRM_LEN-1:0] rm_i,
-  input  rob_idx_t                                           rob_idx_i,
+  input  rs_idx_t                                           rs_idx_i,
   input  logic                   [       len5_pkg::XLEN-1:0] rs1_value_i,
   input  logic                   [       len5_pkg::XLEN-1:0] rs2_value_i,
   input  logic                   [       len5_pkg::XLEN-1:0] rs3_value_i,
-  output rob_idx_t                                           rob_idx_o,
+  output rs_idx_t                                           rs_idx_o,
   output logic                   [       len5_pkg::XLEN-1:0] result_o,
   output logic                                               except_raised_o,
   output len5_pkg::except_code_t                             except_code_o,
@@ -86,7 +89,7 @@ module fpu_wrapper #(
   logic        [FpuOperands-1:0][XLEN-1:0] fpu_operands;
   // Keep the result destination type aligned across FPnew's different pipelines.
   typedef struct packed {
-    rob_idx_t rob_idx;
+    rs_idx_t rs_idx;
     logic     is_int;
   } fpu_tag_t;
   fpu_tag_t fpu_tag, fpu_result_tag;
@@ -104,7 +107,7 @@ module fpu_wrapper #(
     logic [XLEN-1:0]       rs3_value;  // second input operand
     logic [EU_CTL_LEN-1:0] ctl;        // control bits
     logic [FUNCT3_LEN-1:0] rm;         // rounding mode
-    rob_idx_t              rob_idx;    // instr. index in the RS
+    rs_idx_t              rs_idx;    // instruction RS index
   } in_reg_data_t;
   in_reg_data_t in_reg_data_in, in_reg_data_out;
 
@@ -117,7 +120,7 @@ module fpu_wrapper #(
   assign in_reg_data_in.rs3_value = rs3_value_i;
   assign in_reg_data_in.ctl       = ctl_i;
   assign in_reg_data_in.rm        = rm_i;
-  assign in_reg_data_in.rob_idx   = rob_idx_i;
+  assign in_reg_data_in.rs_idx   = rs_idx_i;
 
   // Input reservation station
   spill_cell_flush #(
@@ -135,7 +138,7 @@ module fpu_wrapper #(
     .data_o (in_reg_data_out)
   );
 
-  assign fpu_tag.rob_idx = in_reg_data_out.rob_idx;
+  assign fpu_tag.rs_idx = in_reg_data_out.rs_idx;
   assign fpu_tag.is_int  = (fpu_op inside {F2I, CMP, CLASSIFY}) || (fpu_op == SGNJ && fpu_op_mod);
   //assign fpu_op_mod = in_reg_data_out.clt[0];   //check whether always true
 
@@ -440,7 +443,7 @@ module fpu_wrapper #(
   // --------------
   // OUTPUT NETWORK
   // --------------
-  assign rob_idx_o = fpu_result_tag.rob_idx;
+  assign rs_idx_o = fpu_result_tag.rs_idx;
 
   // RV64F has 32-bit FP registers, but integer destinations need all 64 bits.
   // Format the result here so direct forwarding and the CDB see the same value.

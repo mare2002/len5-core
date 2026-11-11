@@ -66,15 +66,19 @@ targets:
     - LDBUFF_DEPTH
     - STBUFF_DEPTH
     - LSU_SPILL_SKIP
+    - ALU_NUM_UNITS
     - ALU_RS_DEPTH
     - ALU_SPILL_SKIP
     - ALU_RR_ARBITER
+    - MULT_NUM_UNITS
     - MULT_RS_DEPTH
     - LEN5_MULT_SERIAL
     - MULT_PIPE_DEPTH
     - MULT_RR_ARBITER
+    - DIV_NUM_UNITS
     - DIV_RS_DEPTH
     - DIV_RR_ARBITER
+    - FPU_NUM_UNITS
     - FPU_RS_DEPTH
     - FPU_RR_ARBITER
     - FPU_PIPE_DEPTH
@@ -85,7 +89,7 @@ targets:
     - COMMIT_SPILL_SKIP
     - BPU_INIT_C2B
     filesets: [dut, harness]
-    parameters: [BOOT_PC_HI, BOOT_PC_LO, seed, max_cycles, log_level, dump_waves, run_dir, scenario, contract, early_accept, early_target, inject_failure, random, cycles, campaign, weights, guided, journal, expect_issues, BOOT_VM_MODE, LEN5_MULTIPLE_ISSUES, ISSUE_WIDTH, LEN5_M_EN, LEN5_DIV_EN, LEN5_F_EN, LEN5_D_EN, LEN5_C_EN, LEN5_A_EN, LEN5_STORE_LOAD_FWD_EN, MAX_EU_N, ONLY_DOUBLEWORD_MEM_ACCESSES, LEN5_CSR_HPMCOUNTERS_EN, MMAP_MASK_HI, MMAP_MASK_LO, BPU_HLEN, BPU_BTB_BITS, RAS_DEPTH, FETCH_MEMIF_FIFO_DEPTH, FETCH_MEM_DRAIN_ON_FLUSH, LOAD_BUFFER_DRAIN_ON_FLUSH, FETCH_REQ_SPILL_SKIP, FETCH_ANS_SPILL_SKIP, IQ_DEPTH, LDBUFF_DEPTH, STBUFF_DEPTH, LSU_SPILL_SKIP, ALU_RS_DEPTH, ALU_SPILL_SKIP, ALU_RR_ARBITER, MULT_RS_DEPTH, LEN5_MULT_SERIAL, MULT_PIPE_DEPTH, MULT_RR_ARBITER, DIV_RS_DEPTH, DIV_RR_ARBITER, FPU_RS_DEPTH, FPU_RR_ARBITER, FPU_PIPE_DEPTH, FPU_SPILL_SKIP, BU_RS_DEPTH, BU_SPILL_SKIP, ROB_DEPTH, COMMIT_SPILL_SKIP, BPU_INIT_C2B]
+    parameters: [BOOT_PC_HI, BOOT_PC_LO, seed, max_cycles, log_level, dump_waves, run_dir, scenario, contract, early_accept, early_target, inject_failure, random, cycles, campaign, weights, guided, journal, expect_issues, BOOT_VM_MODE, LEN5_MULTIPLE_ISSUES, ISSUE_WIDTH, LEN5_M_EN, LEN5_DIV_EN, LEN5_F_EN, LEN5_D_EN, LEN5_C_EN, LEN5_A_EN, LEN5_STORE_LOAD_FWD_EN, MAX_EU_N, ONLY_DOUBLEWORD_MEM_ACCESSES, LEN5_CSR_HPMCOUNTERS_EN, MMAP_MASK_HI, MMAP_MASK_LO, BPU_HLEN, BPU_BTB_BITS, RAS_DEPTH, FETCH_MEMIF_FIFO_DEPTH, FETCH_MEM_DRAIN_ON_FLUSH, LOAD_BUFFER_DRAIN_ON_FLUSH, FETCH_REQ_SPILL_SKIP, FETCH_ANS_SPILL_SKIP, IQ_DEPTH, LDBUFF_DEPTH, STBUFF_DEPTH, LSU_SPILL_SKIP, ALU_NUM_UNITS, ALU_RS_DEPTH, ALU_SPILL_SKIP, ALU_RR_ARBITER, MULT_NUM_UNITS, MULT_RS_DEPTH, LEN5_MULT_SERIAL, MULT_PIPE_DEPTH, MULT_RR_ARBITER, DIV_NUM_UNITS, DIV_RS_DEPTH, DIV_RR_ARBITER, FPU_NUM_UNITS, FPU_RS_DEPTH, FPU_RR_ARBITER, FPU_PIPE_DEPTH, FPU_SPILL_SKIP, BU_RS_DEPTH, BU_SPILL_SKIP, ROB_DEPTH, COMMIT_SPILL_SKIP, BPU_INIT_C2B]
     tools:
       verilator:
         mode: cc
@@ -279,6 +283,11 @@ parameters:
     datatype: int
     paramtype: vlogparam
     description: Elaboration override for LSU_SPILL_SKIP.
+  ALU_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical ALU execution units sharing one reservation station.
   ALU_RS_DEPTH:
     datatype: int
     paramtype: vlogparam
@@ -291,6 +300,11 @@ parameters:
     datatype: int
     paramtype: vlogparam
     description: Elaboration override for ALU_RR_ARBITER.
+  MULT_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical MULT execution units sharing one reservation station.
   MULT_RS_DEPTH:
     datatype: int
     paramtype: vlogparam
@@ -307,6 +321,11 @@ parameters:
     datatype: int
     paramtype: vlogparam
     description: Elaboration override for MULT_RR_ARBITER.
+  DIV_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical DIV execution units sharing one reservation station.
   DIV_RS_DEPTH:
     datatype: int
     paramtype: vlogparam
@@ -315,6 +334,11 @@ parameters:
     datatype: int
     paramtype: vlogparam
     description: Elaboration override for DIV_RR_ARBITER.
+  FPU_NUM_UNITS:
+    datatype: int
+    default: 1
+    paramtype: vlogparam
+    description: Number of physical FPU execution units sharing one reservation station.
   FPU_RS_DEPTH:
     datatype: int
     paramtype: vlogparam

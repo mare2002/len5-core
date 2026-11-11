@@ -20,7 +20,8 @@ module serdiv
   import len5_pkg::*;
 #(
   parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned RsIdxLen = Len5Cfg.DIV_RS_DEPTH > 1 ? $clog2(Len5Cfg.DIV_RS_DEPTH) : 1,
+  localparam type rs_idx_t = logic [RsIdxLen-1:0],
   parameter int WIDTH = 64,  // signed int required for the shift_a assignment
   localparam logic [$clog2(WIDTH):0] WIDTH_S = WIDTH[$clog2(WIDTH):0],
   parameter bit STABLE_HANDSHAKE = 1  // LEN5 guarantees stable in_rdy_o during the input handshake; CVA6 uses 0
@@ -28,7 +29,7 @@ module serdiv
   input logic clk_i,
   input logic rst_ni,
   // input IF
-  input rob_idx_t id_i,
+  input rs_idx_t rs_idx_i,
   input logic [WIDTH-1:0] op_a_i,
   input logic [WIDTH-1:0] op_b_i,
   input logic [1:0] opcode_i,  // 0: udiv, 2: urem, 1: div, 3: rem
@@ -39,7 +40,7 @@ module serdiv
   // output IF
   output logic out_vld_o,
   input logic out_rdy_i,
-  output rob_idx_t id_o,
+  output rs_idx_t rs_idx_o,
   output logic [WIDTH-1:0] res_o
 );
 
@@ -61,7 +62,7 @@ module serdiv
   logic op_b_zero, op_b_zero_q, op_b_zero_d;
   logic op_b_neg_one, op_b_neg_one_q, op_b_neg_one_d;
 
-  rob_idx_t id_q, id_d;
+  rs_idx_t rs_idx_q, rs_idx_d;
 
   logic rem_sel_d, rem_sel_q;
   logic comp_inv_d, comp_inv_q;
@@ -242,8 +243,8 @@ module serdiv
   assign res_inv_d = (load_en) ? (~op_b_zero | opcode_i[1]) & opcode_i[0] & (op_a_sign ^ op_b_sign ^ op_b_neg_one) : res_inv_q;
 
   // transaction id
-  assign id_d = (load_en) ? id_i : id_q;
-  assign id_o = id_q;
+  assign rs_idx_d = (load_en) ? rs_idx_i : rs_idx_q;
+  assign rs_idx_o = rs_idx_q;
 
   assign op_a_d = (a_reg_en) ? add_out : op_a_q;
   assign op_b_d = (b_reg_en) ? b_mux : op_b_q;
@@ -256,7 +257,7 @@ module serdiv
       op_b_q         <= '0;
       res_q          <= '0;
       cnt_q          <= '0;
-      id_q           <= '0;
+      rs_idx_q           <= '0;
       rem_sel_q      <= 1'b0;
       comp_inv_q     <= 1'b0;
       res_inv_q      <= 1'b0;
@@ -269,7 +270,7 @@ module serdiv
       op_b_q         <= op_b_d;
       res_q          <= res_d;
       cnt_q          <= cnt_d;
-      id_q           <= id_d;
+      rs_idx_q           <= rs_idx_d;
       rem_sel_q      <= rem_sel_d;
       comp_inv_q     <= comp_inv_d;
       res_inv_q      <= res_inv_d;

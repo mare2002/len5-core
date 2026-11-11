@@ -18,7 +18,8 @@
 
 module div #(
   parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned RsIdxLen = Len5Cfg.DIV_RS_DEPTH > 1 ? $clog2(Len5Cfg.DIV_RS_DEPTH) : 1,
+  localparam type rs_idx_t = logic [RsIdxLen-1:0],
   localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN,
   parameter bit SKIP_IN_REG = 1'b0
 ) (
@@ -34,10 +35,10 @@ module div #(
 
   // Data from/to the reservation station unit
   input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-  input  rob_idx_t                                    rob_idx_i,
+  input  rs_idx_t                                    rs_idx_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-  output rob_idx_t                                    rob_idx_o,
+  output rs_idx_t                                    rs_idx_o,
   output logic                   [len5_pkg::XLEN-1:0] result_o,
   output logic                                        except_raised_o,
   output len5_pkg::except_code_t                      except_code_o
@@ -61,7 +62,7 @@ module div #(
     logic [XLEN-1:0]       rs1_value;  // first input operand
     logic [XLEN-1:0]       rs2_value;  // second input operand
     logic [EU_CTL_LEN-1:0] ctl;        // control bits
-    rob_idx_t              rob_idx;    // instr. index in the RS
+    rs_idx_t              rs_idx;    // instruction RS index
   } in_reg_data_t;
   in_reg_data_t in_reg_data_in, in_reg_data_out;
   // ready from downstream (EU) to spill cell, valid from upstream (RS) to EU
@@ -71,7 +72,7 @@ module div #(
   assign in_reg_data_in.rs1_value = rs1_value_i;
   assign in_reg_data_in.rs2_value = rs2_value_i;
   assign in_reg_data_in.ctl       = ctl_i;
-  assign in_reg_data_in.rob_idx   = rob_idx_i;
+  assign in_reg_data_in.rs_idx   = rs_idx_i;
 
   // Input reservation station
   spill_cell_flush #(
@@ -147,7 +148,7 @@ module div #(
   ) u_serdiv (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
-    .id_i(in_reg_data_out.rob_idx),
+    .rs_idx_i(in_reg_data_out.rs_idx),
     .op_a_i(div_a),
     .op_b_i(div_b),
     .opcode_i (in_reg_data_out.ctl[1:0]),   // 00: udiv, 10: urem, 01: div, 11: rem TODO:  manipulate ctl_i to get the opcode
@@ -156,19 +157,20 @@ module div #(
     .flush_i(flush_i),
     .out_vld_o(valid_o),
     .out_rdy_i(ready_i),
-    .id_o(rob_idx_o),
+    .rs_idx_o(rs_idx_o),
     .res_o(result)
   );
 
   //////////////////////
   // Word op register //
   //////////////////////
+  // Metadata follows the internal acceptance, not a request waiting in the spill cell.
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (~rst_ni) begin
       word_op_q <= '0;
     end else if (flush_i) begin
       word_op_q <= '0;
-    end else begin
+    end else if (valid_div && ready_div) begin
       word_op_q <= word_op_d;
     end
   end
@@ -185,7 +187,7 @@ module div #(
       except_raised_q <= '0;
     end else if (flush_i) begin
       except_raised_q <= '0;
-    end else begin
+    end else if (valid_div && ready_div) begin
       except_raised_q <= except_raised_d;
     end
   end

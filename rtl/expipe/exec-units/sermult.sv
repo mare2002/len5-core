@@ -25,7 +25,8 @@ The interface of the unit has to be adapted to that of the processor exe unit*/
 
 module sermult #(
   parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
-  localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned RsIdxLen = Len5Cfg.MULT_RS_DEPTH > 1 ? $clog2(Len5Cfg.MULT_RS_DEPTH) : 1,
+  localparam type rs_idx_t = logic [RsIdxLen-1:0],
   localparam int unsigned EU_CTL_LEN = expipe_pkg::MAX_EU_CTL_LEN
 ) (
   input logic clk_i,
@@ -40,10 +41,10 @@ module sermult #(
 
   // Data from/to the reservation station unit
   input  logic                   [    EU_CTL_LEN-1:0] ctl_i,
-  input  rob_idx_t                                    rob_idx_i,
+  input  rs_idx_t                                    rs_idx_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs1_value_i,
   input  logic                   [len5_pkg::XLEN-1:0] rs2_value_i,
-  output rob_idx_t                                    rob_idx_o,
+  output rs_idx_t                                    rs_idx_o,
   output logic                   [len5_pkg::XLEN-1:0] result_o,
   output logic                                        except_raised_o,
   output len5_pkg::except_code_t                      except_code_o
@@ -324,7 +325,7 @@ module sermult #(
   // Output evaluation //
   ///////////////////////
   assign result_o        = mulw_next ? {{32{acc_result[31]}}, acc_result[31:0]} : acc_result[63:0];
-  assign rob_idx_o       = rob_idx_i;
+  assign rs_idx_o       = rs_idx_i;
   assign except_raised_o = except_raised;
   assign except_code_o   = E_ILLEGAL_INSTRUCTION;
 

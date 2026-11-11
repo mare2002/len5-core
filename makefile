@@ -34,8 +34,8 @@ LEN5_CONFIG_VARS := BOOT_VM_MODE BOOT_PC LEN5_MULTIPLE_ISSUES ISSUE_WIDTH ISSUE_
 	ONLY_DOUBLEWORD_MEM_ACCESSES LEN5_CSR_HPMCOUNTERS_EN MMAP_MASK BPU_HLEN BPU_BTB_BITS \
 	RAS_DEPTH FETCH_MEMIF_FIFO_DEPTH FETCH_MEM_DRAIN_ON_FLUSH LOAD_BUFFER_DRAIN_ON_FLUSH \
 	FETCH_REQ_SPILL_SKIP FETCH_ANS_SPILL_SKIP IQ_DEPTH LDBUFF_DEPTH STBUFF_DEPTH LSU_SPILL_SKIP \
-	ALU_RS_DEPTH ALU_SPILL_SKIP ALU_RR_ARBITER MULT_RS_DEPTH LEN5_MULT_SERIAL MULT_PIPE_DEPTH \
-	MULT_RR_ARBITER DIV_RS_DEPTH DIV_RR_ARBITER FPU_RS_DEPTH FPU_RR_ARBITER FPU_PIPE_DEPTH \
+	ALU_NUM_UNITS ALU_RS_DEPTH ALU_SPILL_SKIP ALU_RR_ARBITER MULT_NUM_UNITS MULT_RS_DEPTH LEN5_MULT_SERIAL MULT_PIPE_DEPTH \
+	MULT_RR_ARBITER DIV_NUM_UNITS DIV_RS_DEPTH DIV_RR_ARBITER FPU_NUM_UNITS FPU_RS_DEPTH FPU_RR_ARBITER FPU_PIPE_DEPTH \
 	FPU_SPILL_SKIP BU_RS_DEPTH BU_SPILL_SKIP ROB_DEPTH COMMIT_SPILL_SKIP BPU_INIT_C2B
 TB_CONFIG_VARS := MEMORY_BACKEND AXI_CLOCK_HALF_PERIOD_PS IMEM_BASE_ADDR IMEM_SIZE_BYTES \
 	IMEM_LATENCY DMEM_BASE_ADDR DMEM_SIZE_BYTES DMEM_LATENCY SERIAL_ADDR EXIT_ADDR SRAM_SIM_INIT
@@ -584,3 +584,30 @@ check-fetch-stage-core: fetch-stage-build
 .PHONY: check-tc-sram
 check-tc-sram:
 	@SEEDS="$(or $(SEEDS),10)" CYCLES="$(or $(CYCLES),10000)" JOBS="$(JOBS)" bash scripts/sim/check-tc-sram.sh
+
+# Shared arithmetic reservation stations and physical execution-unit arrays.
+.PHONY: check-ex-request-selector check-arith-rs-multi check-exec-units-multi check-fpu-units-multi check-div-metadata check-multiple-exec-config check-multiple-exec
+check-ex-request-selector:
+	@bash scripts/sim/check-ex-request-selector.sh
+
+check-arith-rs-multi:
+	@bash scripts/sim/check-arith-rs-multi.sh
+
+check-exec-units-multi:
+	@bash scripts/sim/check-exec-units-multi.sh
+
+check-fpu-units-multi:
+	@bash scripts/sim/check-fpu-units-multi.sh
+
+check-div-metadata:
+	@bash scripts/sim/check-div-metadata.sh
+
+check-multiple-exec-config:
+	@python3 scripts/sim/check-multiple-exec-config.py
+
+check-multiple-exec: check-multiple-exec-config check-ex-request-selector check-arith-rs-multi check-exec-units-multi check-fpu-units-multi check-div-metadata
+
+# Bounded full-core integration against the existing pinned Spike checker.
+.PHONY: check-multiple-exec-integration
+check-multiple-exec-integration: | .check-fusesoc
+	@python3 scripts/sim/check-multiple-exec-integration.py --simulate --fusesoc "$(FUSESOC)" $(if $(INTEGRATION_CASES),--cases "$(INTEGRATION_CASES)")

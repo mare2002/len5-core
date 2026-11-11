@@ -18,6 +18,9 @@ module fpu_unit #(
   localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg),
   localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
   localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
+  localparam int unsigned RsIdxLen = Len5Cfg.FPU_RS_DEPTH > 1 ? $clog2(Len5Cfg.FPU_RS_DEPTH) : 1,
+  localparam type rs_idx_t = logic [RsIdxLen-1:0],
+  localparam int unsigned NUM_UNITS = Len5Cfg.FPU_NUM_UNITS > 0 ? Len5Cfg.FPU_NUM_UNITS : 1,
   localparam int unsigned EU_CTL_LEN = expipe_pkg::FPU_CTL_LEN
 ) (
   // Clock, reset, and flush
@@ -49,24 +52,24 @@ module fpu_unit #(
   import len5_config_pkg::*;
 
   // FPU handshaking
-  logic                                              rs_fpu_valid;
-  logic                                              rs_fpu_ready;
-  logic                                              fpu_rs_valid;
-  logic                                              fpu_rs_ready;
+  logic                  [NUM_UNITS-1:0]                            rs_fpu_valid;
+  logic                  [NUM_UNITS-1:0]                            rs_fpu_ready;
+  logic                  [NUM_UNITS-1:0]                            fpu_rs_valid;
+  logic                  [NUM_UNITS-1:0]                            fpu_rs_ready;
 
   // Data from/to the execution unit
-  rob_idx_t                                          rs_fpu_rob_idx;
-  logic                  [           EU_CTL_LEN-1:0] rs_fpu_ctl;
-  logic                  [csr_pkg::FCSR_FRM_LEN-1:0] rs_fpu_rm;
-  logic                  [csr_pkg::FCSR_FRM_LEN-1:0] fpu_rm;
-  logic                  [                 XLEN-1:0] rs_fpu_rs1_value;
-  logic                  [                 XLEN-1:0] rs_fpu_rs2_value;
-  logic                  [                 XLEN-1:0] rs_fpu_rs3_value;
-  rob_idx_t                                          fpu_rs_rob_idx;
-  logic                  [                 XLEN-1:0] fpu_rs_result;
-  logic                                              fpu_rs_except_raised;
-  except_code_t                                      fpu_rs_except_code;
-  csr_pkg::fcsr_fflags_t                             fpu_rs_flags;
+  rs_idx_t              [NUM_UNITS-1:0]                            rs_fpu_idx;
+  logic                  [NUM_UNITS-1:0][           EU_CTL_LEN-1:0] rs_fpu_ctl;
+  logic                  [NUM_UNITS-1:0][csr_pkg::FCSR_FRM_LEN-1:0] rs_fpu_rm;
+  logic                  [NUM_UNITS-1:0][csr_pkg::FCSR_FRM_LEN-1:0] fpu_rm;
+  logic                  [NUM_UNITS-1:0][                 XLEN-1:0] rs_fpu_rs1_value;
+  logic                  [NUM_UNITS-1:0][                 XLEN-1:0] rs_fpu_rs2_value;
+  logic                  [NUM_UNITS-1:0][                 XLEN-1:0] rs_fpu_rs3_value;
+  rs_idx_t              [NUM_UNITS-1:0]                            fpu_rs_idx;
+  logic                  [NUM_UNITS-1:0][                 XLEN-1:0] fpu_rs_result;
+  logic                  [NUM_UNITS-1:0]                            fpu_rs_except_raised;
+  except_code_t          [NUM_UNITS-1:0]                            fpu_rs_except_code;
+  csr_pkg::fcsr_fflags_t [NUM_UNITS-1:0]                            fpu_rs_flags;
 
   // DIV reservation station
   // -----------------------
@@ -93,7 +96,7 @@ module fpu_unit #(
     .eu_valid_i          (fpu_rs_valid),
     .eu_valid_o          (rs_fpu_valid),
     .eu_ready_o          (rs_fpu_ready),
-    .eu_rob_idx_i        (fpu_rs_rob_idx),
+    .eu_rs_idx_i        (fpu_rs_idx),
     .eu_result_i         (fpu_rs_result),
     .eu_except_raised_i  (fpu_rs_except_raised),
     .eu_except_code_i    (fpu_rs_except_code),
@@ -103,34 +106,38 @@ module fpu_unit #(
     .eu_rs1_o            (rs_fpu_rs1_value),
     .eu_rs2_o            (rs_fpu_rs2_value),
     .eu_rs3_o            (rs_fpu_rs3_value),
-    .eu_rob_idx_o        (rs_fpu_rob_idx)
+    .eu_rs_idx_o        (rs_fpu_idx)
   );
 
-  // Rounding mode multiplexer
-  assign fpu_rm = (rs_fpu_rm == '1) ? csr_frm_i : rs_fpu_rm;
+  // Resolve the rounding mode for the currently selected instruction.
+  for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_rounding_mode
+    assign fpu_rm[u] = rs_fpu_rm[u] == '1 ? csr_frm_i : rs_fpu_rm[u];
+  end
 
   // FPU wrapper
-  fpu_wrapper #(
-    .Len5Cfg(Len5Cfg)
-  ) u_fpu_wrapper (
-    .clk_i          (clk_i),
-    .rst_ni         (rst_ni),
-    .flush_i        (flush_i),
-    .valid_i        (rs_fpu_valid),
-    .ready_i        (rs_fpu_ready),
-    .ready_o        (fpu_rs_ready),
-    .valid_o        (fpu_rs_valid),
-    .ctl_i          (rs_fpu_ctl),
-    .rm_i           (fpu_rm),
-    .rob_idx_i      (rs_fpu_rob_idx),
-    .rs1_value_i    (rs_fpu_rs1_value),
-    .rs2_value_i    (rs_fpu_rs2_value),
-    .rs3_value_i    (rs_fpu_rs3_value),
-    .rob_idx_o      (fpu_rs_rob_idx),
-    .result_o       (fpu_rs_result),
-    .except_raised_o(fpu_rs_except_raised),
-    .except_code_o  (fpu_rs_except_code),
-    .fflags_o       (fpu_rs_flags)
-  );
+  for (genvar u = 0; u < NUM_UNITS; u++) begin : gen_fpu_wrapper
+    fpu_wrapper #(
+      .Len5Cfg(Len5Cfg)
+    ) u_fpu_wrapper (
+      .clk_i          (clk_i),
+      .rst_ni         (rst_ni),
+      .flush_i        (flush_i),
+      .valid_i        (rs_fpu_valid[u]),
+      .ready_i        (rs_fpu_ready[u]),
+      .ready_o        (fpu_rs_ready[u]),
+      .valid_o        (fpu_rs_valid[u]),
+      .ctl_i          (rs_fpu_ctl[u]),
+      .rm_i           (fpu_rm[u]),
+      .rs_idx_i      (rs_fpu_idx[u]),
+      .rs1_value_i    (rs_fpu_rs1_value[u]),
+      .rs2_value_i    (rs_fpu_rs2_value[u]),
+      .rs3_value_i    (rs_fpu_rs3_value[u]),
+      .rs_idx_o      (fpu_rs_idx[u]),
+      .result_o       (fpu_rs_result[u]),
+      .except_raised_o(fpu_rs_except_raised[u]),
+      .except_code_o  (fpu_rs_except_code[u]),
+      .fflags_o       (fpu_rs_flags[u])
+    );
+  end
 
 endmodule
