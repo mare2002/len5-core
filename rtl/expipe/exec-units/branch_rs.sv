@@ -26,16 +26,16 @@ module branch_rs #(
   input logic flush_i,
 
   // Issue Stage
-  input  logic                                         issue_valid_i,
-  output logic                                         issue_ready_o,
-  input  expipe_pkg::branch_ctl_t                      issue_branch_type_i,
-  input  op_data_t                                     issue_rs1_i,
-  input  op_data_t                                     issue_rs2_i,
-  input  logic                    [len5_pkg::XLEN-1:0] issue_imm_value_i,
-  input  rob_idx_t                                     issue_dest_rob_idx_i,
-  input  logic                    [len5_pkg::XLEN-1:0] issue_curr_pc_i,
-  input  logic                    [len5_pkg::XLEN-1:0] issue_pred_target_i,
-  input  logic                                         issue_pred_taken_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+  input expipe_pkg::branch_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_branch_type_i,
+  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
+  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_imm_value_i,
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_curr_pc_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_pred_target_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_pred_taken_i,
 
   // Common Data Bus (CDB)
   input  logic      cdb_ready_i,
@@ -62,6 +62,81 @@ module branch_rs #(
   output logic                                         bu_pred_taken_o,
   output expipe_pkg::branch_ctl_t                      bu_branch_type_o
 );
+
+  // Allocation buffering does not change reservation-station scheduling.
+  localparam int unsigned IssueWidth = Len5Cfg.BU_ISSUE_WIDTH;
+  logic                    [Len5Cfg.ISSUE_WIDTH-1:0]                     alloc_valid;
+  logic                    [Len5Cfg.ISSUE_WIDTH-1:0]                     alloc_ready;
+  expipe_pkg::branch_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0]                     alloc_branch_type;
+  op_data_t                [Len5Cfg.ISSUE_WIDTH-1:0]                     alloc_rs1;
+  op_data_t                [Len5Cfg.ISSUE_WIDTH-1:0]                     alloc_rs2;
+  logic                    [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] alloc_imm_value;
+  rob_idx_t                [Len5Cfg.ISSUE_WIDTH-1:0]                     alloc_dest_rob_idx;
+  logic                    [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] alloc_curr_pc;
+  logic                    [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] alloc_pred_target;
+  logic                    [Len5Cfg.ISSUE_WIDTH-1:0]                     alloc_pred_taken;
+  typedef struct packed {
+    expipe_pkg::branch_ctl_t   issue_branch_type;
+    logic [len5_pkg::XLEN-1:0] issue_imm_value;
+    rob_idx_t                  issue_dest_rob_idx;
+    logic [len5_pkg::XLEN-1:0] issue_curr_pc;
+    logic [len5_pkg::XLEN-1:0] issue_pred_target;
+    logic                      issue_pred_taken;
+  } alloc_payload_t;
+  alloc_payload_t [IssueWidth-1:0] fifo_payload_in, fifo_payload_out;
+  op_data_t [IssueWidth-1:0][2-1:0] fifo_operands_in, fifo_operands_out;
+  for (genvar k = 0; k < IssueWidth; k++) begin : gen_fifo_payload
+    assign fifo_payload_in[k].issue_branch_type  = issue_branch_type_i[k];
+    assign alloc_branch_type[k]                  = fifo_payload_out[k].issue_branch_type;
+    assign fifo_payload_in[k].issue_imm_value    = issue_imm_value_i[k];
+    assign alloc_imm_value[k]                    = fifo_payload_out[k].issue_imm_value;
+    assign fifo_payload_in[k].issue_dest_rob_idx = issue_dest_rob_idx_i[k];
+    assign alloc_dest_rob_idx[k]                 = fifo_payload_out[k].issue_dest_rob_idx;
+    assign fifo_payload_in[k].issue_curr_pc      = issue_curr_pc_i[k];
+    assign alloc_curr_pc[k]                      = fifo_payload_out[k].issue_curr_pc;
+    assign fifo_payload_in[k].issue_pred_target  = issue_pred_target_i[k];
+    assign alloc_pred_target[k]                  = fifo_payload_out[k].issue_pred_target;
+    assign fifo_payload_in[k].issue_pred_taken   = issue_pred_taken_i[k];
+    assign alloc_pred_taken[k]                   = fifo_payload_out[k].issue_pred_taken;
+    assign fifo_operands_in[k][0]                = issue_rs1_i[k];
+    assign alloc_rs1[k]                          = fifo_operands_out[k][0];
+    assign fifo_operands_in[k][1]                = issue_rs2_i[k];
+    assign alloc_rs2[k]                          = fifo_operands_out[k][1];
+  end
+  for (genvar k = IssueWidth; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_unused_allocation
+    logic unused_inputs;
+    assign unused_inputs = ^{issue_branch_type_i[k], issue_curr_pc_i[k], issue_dest_rob_idx_i[k],
+                              issue_imm_value_i[k], issue_pred_taken_i[k], issue_pred_target_i[k],
+                              issue_rs1_i[k], issue_rs2_i[k], issue_valid_i[k]};
+    assign alloc_valid[k] = '0;
+    assign issue_ready_o[k] = '0;
+    assign alloc_branch_type[k] = expipe_pkg::branch_ctl_t'(0);
+    assign alloc_imm_value[k] = '0;
+    assign alloc_dest_rob_idx[k] = '0;
+    assign alloc_curr_pc[k] = '0;
+    assign alloc_pred_target[k] = '0;
+    assign alloc_pred_taken[k] = '0;
+    assign alloc_rs1[k] = '0;
+    assign alloc_rs2[k] = '0;
+  end
+  rs_alloc_fifo #(
+    .Len5Cfg(Len5Cfg),
+    .EU     (expipe_pkg::EU_BRANCH_UNIT)
+  ) u_alloc_fifo (
+    .clk_i,
+    .rst_ni,
+    .flush_i,
+    .cdb_valid_i,
+    .cdb_data_i,
+    .valid_i   (issue_valid_i[IssueWidth-1:0]),
+    .ready_o   (issue_ready_o[IssueWidth-1:0]),
+    .valid_o   (alloc_valid[IssueWidth-1:0]),
+    .ready_i   (alloc_ready[IssueWidth-1:0]),
+    .payload_i (fifo_payload_in),
+    .payload_o (fifo_payload_out),
+    .operands_i(fifo_operands_in),
+    .operands_o(fifo_operands_out)
+  );
 
   import len5_pkg::*;
   import expipe_pkg::*;
@@ -110,7 +185,7 @@ module branch_rs #(
   // ----------------
   // Head, tail, and execution counters
   logic head_cnt_en, head_cnt_clr;
-  logic tail_cnt_en, tail_cnt_clr;
+
   logic ex_cnt_en, ex_cnt_clr;
   logic [RsIdxLen-1:0] tail_idx, ex_idx, head_idx;
 
@@ -119,7 +194,34 @@ module branch_rs #(
   bu_state_t curr_state[DEPTH], next_state[DEPTH];
 
   // Reservation station control
-  logic push, pop, ex_accepted, save_res;
+  logic pop, ex_accepted, save_res;
+  logic        [DEPTH-1:0] insert;
+  int unsigned             insert_lane[DEPTH];
+  int unsigned             push_count;
+  always_comb begin : p_alloc_ready
+    alloc_ready = '0;
+    for (int k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin
+      if (k < IssueWidth && k < DEPTH && !flush_i && curr_state[RsIdxLen'(tail_idx+k)] == BU_S_EMPTY)
+        alloc_ready[k] = k == 0 ? 1'b1 : alloc_ready[k-1];
+    end
+  end
+  always_comb begin : p_insert
+    insert      = '0;
+    insert_lane = '{default: '0};
+    push_count  = 0;
+    for (int k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin
+      if (alloc_valid[k] && alloc_ready[k]) begin
+        insert[RsIdxLen'(tail_idx+push_count)]      = 1'b1;
+        insert_lane[RsIdxLen'(tail_idx+push_count)] = k;
+        push_count++;
+      end
+    end
+  end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) tail_idx <= '0;
+    else if (flush_i) tail_idx <= '0;
+    else tail_idx <= RsIdxLen'(tail_idx + push_count);
+  end
   logic fwd_rs1[DEPTH], fwd_rs2[DEPTH];
   bu_op_t bu_op[DEPTH];
 
@@ -128,17 +230,14 @@ module branch_rs #(
   // -------------------------------
 
   // Buffer control
-  assign push         = issue_valid_i & issue_ready_o;
   assign pop          = cdb_valid_o & cdb_ready_i;
   assign ex_accepted  = bu_valid_o & bu_ready_i;
   assign save_res     = bu_valid_i & bu_ready_o;
 
   // Counters control
   assign head_cnt_clr = flush_i;
-  assign tail_cnt_clr = flush_i;
   assign ex_cnt_clr   = flush_i;
   assign head_cnt_en  = pop;
-  assign tail_cnt_en  = push;
   assign ex_cnt_en    = ex_accepted;
 
   // Operands forwarding control
@@ -158,14 +257,14 @@ module branch_rs #(
     foreach (curr_state[i]) begin
       case (curr_state[i])
         BU_S_EMPTY: begin  // push a new instruction
-          if (push && tail_idx == i[RsIdxLen-1:0]) begin
-            if (issue_rs1_i.ready && issue_rs2_i.ready) begin
+          if (insert[i]) begin
+            if (alloc_rs1[insert_lane[i]].ready && alloc_rs2[insert_lane[i]].ready) begin
               next_state[i] = BU_S_EX_REQ;
               bu_op[i]      = BU_OP_INSERT;
-            end else if (!issue_rs1_i.ready && issue_rs2_i.ready) begin
+            end else if (!alloc_rs1[insert_lane[i]].ready && alloc_rs2[insert_lane[i]].ready) begin
               next_state[i] = BU_S_RS1_PENDING;
               bu_op[i]      = BU_OP_INSERT;
-            end else if (issue_rs1_i.ready && !issue_rs2_i.ready) begin
+            end else if (alloc_rs1[insert_lane[i]].ready && !alloc_rs2[insert_lane[i]].ready) begin
               next_state[i] = BU_S_RS2_PENDING;
               bu_op[i]      = BU_OP_INSERT;
             end else begin
@@ -241,16 +340,16 @@ module branch_rs #(
       foreach (bu_op[i]) begin
         case (bu_op[i])
           BU_OP_INSERT: begin
-            data[i].branch_type  <= issue_branch_type_i;
-            data[i].curr_pc      <= issue_curr_pc_i;
-            data[i].rs1_rob_idx  <= issue_rs1_i.rob_idx;
-            data[i].rs1_value    <= issue_rs1_i.value;
-            data[i].rs2_rob_idx  <= issue_rs2_i.rob_idx;
-            data[i].rs2_value    <= issue_rs2_i.value;
-            data[i].imm_value    <= issue_imm_value_i;
-            data[i].dest_rob_idx <= issue_dest_rob_idx_i;
-            data[i].target_link  <= issue_pred_target_i;
-            data[i].taken        <= issue_pred_taken_i;
+            data[i].branch_type  <= alloc_branch_type[insert_lane[i]];
+            data[i].curr_pc      <= alloc_curr_pc[insert_lane[i]];
+            data[i].rs1_rob_idx  <= alloc_rs1[insert_lane[i]].rob_idx;
+            data[i].rs1_value    <= alloc_rs1[insert_lane[i]].value;
+            data[i].rs2_rob_idx  <= alloc_rs2[insert_lane[i]].rob_idx;
+            data[i].rs2_value    <= alloc_rs2[insert_lane[i]].value;
+            data[i].imm_value    <= alloc_imm_value[insert_lane[i]];
+            data[i].dest_rob_idx <= alloc_dest_rob_idx[insert_lane[i]];
+            data[i].target_link  <= alloc_pred_target[insert_lane[i]];
+            data[i].taken        <= alloc_pred_taken[insert_lane[i]];
           end
           BU_OP_SAVE_RS12: begin
             data[i].rs1_value <= cdb_data_i.res_value;
@@ -278,7 +377,6 @@ module branch_rs #(
   // -----------------
 
   // Issue Stage
-  assign issue_ready_o = curr_state[tail_idx] == BU_S_EMPTY;
 
   // CDB
   assign cdb_valid_o = curr_state[head_idx] == BU_S_COMPLETED;
@@ -317,18 +415,6 @@ module branch_rs #(
     .tc_o   ()               // not needed
   );
 
-
-  // Tail counter pointing to the first empty entry
-  modn_counter #(
-    .N(DEPTH)
-  ) u_tail_counter (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .en_i   (tail_cnt_en),
-    .clr_i  (tail_cnt_clr),
-    .count_o(tail_idx),
-    .tc_o   ()               // not needed
-  );
 
   // Execution counter pointing to the executing branch/jump instruction
   modn_counter #(

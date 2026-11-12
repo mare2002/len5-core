@@ -40,6 +40,14 @@ def main():
     cases.append(("disabled-zero", dict(ALU_NUM_UNITS=1, MULT_NUM_UNITS=0, DIV_NUM_UNITS=0,
                                          FPU_NUM_UNITS=0, LEN5_M_EN=0, LEN5_DIV_EN=0,
                                          LEN5_F_EN=0, LEN5_D_EN=0)))
+    for width in (1, 2, 4, 8):
+        values = dict(ISSUE_WIDTH=width, ALU_ISSUE_WIDTH=max(1, width // 2),
+                      MULT_ISSUE_WIDTH=width, FPU_ISSUE_WIDTH=1, BU_ISSUE_WIDTH=width,
+                      LSU_ISSUE_WIDTH=width)
+        for unit in ("ALU", "MULT", "DIV", "FPU", "BU", "LSU"):
+            values[unit + "_USE_FIFO"] = 1
+            values[unit + "_FIFO_DEPTH"] = 4 if width > 1 else 1
+        cases.append((f"fifo-width-{width}", values))
     selected = args.cases.split(",")
     if selected != ["all"] and set(selected) - {name for name, _ in cases}:
         parser.error("unknown configuration case")
@@ -65,6 +73,24 @@ def main():
         if result.returncode == 0 or "enabled execution-unit categories require at least one physical unit" not in report:
             raise SystemExit(f"FAIL validation {field}: see {build / ('invalid-' + field + '.log')}")
         print(f"PASS rejected enabled {field}=0", flush=True)
+
+    for unit in ("ALU", "MULT", "DIV", "FPU", "BU", "LSU"):
+        invalid = [({unit + "_ISSUE_WIDTH": 0}, "ISSUE_WIDTH must be in"),
+                   ({unit + "_ISSUE_WIDTH": 2}, "ISSUE_WIDTH must be in"),
+                   ({unit + "_USE_FIFO": 1, unit + "_FIFO_DEPTH": 0}, "FIFO_DEPTH must be positive"),
+                   ({unit + "_USE_FIFO": 1, unit + "_FIFO_DEPTH": 3}, "FIFO_DEPTH must be positive power of two")]
+        for index, (values, diagnostic) in enumerate(invalid):
+            case = f"invalid-{unit}-allocation-{index}"
+            cmd = [args.fusesoc, "--cores-root=.", "run", "--no-export", "--target=checkbuild",
+                   "--setup", "--build", "--build-root", str(build / case), "polito:len5:len5",
+                   *[f"--{key}={value}" for key, value in values.items()]]
+            log_path = build / (case + ".log")
+            with log_path.open("w") as log:
+                result = subprocess.run(["timeout", "-k", "5s", "60s", *cmd], cwd=ROOT, env=env,
+                                        stdout=log, stderr=subprocess.STDOUT)
+            if result.returncode == 0 or diagnostic not in log_path.read_text():
+                raise SystemExit(f"FAIL validation {case}: see {log_path}")
+            print(f"PASS rejected {case}", flush=True)
 
 
 if __name__ == "__main__":

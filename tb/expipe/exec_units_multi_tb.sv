@@ -18,6 +18,11 @@ module exec_units_multi_case #(
     len5_user_cfg_t cfg = DEFAULT_LEN5_USER_CFG;
     cfg.LEN5_MULTIPLE_ISSUES = ISSUE_WIDTH;
     cfg.ISSUE_WIDTH          = ISSUE_WIDTH;
+    cfg.ALU_ISSUE_WIDTH = ISSUE_WIDTH;
+    cfg.MULT_ISSUE_WIDTH = ISSUE_WIDTH;
+    cfg.DIV_ISSUE_WIDTH = ISSUE_WIDTH;
+    cfg.FPU_ISSUE_WIDTH = ISSUE_WIDTH;
+
     cfg.ROB_DEPTH            = 64;
     cfg.ALU_RS_DEPTH         = 16;
     cfg.MULT_RS_DEPTH        = 16;

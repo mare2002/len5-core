@@ -111,12 +111,17 @@ module exec_stage #(
   logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] rs_pred_target;
   logic [Len5Cfg.MAX_EU_N-1:0][Len5Cfg.ISSUE_WIDTH-1:0] rs_pred_taken;
   logic [Len5Cfg.ISSUE_WIDTH-1:0] memory_lane, older_memory;
-  logic lb_ready, sb_ready, branch_ready;
-  expipe_pkg::ldst_width_t                      memory_type;
-  op_data_t                                     memory_rs1;
-  op_data_t                                     memory_rs2;
-  logic                    [len5_pkg::XLEN-1:0] memory_imm;
-  rob_idx_t                                     memory_rob_idx;
+  logic lb_ready, sb_ready;
+  expipe_pkg::ldst_width_t                           memory_type;
+  op_data_t                                          memory_rs1;
+  op_data_t                                          memory_rs2;
+  logic                    [     len5_pkg::XLEN-1:0] memory_imm;
+  rob_idx_t                                          memory_rob_idx;
+
+  expipe_pkg::branch_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] branch_ctl;
+  for (genvar k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_branch_ctl
+    assign branch_ctl[k] = rs_eu_ctl[EU_BRANCH_UNIT][k].bu;
+  end
 
   //%TODO remove when redoing the LSU(LOAD AND STORE UNIT)
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_memory_order
@@ -142,7 +147,7 @@ module exec_stage #(
 
     // Only requests for this station advance the channel, oldest lane first.
     always_comb begin : request_channel_assignment
-      request_channel = '0;
+      request_channel    = '0;
       request_channel[0] = Len5Cfg.ISSUE_WIDTH'(1);
       for (int i = 1; i < Len5Cfg.ISSUE_WIDTH; i++) begin
         request_channel[i] = request[i-1] ? request_channel[i-1] << 1 : request_channel[i-1];
@@ -152,26 +157,28 @@ module exec_stage #(
     // Ordered grants preserve candidate slots for every accepted instruction.
     for (genvar k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_payload
       always_comb begin : payload_mux
-        rs_valid[u][k] = 1'b0;
-        rs_eu_ctl[u][k] = '0;
-        rs_frm[u][k] = '0;
-        rs1[u][k] = '0;
-        rs2[u][k] = '0;
-        rs3[u][k] = '0;
-        rs_imm_value[u][k] = '0;
-        rs_rob_idx[u][k] = '0;
-        rs_curr_pc[u][k] = '0;
+        rs_valid[u][k]       = 1'b0;
+        rs_eu_ctl[u][k]      = '0;
+        rs_frm[u][k]         = '0;
+        rs1[u][k]            = '0;
+        rs2[u][k]            = '0;
+        rs3[u][k]            = '0;
+        rs_imm_value[u][k]   = '0;
+        rs_rob_idx[u][k]     = '0;
+        rs_curr_pc[u][k]     = '0;
         rs_pred_target[u][k] = '0;
-        rs_pred_taken[u][k] = 1'b0;
+        rs_pred_taken[u][k]  = 1'b0;
         for (int i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin
           rs_valid[u][k] |= channel_select[i][k] && issue_valid_i[i] && (!memory_lane[i] || !older_memory[i]);
-          rs_eu_ctl[u][k] |= issue_eu_ctl_i[i] & {$bits(expipe_pkg::eu_ctl_t){channel_select[i][k]}};
+          rs_eu_ctl[u][k] |= issue_eu_ctl_i[i] & {$bits(
+              expipe_pkg::eu_ctl_t
+          ) {channel_select[i][k]}};
           rs_frm[u][k] |= issue_frm_i[i] & {csr_pkg::FCSR_FRM_LEN{channel_select[i][k]}};
-          rs1[u][k] |= issue_rs1_i[i] & {$bits(op_data_t){channel_select[i][k]}};
-          rs2[u][k] |= issue_rs2_i[i] & {$bits(op_data_t){channel_select[i][k]}};
-          rs3[u][k] |= issue_rs3_i[i] & {$bits(op_data_t){channel_select[i][k]}};
+          rs1[u][k] |= issue_rs1_i[i] & {$bits(op_data_t) {channel_select[i][k]}};
+          rs2[u][k] |= issue_rs2_i[i] & {$bits(op_data_t) {channel_select[i][k]}};
+          rs3[u][k] |= issue_rs3_i[i] & {$bits(op_data_t) {channel_select[i][k]}};
           rs_imm_value[u][k] |= issue_imm_value_i[i] & {len5_pkg::XLEN{channel_select[i][k]}};
-          rs_rob_idx[u][k] |= issue_rob_idx_i[i] & {$bits(rob_idx_t){channel_select[i][k]}};
+          rs_rob_idx[u][k] |= issue_rob_idx_i[i] & {$bits(rob_idx_t) {channel_select[i][k]}};
           rs_curr_pc[u][k] |= issue_curr_pc_i[i] & {len5_pkg::XLEN{channel_select[i][k]}};
           rs_pred_target[u][k] |= issue_pred_target_i[i] & {len5_pkg::XLEN{channel_select[i][k]}};
           rs_pred_taken[u][k] |= issue_pred_taken_i[i] & channel_select[i][k];
@@ -255,7 +262,6 @@ module exec_stage #(
   // -----------
   // BRANCH UNIT
   // -----------
-  assign rs_ready[EU_BRANCH_UNIT] = {{Len5Cfg.ISSUE_WIDTH - 1{1'b0}}, branch_ready && !mis_flush_i};
 
   branch_unit #(
     .Len5Cfg(Len5Cfg)
@@ -270,16 +276,16 @@ module exec_stage #(
     .fe_call_confirm_o   (fe_call_confirm_o),
     .fe_ret_confirm_o    (fe_ret_confirm_o),
     .fe_link_addr_o      (fe_link_addr_o),
-    .issue_valid_i       (rs_valid[EU_BRANCH_UNIT][0]),
-    .issue_ready_o       (branch_ready),
-    .issue_branch_type_i (rs_eu_ctl[EU_BRANCH_UNIT][0].bu),
-    .issue_rs1_i         (rs1[EU_BRANCH_UNIT][0]),
-    .issue_rs2_i         (rs2[EU_BRANCH_UNIT][0]),
-    .issue_imm_value_i   (rs_imm_value[EU_BRANCH_UNIT][0]),
-    .issue_dest_rob_idx_i(rs_rob_idx[EU_BRANCH_UNIT][0]),
-    .issue_curr_pc_i     (rs_curr_pc[EU_BRANCH_UNIT][0]),
-    .issue_pred_target_i (rs_pred_target[EU_BRANCH_UNIT][0]),
-    .issue_pred_taken_i  (rs_pred_taken[EU_BRANCH_UNIT][0]),
+    .issue_valid_i       (rs_valid[EU_BRANCH_UNIT]),
+    .issue_ready_o       (rs_ready[EU_BRANCH_UNIT]),
+    .issue_branch_type_i (branch_ctl),
+    .issue_rs1_i         (rs1[EU_BRANCH_UNIT]),
+    .issue_rs2_i         (rs2[EU_BRANCH_UNIT]),
+    .issue_imm_value_i   (rs_imm_value[EU_BRANCH_UNIT]),
+    .issue_dest_rob_idx_i(rs_rob_idx[EU_BRANCH_UNIT]),
+    .issue_curr_pc_i     (rs_curr_pc[EU_BRANCH_UNIT]),
+    .issue_pred_target_i (rs_pred_target[EU_BRANCH_UNIT]),
+    .issue_pred_taken_i  (rs_pred_taken[EU_BRANCH_UNIT]),
     .issue_mis_o         (issue_mis_o),
     .cdb_ready_i         (cdb_ready_i[EU_BRANCH_UNIT]),
     .cdb_valid_i         (cdb_valid_i),

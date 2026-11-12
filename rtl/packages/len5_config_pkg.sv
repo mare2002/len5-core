@@ -38,6 +38,25 @@ package len5_config_pkg;
     int unsigned LEN5_MULTIPLE_ISSUES;  // instructions per fetch bundle
     int unsigned ISSUE_WIDTH;  // maximum instructions dispatched per cycle
     bit ISSUE_DECODE_SPILL_EN;
+    bit ALU_USE_FIFO;
+    int unsigned ALU_FIFO_DEPTH;
+    int unsigned ALU_ISSUE_WIDTH;
+    bit MULT_USE_FIFO;
+    int unsigned MULT_FIFO_DEPTH;
+    int unsigned MULT_ISSUE_WIDTH;
+    bit DIV_USE_FIFO;
+    int unsigned DIV_FIFO_DEPTH;
+    int unsigned DIV_ISSUE_WIDTH;
+    bit FPU_USE_FIFO;
+    int unsigned FPU_FIFO_DEPTH;
+    int unsigned FPU_ISSUE_WIDTH;
+    bit BU_USE_FIFO;
+    int unsigned BU_FIFO_DEPTH;
+    int unsigned BU_ISSUE_WIDTH;
+    bit LSU_USE_FIFO;
+    int unsigned LSU_FIFO_DEPTH;
+    int unsigned LSU_ISSUE_WIDTH;
+
 
     // Enable M extension support
     // --------------------------
@@ -184,6 +203,25 @@ package len5_config_pkg;
     int unsigned LEN5_MULTIPLE_ISSUES;
     int unsigned ISSUE_WIDTH;
     bit ISSUE_DECODE_SPILL_EN;
+    bit ALU_USE_FIFO;
+    int unsigned ALU_FIFO_DEPTH;
+    int unsigned ALU_ISSUE_WIDTH;
+    bit MULT_USE_FIFO;
+    int unsigned MULT_FIFO_DEPTH;
+    int unsigned MULT_ISSUE_WIDTH;
+    bit DIV_USE_FIFO;
+    int unsigned DIV_FIFO_DEPTH;
+    int unsigned DIV_ISSUE_WIDTH;
+    bit FPU_USE_FIFO;
+    int unsigned FPU_FIFO_DEPTH;
+    int unsigned FPU_ISSUE_WIDTH;
+    bit BU_USE_FIFO;
+    int unsigned BU_FIFO_DEPTH;
+    int unsigned BU_ISSUE_WIDTH;
+    bit LSU_USE_FIFO;
+    int unsigned LSU_FIFO_DEPTH;
+    int unsigned LSU_ISSUE_WIDTH;
+
     bit LEN5_M_EN;
     bit LEN5_DIV_EN;
     bit LEN5_F_EN;
@@ -257,6 +295,25 @@ package len5_config_pkg;
       LEN5_MULTIPLE_ISSUES: 32'd8,
       ISSUE_WIDTH: 32'd1,
       ISSUE_DECODE_SPILL_EN: 1'b1,
+      ALU_USE_FIFO: 1'b0,
+      ALU_FIFO_DEPTH: 32'd4,
+      ALU_ISSUE_WIDTH: 32'd1,
+      MULT_USE_FIFO: 1'b0,
+      MULT_FIFO_DEPTH: 32'd4,
+      MULT_ISSUE_WIDTH: 32'd1,
+      DIV_USE_FIFO: 1'b0,
+      DIV_FIFO_DEPTH: 32'd4,
+      DIV_ISSUE_WIDTH: 32'd1,
+      FPU_USE_FIFO: 1'b0,
+      FPU_FIFO_DEPTH: 32'd4,
+      FPU_ISSUE_WIDTH: 32'd1,
+      BU_USE_FIFO: 1'b0,
+      BU_FIFO_DEPTH: 32'd4,
+      BU_ISSUE_WIDTH: 32'd1,
+      LSU_USE_FIFO: 1'b0,
+      LSU_FIFO_DEPTH: 32'd4,
+      LSU_ISSUE_WIDTH: 32'd1,
+
       LEN5_M_EN: 1'b1,
       LEN5_DIV_EN: 1'b1,
       LEN5_F_EN: 1'b1,
@@ -310,6 +367,25 @@ package len5_config_pkg;
     cfg.BOOT_PC = user_cfg.BOOT_PC;
     cfg.LEN5_MULTIPLE_ISSUES = user_cfg.LEN5_MULTIPLE_ISSUES;
     cfg.ISSUE_WIDTH = user_cfg.ISSUE_WIDTH;
+    cfg.ALU_USE_FIFO = user_cfg.ALU_USE_FIFO;
+    cfg.ALU_FIFO_DEPTH = user_cfg.ALU_FIFO_DEPTH;
+    cfg.ALU_ISSUE_WIDTH = user_cfg.ALU_ISSUE_WIDTH;
+    cfg.MULT_USE_FIFO = user_cfg.MULT_USE_FIFO;
+    cfg.MULT_FIFO_DEPTH = user_cfg.MULT_FIFO_DEPTH;
+    cfg.MULT_ISSUE_WIDTH = user_cfg.MULT_ISSUE_WIDTH;
+    cfg.DIV_USE_FIFO = user_cfg.DIV_USE_FIFO;
+    cfg.DIV_FIFO_DEPTH = user_cfg.DIV_FIFO_DEPTH;
+    cfg.DIV_ISSUE_WIDTH = user_cfg.DIV_ISSUE_WIDTH;
+    cfg.FPU_USE_FIFO = user_cfg.FPU_USE_FIFO;
+    cfg.FPU_FIFO_DEPTH = user_cfg.FPU_FIFO_DEPTH;
+    cfg.FPU_ISSUE_WIDTH = user_cfg.FPU_ISSUE_WIDTH;
+    cfg.BU_USE_FIFO = user_cfg.BU_USE_FIFO;
+    cfg.BU_FIFO_DEPTH = user_cfg.BU_FIFO_DEPTH;
+    cfg.BU_ISSUE_WIDTH = user_cfg.BU_ISSUE_WIDTH;
+    cfg.LSU_USE_FIFO = user_cfg.LSU_USE_FIFO;
+    cfg.LSU_FIFO_DEPTH = user_cfg.LSU_FIFO_DEPTH;
+    cfg.LSU_ISSUE_WIDTH = user_cfg.LSU_ISSUE_WIDTH;
+
     cfg.ISSUE_DECODE_SPILL_EN = user_cfg.ISSUE_DECODE_SPILL_EN;
     cfg.LEN5_M_EN = user_cfg.LEN5_M_EN;
     cfg.LEN5_DIV_EN = user_cfg.LEN5_DIV_EN;
@@ -378,10 +454,46 @@ package len5_config_pkg;
   endfunction
 
   // Use explicit fatal checks so constant evaluation also rejects invalid builds without --assert.
-  function automatic bit check_build(len5_cfg cfg);
+  function automatic bit check_build(len5_cfg cfg, int rs_fifo_eu = -1);
     int unsigned depths          [6];
     int unsigned max_outstanding;
     bit          derived_valid;
+    // IDs follow expipe_pkg::issue_eu_t; that package depends on this one.
+    // Operand count and payload shape are fixed by the validated FIFO role.
+    if (rs_fifo_eu != -1 && !(rs_fifo_eu inside {[0 : 6]}))
+      $fatal(1, "check_build: invalid RS FIFO execution unit");
+    if (cfg.ALU_ISSUE_WIDTH < 1 || cfg.ALU_ISSUE_WIDTH > cfg.ISSUE_WIDTH)
+      $fatal(1, "ALU_ISSUE_WIDTH must be in 1..ISSUE_WIDTH");
+    if (cfg.ALU_USE_FIFO && (cfg.ALU_FIFO_DEPTH == 0 ||
+        (cfg.ALU_FIFO_DEPTH & (cfg.ALU_FIFO_DEPTH - 1)) != 0))
+      $fatal(1, "ALU_FIFO_DEPTH must be positive power of two");
+    if (cfg.MULT_ISSUE_WIDTH < 1 || cfg.MULT_ISSUE_WIDTH > cfg.ISSUE_WIDTH)
+      $fatal(1, "MULT_ISSUE_WIDTH must be in 1..ISSUE_WIDTH");
+    if (cfg.MULT_USE_FIFO && (cfg.MULT_FIFO_DEPTH == 0 ||
+        (cfg.MULT_FIFO_DEPTH & (cfg.MULT_FIFO_DEPTH - 1)) != 0))
+      $fatal(1, "MULT_FIFO_DEPTH must be positive power of two");
+    if (cfg.DIV_ISSUE_WIDTH < 1 || cfg.DIV_ISSUE_WIDTH > cfg.ISSUE_WIDTH)
+      $fatal(1, "DIV_ISSUE_WIDTH must be in 1..ISSUE_WIDTH");
+    if (cfg.DIV_USE_FIFO && (cfg.DIV_FIFO_DEPTH == 0 ||
+        (cfg.DIV_FIFO_DEPTH & (cfg.DIV_FIFO_DEPTH - 1)) != 0))
+      $fatal(1, "DIV_FIFO_DEPTH must be positive power of two");
+    if (cfg.FPU_ISSUE_WIDTH < 1 || cfg.FPU_ISSUE_WIDTH > cfg.ISSUE_WIDTH)
+      $fatal(1, "FPU_ISSUE_WIDTH must be in 1..ISSUE_WIDTH");
+    if (cfg.FPU_USE_FIFO && (cfg.FPU_FIFO_DEPTH == 0 ||
+        (cfg.FPU_FIFO_DEPTH & (cfg.FPU_FIFO_DEPTH - 1)) != 0))
+      $fatal(1, "FPU_FIFO_DEPTH must be positive power of two");
+    if (cfg.BU_ISSUE_WIDTH < 1 || cfg.BU_ISSUE_WIDTH > cfg.ISSUE_WIDTH)
+      $fatal(1, "BU_ISSUE_WIDTH must be in 1..ISSUE_WIDTH");
+    if (cfg.BU_USE_FIFO && (cfg.BU_FIFO_DEPTH == 0 ||
+        (cfg.BU_FIFO_DEPTH & (cfg.BU_FIFO_DEPTH - 1)) != 0))
+      $fatal(1, "BU_FIFO_DEPTH must be positive power of two");
+    if (cfg.BU_RS_DEPTH == 0 || (cfg.BU_RS_DEPTH & (cfg.BU_RS_DEPTH - 1)) != 0)
+      $fatal(1, "BU_RS_DEPTH must be a positive power of two");
+    if (cfg.LSU_ISSUE_WIDTH < 1 || cfg.LSU_ISSUE_WIDTH > cfg.ISSUE_WIDTH)
+      $fatal(1, "LSU_ISSUE_WIDTH must be in 1..ISSUE_WIDTH");
+    if (cfg.LSU_USE_FIFO && (cfg.LSU_FIFO_DEPTH == 0 ||
+        (cfg.LSU_FIFO_DEPTH & (cfg.LSU_FIFO_DEPTH - 1)) != 0))
+      $fatal(1, "LSU_FIFO_DEPTH must be positive power of two");
     if ($isunknown(cfg)) $fatal(1, "check_build: LEN5 configuration contains unknown bits");
     if (!(cfg.LEN5_MULTIPLE_ISSUES inside {1, 2, 4, 8}))
       $fatal(1, "check_build: LEN5_MULTIPLE_ISSUES must be 1, 2, 4 or 8");

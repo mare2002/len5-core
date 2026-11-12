@@ -6,10 +6,13 @@ test_build_dir=${BUILD_DIR:-"$repo_root/build/arith-rs-multi"}
 cd "$repo_root"
 
 sources=(
+  rtl/vendor/pulp-common-cells/src/cf_math_pkg.sv
+  rtl/vendor/pulp-common-cells/src/lzc.sv
   rtl/packages/util_pkg.sv rtl/packages/len5_config_pkg.sv rtl/packages/len5_pkg.sv
   rtl/packages/instr_pkg.sv rtl/packages/csr_pkg.sv rtl/packages/fetch_pkg.sv rtl/packages/expipe_pkg.sv
   rtl/common/prio_enc.sv rtl/common/prio_enc_multi.sv rtl/common/rr_arbiter.sv
   rtl/common/rr_arbiter_multi.sv
+  rtl/common/rs_alloc_fifo.sv
   rtl/expipe/exec-units/arith_rs.sv rtl/expipe/exec-units/arith_rs_fpu.sv
   tb/expipe/arith_rs_multi_tb.sv
 )

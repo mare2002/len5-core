@@ -17,6 +17,7 @@ rtl/misc/fpu-waivers.vlt rtl/vendor/misc/cvfpu-waivers.vlt
           rtl/common/prio_enc.sv rtl/common/prio_enc_multi.sv rtl/common/rr_arbiter.sv
           rtl/common/rr_arbiter_multi.sv
           rtl/common/spill_cell_flush_cu.sv rtl/common/spill_cell_flush.sv
+          rtl/common/rs_alloc_fifo.sv
           rtl/expipe/exec-units/arith_rs_fpu.sv rtl/expipe/exec-units/fpu_wrapper.sv
           rtl/expipe/exec-units/fpu_unit.sv tb/expipe/fpu_units_multi_tb.sv
 )

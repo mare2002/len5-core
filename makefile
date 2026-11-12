@@ -611,3 +611,11 @@ check-multiple-exec: check-multiple-exec-config check-ex-request-selector check-
 .PHONY: check-multiple-exec-integration
 check-multiple-exec-integration: | .check-fusesoc
 	@python3 scripts/sim/check-multiple-exec-integration.py --simulate --fusesoc "$(FUSESOC)" $(if $(INTEGRATION_CASES),--cases "$(INTEGRATION_CASES)")
+
+.PHONY: check-rs-alloc-fifo
+check-rs-alloc-fifo:
+	@bash scripts/sim/check-rs-alloc-fifo.sh
+
+.PHONY: check-branch-rs-alloc
+check-branch-rs-alloc:
+	@bash scripts/sim/check-branch-rs-alloc.sh

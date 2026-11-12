@@ -17,6 +17,7 @@ filesets:
     - common/fifo_comb_ready.sv
     - common/fifo_nohs.sv
     - common/completion_fifo.sv
+    - common/rs_alloc_fifo.sv
     - common/fifo.sv
     - common/modn_counter.sv
     - common/modn_counter_updown.sv

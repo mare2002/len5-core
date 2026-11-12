@@ -88,6 +88,73 @@ module load_store_unit #(
   input  len5_pkg::except_code_t                            mem_store_except_code_i
 );
 
+  localparam int unsigned IssueWidth = Len5Cfg.LSU_ISSUE_WIDTH;
+
+  logic                                         alloc_lb_valid;
+  logic                                         alloc_sb_valid;
+  logic                                         alloc_lb_ready;
+  logic                                         alloc_sb_ready;
+  expipe_pkg::ldst_width_t                      alloc_type;
+  op_data_t                                     alloc_rs1;
+  op_data_t                                     alloc_rs2;
+  logic                    [len5_pkg::XLEN-1:0] alloc_imm;
+  rob_idx_t                                     alloc_dest_rob_idx;
+  typedef struct packed {
+    logic store;
+    expipe_pkg::ldst_width_t width;
+    logic [len5_pkg::XLEN-1:0] imm;
+    rob_idx_t rob;
+  } alloc_payload_t;
+  alloc_payload_t [IssueWidth-1:0] fifo_payload_in, fifo_payload_out;
+  op_data_t [IssueWidth-1:0][1:0] fifo_operands_in, fifo_operands_out;
+  logic [IssueWidth-1:0] fifo_ready, fifo_valid;
+  logic fifo_pop_ready;
+  for (genvar k = 1; k < IssueWidth; k++) begin : gen_unused_allocation
+    assign fifo_payload_in[k]  = '0;
+    assign fifo_operands_in[k] = '0;
+  end
+  if (IssueWidth > 1) begin : gen_unused_fifo_outputs
+    logic unused_outputs;
+    assign unused_outputs = ^{fifo_payload_out[IssueWidth-1:1], fifo_operands_out[IssueWidth-1:1],
+                              fifo_ready[IssueWidth-1:1], fifo_valid[IssueWidth-1:1]};
+  end
+  assign fifo_payload_in[0] = {issue_sb_valid_i, issue_type_i, issue_imm_i, issue_dest_rob_idx_i};
+  assign fifo_operands_in[0] = {issue_rs2_i, issue_rs1_i};
+  assign {alloc_type, alloc_imm, alloc_dest_rob_idx} = {
+    fifo_payload_out[0].width, fifo_payload_out[0].imm, fifo_payload_out[0].rob
+  };
+  assign {alloc_rs2, alloc_rs1} = fifo_operands_out[0];
+  assign alloc_lb_valid = fifo_valid[0] && !fifo_payload_out[0].store;
+  assign alloc_sb_valid = fifo_valid[0] && fifo_payload_out[0].store;
+  assign fifo_pop_ready = fifo_payload_out[0].store ? alloc_sb_ready : alloc_lb_ready;
+  // In bypass, readiness must not depend on issue valid (which depends on ready).
+  if (Len5Cfg.LSU_USE_FIFO) begin : gen_buffered_ready
+    assign issue_lb_ready_o = fifo_ready[0];
+    assign issue_sb_ready_o = fifo_ready[0];
+  end else begin : gen_direct_ready
+    logic unused_fifo_ready;
+    assign unused_fifo_ready = ^fifo_ready;
+    assign issue_lb_ready_o = alloc_lb_ready && !mis_flush_i;
+    assign issue_sb_ready_o = alloc_sb_ready && !mis_flush_i;
+  end
+  rs_alloc_fifo #(
+    .Len5Cfg(Len5Cfg),
+    .EU     (expipe_pkg::EU_LOAD_BUFFER)
+  ) u_alloc_fifo (
+    .clk_i,
+    .rst_ni,
+    .flush_i   (mis_flush_i),
+    .cdb_valid_i,
+    .cdb_data_i,
+    .valid_i   ({{IssueWidth - 1{1'b0}}, issue_lb_valid_i || issue_sb_valid_i}),
+    .ready_o   (fifo_ready),
+    .valid_o   (fifo_valid),
+    .ready_i   ({{IssueWidth - 1{1'b0}}, fifo_pop_ready}),
+    .payload_i (fifo_payload_in),
+    .payload_o (fifo_payload_out),
+    .operands_i(fifo_operands_in),
+    .operands_o(fifo_operands_out)
+  );
   import len5_config_pkg::*;
   import expipe_pkg::*;
   import len5_pkg::*;
@@ -142,12 +209,12 @@ module load_store_unit #(
     .clk_i                (clk_i),
     .rst_ni               (rst_ni),
     .flush_i              (mis_flush_i),
-    .issue_valid_i        (issue_lb_valid_i),
-    .issue_ready_o        (issue_lb_ready_o),
-    .issue_type_i         (issue_type_i),
-    .issue_rs1_i          (issue_rs1_i),
-    .issue_imm_i          (issue_imm_i),
-    .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
+    .issue_valid_i        (alloc_lb_valid),
+    .issue_ready_o        (alloc_lb_ready),
+    .issue_type_i         (alloc_type),
+    .issue_rs1_i          (alloc_rs1),
+    .issue_imm_i          (alloc_imm),
+    .issue_dest_rob_idx_i (alloc_dest_rob_idx),
     .cdb_valid_i          (cdb_valid_i),
     .cdb_ready_i          (cdb_lb_ready_i),
     .cdb_valid_o          (cdb_lb_valid_o),
@@ -193,13 +260,13 @@ module load_store_unit #(
     .clk_i                (clk_i),
     .rst_ni               (rst_ni),
     .flush_i              (mis_flush_i),
-    .issue_valid_i        (issue_sb_valid_i),
-    .issue_ready_o        (issue_sb_ready_o),
-    .issue_type_i         (issue_type_i),
-    .issue_rs1_i          (issue_rs1_i),
-    .issue_rs2_i          (issue_rs2_i),
-    .issue_imm_i          (issue_imm_i),
-    .issue_dest_rob_idx_i (issue_dest_rob_idx_i),
+    .issue_valid_i        (alloc_sb_valid),
+    .issue_ready_o        (alloc_sb_ready),
+    .issue_type_i         (alloc_type),
+    .issue_rs1_i          (alloc_rs1),
+    .issue_rs2_i          (alloc_rs2),
+    .issue_imm_i          (alloc_imm),
+    .issue_dest_rob_idx_i (alloc_dest_rob_idx),
     .comm_mem_clear_i     (comm_sb_mem_clear_i),
     .comm_mem_idx_o       (comm_sb_mem_idx_o),
     .cdb_valid_i          (cdb_valid_i),

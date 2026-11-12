@@ -66,6 +66,68 @@ module arith_rs_fpu #(
   output rs_idx_t [NUM_UNITS-1:0] eu_rs_idx_o
 );
 
+  // Allocation buffering does not change reservation-station scheduling.
+  localparam int unsigned IssueWidth = Len5Cfg.FPU_ISSUE_WIDTH;
+  logic     [Len5Cfg.ISSUE_WIDTH-1:0]                            fifo_valid;
+  logic     [Len5Cfg.ISSUE_WIDTH-1:0]                            alloc_ready;
+  logic     [Len5Cfg.ISSUE_WIDTH-1:0][           EU_CTL_LEN-1:0] alloc_eu_ctl;
+  logic     [Len5Cfg.ISSUE_WIDTH-1:0][csr_pkg::FCSR_FRM_LEN-1:0] alloc_frm;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0]                            alloc_rs1;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0]                            alloc_rs2;
+  op_data_t [Len5Cfg.ISSUE_WIDTH-1:0]                            alloc_rs3;
+  rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0]                            alloc_dest_rob_idx;
+  typedef struct packed {
+    logic [EU_CTL_LEN-1:0]            issue_eu_ctl;
+    logic [csr_pkg::FCSR_FRM_LEN-1:0] issue_frm;
+    rob_idx_t                         issue_dest_rob_idx;
+  } alloc_payload_t;
+  alloc_payload_t [IssueWidth-1:0] fifo_payload_in, fifo_payload_out;
+  op_data_t [IssueWidth-1:0][3-1:0] fifo_operands_in, fifo_operands_out;
+  for (genvar k = 0; k < IssueWidth; k++) begin : gen_fifo_payload
+    assign fifo_payload_in[k].issue_eu_ctl       = issue_eu_ctl_i[k];
+    assign alloc_eu_ctl[k]                       = fifo_payload_out[k].issue_eu_ctl;
+    assign fifo_payload_in[k].issue_frm          = issue_frm_i[k];
+    assign alloc_frm[k]                          = fifo_payload_out[k].issue_frm;
+    assign fifo_payload_in[k].issue_dest_rob_idx = issue_dest_rob_idx_i[k];
+    assign alloc_dest_rob_idx[k]                 = fifo_payload_out[k].issue_dest_rob_idx;
+    assign fifo_operands_in[k][0]                = issue_rs1_i[k];
+    assign alloc_rs1[k]                          = fifo_operands_out[k][0];
+    assign fifo_operands_in[k][1]                = issue_rs2_i[k];
+    assign alloc_rs2[k]                          = fifo_operands_out[k][1];
+    assign fifo_operands_in[k][2]                = issue_rs3_i[k];
+    assign alloc_rs3[k]                          = fifo_operands_out[k][2];
+  end
+  for (genvar k = IssueWidth; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_unused_allocation
+    logic unused_inputs;
+    assign unused_inputs = ^{issue_dest_rob_idx_i[k], issue_eu_ctl_i[k], issue_frm_i[k], issue_rs1_i[k], issue_rs2_i[k], issue_rs3_i[k], issue_valid_i[k]};
+    assign fifo_valid[k] = '0;
+    assign issue_ready_o[k] = '0;
+    assign alloc_eu_ctl[k] = '0;
+    assign alloc_frm[k] = '0;
+    assign alloc_dest_rob_idx[k] = '0;
+    assign alloc_rs1[k] = '0;
+    assign alloc_rs2[k] = '0;
+    assign alloc_rs3[k] = '0;
+  end
+  rs_alloc_fifo #(
+    .Len5Cfg(Len5Cfg),
+    .EU     (expipe_pkg::EU_FPU)
+  ) u_alloc_fifo (
+    .clk_i,
+    .rst_ni,
+    .flush_i,
+    .cdb_valid_i,
+    .cdb_data_i,
+    .valid_i   (issue_valid_i[IssueWidth-1:0]),
+    .ready_o   (issue_ready_o[IssueWidth-1:0]),
+    .valid_o   (fifo_valid[IssueWidth-1:0]),
+    .ready_i   (alloc_ready[IssueWidth-1:0]),
+    .payload_i (fifo_payload_in),
+    .payload_o (fifo_payload_out),
+    .operands_i(fifo_operands_in),
+    .operands_o(fifo_operands_out)
+  );
+
   import len5_config_pkg::*;
   import len5_pkg::*;
   import expipe_pkg::*;
@@ -173,25 +235,26 @@ module arith_rs_fpu #(
 
   // Control signals
   for (genvar k = 0; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_accept
-    assign issue_accept[k] = issue_valid_i[k] && issue_ready_o[k];
+    assign alloc_ready[k] = k < IssueWidth ? alloc_valid[k] : 1'b0;
+    assign issue_accept[k] = fifo_valid[k] && alloc_ready[k];
   end
 
   // Issue operands already include CDB forwarding; retain any ready value.
   always_comb begin : p_insert_fwd
-    issue_rs1_fwd = issue_rs1_i;
-    issue_rs2_fwd = issue_rs2_i;
-    issue_rs3_fwd = issue_rs3_i;
+    issue_rs1_fwd = alloc_rs1;
+    issue_rs2_fwd = alloc_rs2;
+    issue_rs3_fwd = alloc_rs3;
     foreach (issue_rs1_fwd[k]) begin
       for (int u = 0; u < NUM_UNITS; u++) begin
-        if (!issue_rs1_i[k].ready && completion_valid[u] && completion_rob_idx[u] == issue_rs1_i[k].rob_idx) begin
+        if (!alloc_rs1[k].ready && completion_valid[u] && completion_rob_idx[u] == alloc_rs1[k].rob_idx) begin
           issue_rs1_fwd[k].ready = 1'b1;
           issue_rs1_fwd[k].value = eu_result_i[u];
         end
-        if (!issue_rs2_i[k].ready && completion_valid[u] && completion_rob_idx[u] == issue_rs2_i[k].rob_idx) begin
+        if (!alloc_rs2[k].ready && completion_valid[u] && completion_rob_idx[u] == alloc_rs2[k].rob_idx) begin
           issue_rs2_fwd[k].ready = 1'b1;
           issue_rs2_fwd[k].value = eu_result_i[u];
         end
-        if (!issue_rs3_i[k].ready && completion_valid[u] && completion_rob_idx[u] == issue_rs3_i[k].rob_idx) begin
+        if (!alloc_rs3[k].ready && completion_valid[u] && completion_rob_idx[u] == alloc_rs3[k].rob_idx) begin
           issue_rs3_fwd[k].ready = 1'b1;
           issue_rs3_fwd[k].value = eu_result_i[u];
         end
@@ -212,12 +275,12 @@ module arith_rs_fpu #(
     foreach (new_idx[k]) begin
       if (alloc_valid[k]) begin
         insert[new_idx[k]]              = issue_accept[k];
-        insert_eu_ctl[new_idx[k]]       = issue_eu_ctl_i[k];
-        insert_frm[new_idx[k]]          = issue_frm_i[k];
+        insert_eu_ctl[new_idx[k]]       = alloc_eu_ctl[k];
+        insert_frm[new_idx[k]]          = alloc_frm[k];
         insert_rs1[new_idx[k]]          = issue_rs1_fwd[k];
         insert_rs2[new_idx[k]]          = issue_rs2_fwd[k];
         insert_rs3[new_idx[k]]          = issue_rs3_fwd[k];
-        insert_dest_rob_idx[new_idx[k]] = issue_dest_rob_idx_i[k];
+        insert_dest_rob_idx[new_idx[k]] = alloc_dest_rob_idx[k];
       end
     end
   end
@@ -532,7 +595,6 @@ module arith_rs_fpu #(
   // -----------------
 
   // Issue Stage
-  assign issue_ready_o            = alloc_valid & {Len5Cfg.ISSUE_WIDTH{!flush_i}};
 
   // CDB
   assign cdb_valid_o              = cdb_selected_valid && !flush_i;

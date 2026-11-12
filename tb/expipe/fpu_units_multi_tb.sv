@@ -15,6 +15,11 @@ module fpu_units_multi_tb #(
     len5_user_cfg_t cfg;
     cfg                = DEFAULT_LEN5_USER_CFG;
     cfg.ISSUE_WIDTH    = 8;
+    cfg.ALU_ISSUE_WIDTH = 8;
+    cfg.MULT_ISSUE_WIDTH = 8;
+    cfg.DIV_ISSUE_WIDTH = 8;
+    cfg.FPU_ISSUE_WIDTH = 8;
+
     cfg.ROB_DEPTH      = 64;
     cfg.FPU_RS_DEPTH   = 16;
     cfg.FPU_NUM_UNITS  = NUM_UNITS;

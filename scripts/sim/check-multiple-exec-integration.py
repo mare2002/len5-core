@@ -12,6 +12,10 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 CASES = {
     "default": {},
+    "fifo-mixed": dict(ISSUE_WIDTH=4, ALU_ISSUE_WIDTH=2, MULT_ISSUE_WIDTH=4, BU_ISSUE_WIDTH=2,
+                       ALU_USE_FIFO=1, MULT_USE_FIFO=1, DIV_USE_FIFO=1, FPU_USE_FIFO=1,
+                       BU_USE_FIFO=1, LSU_USE_FIFO=1, ALU_FIFO_DEPTH=4, MULT_FIFO_DEPTH=8,
+                       DIV_FIFO_DEPTH=1, FPU_FIFO_DEPTH=2, BU_FIFO_DEPTH=4, LSU_FIFO_DEPTH=4),
     "alu-mult": dict(ALU_NUM_UNITS=2, MULT_NUM_UNITS=2, ISSUE_WIDTH=4,
                      ALU_RR_ARBITER=0, MULT_RR_ARBITER=0),
     "alu-div": dict(ALU_NUM_UNITS=2, DIV_NUM_UNITS=2, ISSUE_WIDTH=2),

@@ -33,17 +33,17 @@ module branch_unit #(
   output logic                   [len5_pkg::ALEN-1:0] fe_link_addr_o,
 
   // Issue Stage
-  input  logic                                         issue_valid_i,
-  output logic                                         issue_ready_o,
-  input  expipe_pkg::branch_ctl_t                      issue_branch_type_i,
-  input  op_data_t                                     issue_rs1_i,
-  input  op_data_t                                     issue_rs2_i,
-  input  logic                    [len5_pkg::XLEN-1:0] issue_imm_value_i,
-  input  rob_idx_t                                     issue_dest_rob_idx_i,
-  input  logic                    [len5_pkg::XLEN-1:0] issue_curr_pc_i,
-  input  logic                    [len5_pkg::XLEN-1:0] issue_pred_target_i,
-  input  logic                                         issue_pred_taken_i,
-  output logic                                         issue_mis_o,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
+  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
+  input expipe_pkg::branch_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_branch_type_i,
+  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
+  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_imm_value_i,
+  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_curr_pc_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_pred_target_i,
+  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_pred_taken_i,
+  output logic issue_mis_o,
 
   // CDB
   input  logic      cdb_ready_i,

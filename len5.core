@@ -185,6 +185,24 @@ targets:
     - STBUFF_DEPTH
     - LSU_SPILL_SKIP
     - ALU_NUM_UNITS
+    - ALU_USE_FIFO
+    - ALU_FIFO_DEPTH
+    - ALU_ISSUE_WIDTH
+    - MULT_USE_FIFO
+    - MULT_FIFO_DEPTH
+    - MULT_ISSUE_WIDTH
+    - DIV_USE_FIFO
+    - DIV_FIFO_DEPTH
+    - DIV_ISSUE_WIDTH
+    - FPU_USE_FIFO
+    - FPU_FIFO_DEPTH
+    - FPU_ISSUE_WIDTH
+    - BU_USE_FIFO
+    - BU_FIFO_DEPTH
+    - BU_ISSUE_WIDTH
+    - LSU_USE_FIFO
+    - LSU_FIFO_DEPTH
+    - LSU_ISSUE_WIDTH
     - ALU_RS_DEPTH
     - ALU_SPILL_SKIP
     - ALU_RR_ARBITER
@@ -671,3 +689,75 @@ parameters:
   EXIT_ADDR_LO:
     datatype: int
     paramtype: vlogparam
+  ALU_USE_FIFO:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation ALU_USE_FIFO.
+  ALU_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation ALU_FIFO_DEPTH.
+  ALU_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation ALU_ISSUE_WIDTH.
+  MULT_USE_FIFO:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation MULT_USE_FIFO.
+  MULT_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation MULT_FIFO_DEPTH.
+  MULT_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation MULT_ISSUE_WIDTH.
+  DIV_USE_FIFO:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation DIV_USE_FIFO.
+  DIV_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation DIV_FIFO_DEPTH.
+  DIV_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation DIV_ISSUE_WIDTH.
+  FPU_USE_FIFO:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation FPU_USE_FIFO.
+  FPU_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation FPU_FIFO_DEPTH.
+  FPU_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation FPU_ISSUE_WIDTH.
+  BU_USE_FIFO:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation BU_USE_FIFO.
+  BU_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation BU_FIFO_DEPTH.
+  BU_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation BU_ISSUE_WIDTH.
+  LSU_USE_FIFO:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation LSU_USE_FIFO.
+  LSU_FIFO_DEPTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation LSU_FIFO_DEPTH.
+  LSU_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation LSU_ISSUE_WIDTH.

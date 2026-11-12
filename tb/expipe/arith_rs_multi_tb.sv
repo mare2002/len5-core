@@ -17,6 +17,11 @@ module arith_rs_multi_case #(
     len5_user_cfg_t cfg;
     cfg = DEFAULT_LEN5_USER_CFG;
     cfg.ISSUE_WIDTH = 2;
+    cfg.ALU_ISSUE_WIDTH = 2;
+    cfg.MULT_ISSUE_WIDTH = 2;
+    cfg.DIV_ISSUE_WIDTH = 2;
+    cfg.FPU_ISSUE_WIDTH = 2;
+
     cfg.ROB_DEPTH = 64;
     cfg.ALU_RS_DEPTH = 16;
     cfg.FPU_RS_DEPTH = 16;
