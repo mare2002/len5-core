@@ -48,6 +48,7 @@ module l0_cache #(
 
   import len5_config_pkg::*;
   import len5_pkg::*;
+  import expipe_pkg::*;
 
   // INTERNAL SIGNALS
   // ----------------
@@ -90,7 +91,10 @@ module l0_cache #(
 
   // Cached instruction still valid in store buffer
   assign st_hit     = data[ld_idx].valid & st_cached_i &
-                      (st_cached_width_i == ld_width_i) & (st_cached_addr_i == ld_addr_i);
+                      ((st_cached_width_i == S_BYTE && ld_width_i == L_BYTE) ||
+       (st_cached_width_i == S_HALFWORD && ld_width_i == L_HALFWORD) ||
+       (st_cached_width_i == S_WORD && ld_width_i == L_WORD) ||
+       (st_cached_width_i == S_DOUBLEWORD && ld_width_i == L_DOUBLEWORD)) & (st_cached_addr_i == ld_addr_i);
 
   // --------------
   // OUTPUT NETWORK

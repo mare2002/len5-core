@@ -54,10 +54,10 @@ module address_adder #(
   always_comb begin : vaddr_exception
     // Check if the address is naturally aligned according to the type of load/store. If not, an ADDRESS MISALIGNED exception must be raised.
     case (req_i.ls_type)
-      LS_HALFWORD, LS_HALFWORD_U: align_except = (ans.result[0]) ? (1'b1) : (1'b0);
-      LS_WORD, LS_WORD_U:         align_except = (ans.result[1:0] != 2'b00) ? (1'b1) : (1'b0);
-      LS_DOUBLEWORD:              align_except = (ans.result[2:0] != 3'b000) ? (1'b1) : (1'b0);
-      default:                    align_except = 1'b0;
+      L_HALFWORD, L_HALFWORD_U, S_HALFWORD: align_except = (ans.result[0]) ? (1'b1) : (1'b0);
+      L_WORD, L_WORD_U, S_WORD: align_except = (ans.result[1:0] != 2'b00) ? (1'b1) : (1'b0);
+      L_DOUBLEWORD, S_DOUBLEWORD: align_except = (ans.result[2:0] != 3'b000) ? (1'b1) : (1'b0);
+      default: align_except = 1'b0;
     endcase
   end
 

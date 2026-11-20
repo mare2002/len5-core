@@ -29,6 +29,15 @@ def main():
     common = [args.verilator, "--lint-only", "--timing", "--assert", "-Wno-fatal", "-Werror-IMPLICIT", "-Werror-LATCH",
               "-Werror-UNOPTFLAT", "-Werror-MULTIDRIVEN", "-f", str(manifest)]
     cases = [("default", {})]
+    cases.append(("lsu-depth-one", dict(LDBUFF_DEPTH=1, STBUFF_DEPTH=1)))
+    cases.append(("lsu-address-prio", dict(LDBUFF_RR_ARBITER=0)))
+    cases.append(("lsu-address-rr", dict(LDBUFF_RR_ARBITER=1)))
+    cases.append(("lsu-load-wide", dict(ISSUE_WIDTH=8, LSU_ISSUE_WIDTH=8,
+                                        LDBUFF_ISSUE_WIDTH=8, STBUFF_ISSUE_WIDTH=1)))
+    cases.append(("lsu-store-wide", dict(ISSUE_WIDTH=8, LSU_ISSUE_WIDTH=8,
+                                         LDBUFF_ISSUE_WIDTH=1, STBUFF_ISSUE_WIDTH=8)))
+    cases.append(("lsu-split-widths", dict(ISSUE_WIDTH=8, LSU_ISSUE_WIDTH=4,
+                                           LDBUFF_ISSUE_WIDTH=2, STBUFF_ISSUE_WIDTH=1)))
     for rr in (0, 1):
         for count in COUNTS:
             values = dict.fromkeys(FIELDS, count)
@@ -43,7 +52,7 @@ def main():
     for width in (1, 2, 4, 8):
         values = dict(ISSUE_WIDTH=width, ALU_ISSUE_WIDTH=max(1, width // 2),
                       MULT_ISSUE_WIDTH=width, FPU_ISSUE_WIDTH=1, BU_ISSUE_WIDTH=width,
-                      LSU_ISSUE_WIDTH=width)
+                      LSU_ISSUE_WIDTH=width, LDBUFF_ISSUE_WIDTH=width, STBUFF_ISSUE_WIDTH=width)
         for unit in ("ALU", "MULT", "DIV", "FPU", "BU", "LSU"):
             values[unit + "_USE_FIFO"] = 1
             values[unit + "_FIFO_DEPTH"] = 4 if width > 1 else 1
@@ -91,6 +100,34 @@ def main():
             if result.returncode == 0 or diagnostic not in log_path.read_text():
                 raise SystemExit(f"FAIL validation {case}: see {log_path}")
             print(f"PASS rejected {case}", flush=True)
+
+    for field in ("LDBUFF_ISSUE_WIDTH", "STBUFF_ISSUE_WIDTH"):
+        for value in (0, 5):
+            case = f"invalid-{field}-{value}"
+            cmd = [args.fusesoc, "--cores-root=.", "run", "--no-export", "--target=checkbuild",
+                   "--setup", "--build", "--build-root", str(build / case), "polito:len5:len5",
+                   "--ISSUE_WIDTH=4", "--LSU_ISSUE_WIDTH=4", f"--{field}={value}"]
+            log_path = build / (case + ".log")
+            with log_path.open("w") as log:
+                result = subprocess.run(["timeout", "-k", "5s", "60s", *cmd], cwd=ROOT, env=env,
+                                        stdout=log, stderr=subprocess.STDOUT)
+            if result.returncode == 0 or f"{field} must be in 1..LSU_ISSUE_WIDTH" not in log_path.read_text():
+                raise SystemExit(f"FAIL validation {case}: see {log_path}")
+            print(f"PASS rejected {case}", flush=True)
+
+    for field in ("LDBUFF_DEPTH", "STBUFF_DEPTH"):
+        for depth in (0, 3, 6):
+            case = f"invalid-{field}-{depth}"
+            cmd = [args.fusesoc, "--cores-root=.", "run", "--no-export", "--target=checkbuild",
+                   "--setup", "--build", "--build-root", str(build / case), "polito:len5:len5",
+                   f"--{field}={depth}"]
+            log_path = build / (case + ".log")
+            with log_path.open("w") as log:
+                result = subprocess.run(["timeout", "-k", "5s", "60s", *cmd], cwd=ROOT, env=env,
+                                        stdout=log, stderr=subprocess.STDOUT)
+            if result.returncode == 0 or f"{field} must be a positive power of two" not in log_path.read_text():
+                raise SystemExit(f"FAIL validation {case}: see {log_path}")
+            print(f"PASS rejected {field}={depth}", flush=True)
 
 
 if __name__ == "__main__":

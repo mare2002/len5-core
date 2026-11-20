@@ -314,7 +314,9 @@ module rob #(
   assign cdb_ready_o = 1'b1;
 
   // Store buffer
-  assign sb_mem_clear_o    = data_valid[sb_mem_idx_i] & (data[sb_mem_idx_i].mem_clear | clear_idx == sb_mem_idx_i);
+  // A write may fault in its memory response. Authorize only the ROB head,
+  // after every older instruction has retired, to keep such faults precise.
+  assign sb_mem_clear_o = data_valid[sb_mem_idx_i] && sb_mem_idx_i == head_idx;
 
   // Commit stage
   assign comm_valid_o = commit_valid;

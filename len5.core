@@ -184,6 +184,7 @@ targets:
     - LDBUFF_DEPTH
     - STBUFF_DEPTH
     - LSU_SPILL_SKIP
+    - LDBUFF_RR_ARBITER
     - ALU_NUM_UNITS
     - ALU_USE_FIFO
     - ALU_FIFO_DEPTH
@@ -203,6 +204,8 @@ targets:
     - LSU_USE_FIFO
     - LSU_FIFO_DEPTH
     - LSU_ISSUE_WIDTH
+    - LDBUFF_ISSUE_WIDTH
+    - STBUFF_ISSUE_WIDTH
     - ALU_RS_DEPTH
     - ALU_SPILL_SKIP
     - ALU_RR_ARBITER
@@ -533,6 +536,10 @@ parameters:
     datatype: int
     paramtype: vlogparam
     description: Elaboration override for LSU_SPILL_SKIP.
+  LDBUFF_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LDBUFF_RR_ARBITER.
   ALU_NUM_UNITS:
     datatype: int
     default: 1
@@ -761,3 +768,11 @@ parameters:
     datatype: int
     paramtype: vlogparam
     description: RS allocation LSU_ISSUE_WIDTH.
+  LDBUFF_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation LDBUFF_ISSUE_WIDTH.
+  STBUFF_ISSUE_WIDTH:
+    datatype: int
+    paramtype: vlogparam
+    description: RS allocation STBUFF_ISSUE_WIDTH.

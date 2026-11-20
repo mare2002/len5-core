@@ -48,6 +48,7 @@ targets:
     - LDBUFF_DEPTH
     - STBUFF_DEPTH
     - LSU_SPILL_SKIP
+    - LDBUFF_RR_ARBITER
     - ALU_NUM_UNITS
     - ALU_RS_DEPTH
     - ALU_SPILL_SKIP
@@ -205,6 +206,10 @@ parameters:
     datatype: int
     paramtype: vlogparam
     description: Elaboration override for LSU_SPILL_SKIP.
+  LDBUFF_RR_ARBITER:
+    datatype: int
+    paramtype: vlogparam
+    description: Elaboration override for LDBUFF_RR_ARBITER.
   ALU_NUM_UNITS:
     datatype: int
     default: 1

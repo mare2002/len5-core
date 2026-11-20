@@ -65,6 +65,7 @@ lint_off -rule PINCONNECTEMPTY -file "*/arith_rs_fpu.sv" -match "Instance pin co
 lint_off -rule PINCONNECTEMPTY -file "*/branch_rs.sv" -match "Instance pin connected by name with empty reference: 'tc_o'"
 lint_off -rule PINCONNECTEMPTY -file "*/op_only_rs.sv" -match "Instance pin connected by name with empty reference: 'tc_o'"
 lint_off -rule PINCONNECTEMPTY -file "*/load_buffer.sv" -match "Instance pin connected by name with empty reference: 'tc_o'"
+lint_off -rule PINCONNECTEMPTY -file "*/load_buffer.sv" -match "Instance pin connected by name with empty reference: 'ready_o'"
 lint_off -rule PINCONNECTEMPTY -file "*/store_buffer.sv" -match "Instance pin connected by name with empty reference: 'tc_o'"
 lint_off -rule PINCONNECTEMPTY -file "*/int_regstat.sv" -match "Instance pin connected by name with empty reference: 'tc_o'"
 lint_off -rule PINCONNECTEMPTY -file "*/fp_regstat.sv" -match "Instance pin connected by name with empty reference: 'tc_o'"

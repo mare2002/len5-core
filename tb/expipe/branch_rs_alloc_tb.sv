@@ -19,7 +19,7 @@ module branch_rs_alloc_case #(parameter bit USE_FIFO = 0)(input logic clk, outpu
   operand_t [3:0] rs1, rs2;
   tag_t [3:0] tags;
   logic [3:0][63:0] pcs;
-  expipe_pkg::branch_ctl_t [3:0] controls;
+  expipe_pkg::eu_ctl_t [3:0] controls;
   logic cdb_valid, cdb_out_valid, cdb_ready;
   cdb_t cdb, result;
   logic execute_valid, execute_ready, result_ready;
@@ -29,7 +29,7 @@ module branch_rs_alloc_case #(parameter bit USE_FIFO = 0)(input logic clk, outpu
   int next_tag = 1, multi = 0, blocked = 0, retired = 0;
   branch_rs #(.Len5Cfg(Cfg)) dut (
     .clk_i(clk), .rst_ni(rst_n), .flush_i(flush), .issue_valid_i(valid_in), .issue_ready_o(ready_out),
-    .issue_branch_type_i(controls), .issue_rs1_i(rs1), .issue_rs2_i(rs2),
+    .issue_eu_ctl_i(controls), .issue_rs1_i(rs1), .issue_rs2_i(rs2),
     .issue_imm_value_i('0), .issue_dest_rob_idx_i(tags), .issue_curr_pc_i(pcs),
     .issue_pred_target_i('0), .issue_pred_taken_i('0),
     .cdb_ready_i(cdb_ready), .cdb_valid_i(cdb_valid), .cdb_valid_o(cdb_out_valid), .cdb_data_i(cdb), .cdb_data_o(result),

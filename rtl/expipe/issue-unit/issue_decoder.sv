@@ -404,64 +404,64 @@ module issue_decoder #(
       end
       LB: begin
         issue_type  = ISSUE_TYPE_INT;
-        assigned_eu = EU_LOAD_BUFFER;
-        eu_ctl.lsu  = LS_BYTE;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = L_BYTE;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
       LBU: begin
         issue_type  = ISSUE_TYPE_INT;
-        assigned_eu = EU_LOAD_BUFFER;
-        eu_ctl.lsu  = LS_BYTE_U;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = L_BYTE_U;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
       LH: begin
         issue_type  = ISSUE_TYPE_INT;
-        assigned_eu = EU_LOAD_BUFFER;
-        eu_ctl.lsu  = LS_HALFWORD;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = L_HALFWORD;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
       LHU: begin
         issue_type  = ISSUE_TYPE_INT;
-        assigned_eu = EU_LOAD_BUFFER;
-        eu_ctl.lsu  = LS_HALFWORD_U;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = L_HALFWORD_U;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
       LW: begin
         issue_type  = ISSUE_TYPE_INT;
-        assigned_eu = EU_LOAD_BUFFER;
-        eu_ctl.lsu  = LS_WORD;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = L_WORD;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
       LWU: begin
         issue_type  = ISSUE_TYPE_INT;
-        assigned_eu = EU_LOAD_BUFFER;
-        eu_ctl.lsu  = LS_WORD_U;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = L_WORD_U;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
       LD: begin
         issue_type  = ISSUE_TYPE_INT;
-        assigned_eu = EU_LOAD_BUFFER;
-        eu_ctl.lsu  = LS_DOUBLEWORD;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = L_DOUBLEWORD;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
       SB: begin
         issue_type  = ISSUE_TYPE_STORE;
-        assigned_eu = EU_STORE_BUFFER;
-        eu_ctl.lsu  = LS_BYTE;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = S_BYTE;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
@@ -470,8 +470,8 @@ module issue_decoder #(
       end
       SH: begin
         issue_type  = ISSUE_TYPE_STORE;
-        assigned_eu = EU_STORE_BUFFER;
-        eu_ctl.lsu  = LS_HALFWORD;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = S_HALFWORD;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
@@ -480,8 +480,8 @@ module issue_decoder #(
       end
       SW: begin
         issue_type  = ISSUE_TYPE_STORE;
-        assigned_eu = EU_STORE_BUFFER;
-        eu_ctl.lsu  = LS_WORD;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = S_WORD;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
@@ -490,8 +490,8 @@ module issue_decoder #(
       end
       SD: begin
         issue_type  = ISSUE_TYPE_STORE;
-        assigned_eu = EU_STORE_BUFFER;
-        eu_ctl.lsu  = LS_DOUBLEWORD;
+        assigned_eu = EU_LSU;
+        eu_ctl.lsu  = S_DOUBLEWORD;
         mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
@@ -760,8 +760,8 @@ module issue_decoder #(
       FLW: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
-          assigned_eu = EU_LOAD_BUFFER;
-          eu_ctl.lsu  = LS_WORD;
+          assigned_eu = EU_LSU;
+          eu_ctl.lsu  = L_WORD;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           imm_format  = IMM_TYPE_I;
@@ -774,8 +774,8 @@ module issue_decoder #(
       FSW: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_STORE;
-          assigned_eu = EU_STORE_BUFFER;
-          eu_ctl.lsu  = LS_WORD;
+          assigned_eu = EU_LSU;
+          eu_ctl.lsu  = S_WORD;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           rs2_sel     = RS2_SEL_FP;
@@ -1176,8 +1176,8 @@ module issue_decoder #(
       FLD: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_FP;
-          assigned_eu = EU_LOAD_BUFFER;
-          eu_ctl.lsu  = LS_DOUBLEWORD;
+          assigned_eu = EU_LSU;
+          eu_ctl.lsu  = L_DOUBLEWORD;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           imm_format  = IMM_TYPE_I;
@@ -1190,8 +1190,8 @@ module issue_decoder #(
       FSD: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
           issue_type  = ISSUE_TYPE_STORE;
-          assigned_eu = EU_STORE_BUFFER;
-          eu_ctl.lsu  = LS_DOUBLEWORD;
+          assigned_eu = EU_LSU;
+          eu_ctl.lsu  = S_DOUBLEWORD;
           mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           rs2_sel     = RS2_SEL_FP;
@@ -1666,7 +1666,9 @@ module issue_decoder #(
   assign except_code_o = except_code;
   assign assigned_eu_o = assigned_eu;
   assign eu_ctl_o = eu_ctl;
-  assign mem_crit_o = mem_crit;
+  // Memory responses may fault: younger instructions cannot retire past an
+  // unfinished load or store, even when their own results are ready.
+  assign mem_crit_o = mem_crit || (assigned_eu == EU_LSU);
   assign order_crit_o = order_crit;
   assign rs1_sel_o = rs1_sel;
   assign rs2_sel_o = rs2_sel;

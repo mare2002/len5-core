@@ -137,7 +137,8 @@ module axi_sim_adapter #(
   assign cpu_reset         = !rst_ni;
   assign cpu_active        = rst_ni && initialized_i;
   assign instr_active      = rst_ni && initialized_i;
-  assign store_cancel      = data_flush_i || cpu_reset;
+  // Accepted writes are non-cancelable; the SQ retains their completion across flush.
+  assign store_cancel      = cpu_reset;
   assign fetch_bundle_addr = N == 1 ? instr_addr_i : instr_addr_i & ~64'(N * 4 - 1);
   assign fetch_misaligned  = instr_addr_i[1:0] != 0;
   for (genvar lane = 0; lane < N; lane++) begin : gen_instruction_checks
@@ -358,7 +359,7 @@ module axi_sim_adapter #(
   assign store_w_fire = store_w_valid_q && dmem_rsp_i[1].w_ready;
   assign store_b_fire = dmem_rsp_i[1].b_valid && dmem_req_o[1].b_ready;
   assign mmio_write_o = store_accepted && store_we_i && store_mmio;
-  assign response_o.store_valid = cpu_active && !data_flush_i && store_response_valid_q;
+  assign response_o.store_valid = cpu_active && store_response_valid_q;
   assign store_response_fire = response_o.store_valid && store_ready_i;
   assign {response_o.store_tag, response_o.store_except, response_o.store_code} = {
     store_response_q.tag, store_response_q.except, store_response_q.code
@@ -443,7 +444,7 @@ module axi_sim_adapter #(
   assign occupancy_o[0] = '0;
   assign occupancy_o[1] = COUNT_WIDTH'(load_response_valid_q);
   assign occupancy_o[2] = COUNT_WIDTH'(store_response_valid_q);
-  wire unused_decode = &{1'b0, fetch_mmio, load_mmio,
+  wire unused_decode = &{1'b0, data_flush_i, fetch_mmio, load_mmio,
                          imem_rsp_i, fetch_sram, store_response_q.data};
 
   initial begin : check_configuration

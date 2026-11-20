@@ -26,16 +26,16 @@ module branch_rs #(
   input logic flush_i,
 
   // Issue Stage
-  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_valid_i,
-  output logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_ready_o,
-  input expipe_pkg::branch_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_branch_type_i,
-  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs1_i,
-  input op_data_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_rs2_i,
-  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_imm_value_i,
-  input rob_idx_t [Len5Cfg.ISSUE_WIDTH-1:0] issue_dest_rob_idx_i,
-  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_curr_pc_i,
-  input logic [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_pred_target_i,
-  input logic [Len5Cfg.ISSUE_WIDTH-1:0] issue_pred_taken_i,
+  input  logic                [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_valid_i,
+  output logic                [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_ready_o,
+  input  expipe_pkg::eu_ctl_t [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_eu_ctl_i,
+  input  op_data_t            [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs1_i,
+  input  op_data_t            [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_rs2_i,
+  input  logic                [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_imm_value_i,
+  input  rob_idx_t            [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_dest_rob_idx_i,
+  input  logic                [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_curr_pc_i,
+  input  logic                [Len5Cfg.ISSUE_WIDTH-1:0][len5_pkg::XLEN-1:0] issue_pred_target_i,
+  input  logic                [Len5Cfg.ISSUE_WIDTH-1:0]                     issue_pred_taken_i,
 
   // Common Data Bus (CDB)
   input  logic      cdb_ready_i,
@@ -86,7 +86,7 @@ module branch_rs #(
   alloc_payload_t [IssueWidth-1:0] fifo_payload_in, fifo_payload_out;
   op_data_t [IssueWidth-1:0][2-1:0] fifo_operands_in, fifo_operands_out;
   for (genvar k = 0; k < IssueWidth; k++) begin : gen_fifo_payload
-    assign fifo_payload_in[k].issue_branch_type  = issue_branch_type_i[k];
+    assign fifo_payload_in[k].issue_branch_type  = issue_eu_ctl_i[k].bu;
     assign alloc_branch_type[k]                  = fifo_payload_out[k].issue_branch_type;
     assign fifo_payload_in[k].issue_imm_value    = issue_imm_value_i[k];
     assign alloc_imm_value[k]                    = fifo_payload_out[k].issue_imm_value;
@@ -105,7 +105,7 @@ module branch_rs #(
   end
   for (genvar k = IssueWidth; k < Len5Cfg.ISSUE_WIDTH; k++) begin : gen_unused_allocation
     logic unused_inputs;
-    assign unused_inputs = ^{issue_branch_type_i[k], issue_curr_pc_i[k], issue_dest_rob_idx_i[k],
+    assign unused_inputs = ^{issue_eu_ctl_i[k], issue_curr_pc_i[k], issue_dest_rob_idx_i[k],
                               issue_imm_value_i[k], issue_pred_taken_i[k], issue_pred_target_i[k],
                               issue_rs1_i[k], issue_rs2_i[k], issue_valid_i[k]};
     assign alloc_valid[k] = '0;
@@ -192,7 +192,7 @@ module branch_rs #(
   // Branch reservation station data
   bu_data_t data[DEPTH];
   bu_state_t curr_state[DEPTH], next_state[DEPTH];
-
+// %TODO Rewrite when doing the branch predition
   // Reservation station control
   logic pop, ex_accepted, save_res;
   logic        [DEPTH-1:0] insert;

@@ -27,6 +27,8 @@ module load_store_killed_tb #(
     parameter bit LSU_USE_FIFO = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_USE_FIFO,
     parameter int unsigned LSU_FIFO_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_FIFO_DEPTH,
     parameter int unsigned LSU_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_ISSUE_WIDTH,
+    parameter int unsigned LDBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_ISSUE_WIDTH,
+    parameter int unsigned STBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_ISSUE_WIDTH,
     parameter bit LEN5_M_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_M_EN,
     parameter bit LEN5_DIV_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_DIV_EN,
     parameter bit LEN5_F_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_F_EN,
@@ -52,6 +54,7 @@ module load_store_killed_tb #(
     parameter int unsigned LDBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_DEPTH,
     parameter int unsigned STBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_DEPTH,
     parameter bit LSU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_SPILL_SKIP,
+    parameter bit LDBUFF_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_RR_ARBITER,
     parameter int unsigned ALU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_NUM_UNITS,
     parameter int unsigned ALU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RS_DEPTH,
     parameter bit ALU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_SPILL_SKIP,
@@ -99,6 +102,8 @@ module load_store_killed_tb #(
             LSU_USE_FIFO: LSU_USE_FIFO,
             LSU_FIFO_DEPTH: LSU_FIFO_DEPTH,
             LSU_ISSUE_WIDTH: LSU_ISSUE_WIDTH,
+            LDBUFF_ISSUE_WIDTH: LDBUFF_ISSUE_WIDTH,
+            STBUFF_ISSUE_WIDTH: STBUFF_ISSUE_WIDTH,
             LEN5_M_EN: LEN5_M_EN,
             LEN5_DIV_EN: LEN5_DIV_EN,
             LEN5_F_EN: LEN5_F_EN,
@@ -122,6 +127,7 @@ module load_store_killed_tb #(
             LDBUFF_DEPTH: LDBUFF_DEPTH,
             STBUFF_DEPTH: STBUFF_DEPTH,
             LSU_SPILL_SKIP: LSU_SPILL_SKIP,
+            LDBUFF_RR_ARBITER: LDBUFF_RR_ARBITER,
             ALU_NUM_UNITS: ALU_NUM_UNITS,
             ALU_RS_DEPTH: ALU_RS_DEPTH,
             ALU_SPILL_SKIP: ALU_SPILL_SKIP,
@@ -162,8 +168,8 @@ module load_store_killed_tb #(
   /* verilator lint_off SYNCASYNCNET */
   logic rst_n = 0, flush = 0;
   /* verilator lint_on SYNCASYNCNET */
-  logic issue_load = 0, issue_store = 0, load_ready, store_ready;
-  ldst_width_t issue_type = LS_DOUBLEWORD;
+  logic issue_load = 0, issue_store = 0, load_ready, store_ready, issue_ready;
+  eu_ctl_t issue_ctl = '{lsu: L_DOUBLEWORD};
   op_data_t rs1, rs2;
   rob_idx_t issue_idx = 0;
   logic     broadcast_valid = 0;
@@ -178,6 +184,9 @@ module load_store_killed_tb #(
   logic [7:0] store_be;
   logic [Len5Cfg.BUFF_IDX_LEN-1:0] store_tag, store_rsp_tag;
 
+  assign load_ready = issue_ready;
+  assign store_ready = issue_ready;
+
   load_store_unit #(
       .Len5Cfg(Len5Cfg)
   ) dut (
@@ -185,11 +194,9 @@ module load_store_killed_tb #(
       .rst_ni                   (rst_n),
       .mis_flush_i              (flush),
       .except_flush_i           (flush),
-      .issue_lb_valid_i         (issue_load),
-      .issue_sb_valid_i         (issue_store),
-      .issue_lb_ready_o         (load_ready),
-      .issue_sb_ready_o         (store_ready),
-      .issue_type_i             (issue_type),
+      .issue_valid_i            (issue_load || issue_store),
+      .issue_ready_o            (issue_ready),
+      .issue_eu_ctl_i           (issue_ctl),
       .issue_rs1_i              (rs1),
       .issue_rs2_i              (rs2),
       .issue_imm_i              (64'b0),
@@ -288,6 +295,7 @@ module load_store_killed_tb #(
     flush       = 0;
     issue_load  = 0;
     issue_store = 0;
+    issue_ctl.lsu  = L_DOUBLEWORD;
     load_rsp    = 0;
     load_gnt    = 1;
     store_gnt   = 1;
@@ -298,7 +306,7 @@ module load_store_killed_tb #(
   task automatic issue(bit is_load, int destination, logic [63:0] value);
     rs1                   = '{ready: 1'b1, rob_idx: '0, value: 64'h1000 + 64'(destination * 8)};
     rs2                   = '{ready: 1'b1, rob_idx: '0, value: 64'hfedcba9876543210};
-    issue_type            = LS_DOUBLEWORD;
+    issue_ctl.lsu            = is_load ? L_DOUBLEWORD : S_DOUBLEWORD;
     issue_idx             = rob_idx_t'(destination);
     expected[destination] = value;
     seen[destination]     = 0;

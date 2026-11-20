@@ -13,13 +13,7 @@
 // Author: Michele Caon
 // Date: 15/07/2022
 
-/**
- * @brief   Bare-metal load-store unit.
- *
- * @details This module contains the load and store buffers, and to each is
- *          associated an adder tpcompute the target memory address.
- *          It is meant to be directly attached to a memory
- */
+// Ordered multi-issue allocation and the existing memory/completion channels.
 module load_store_unit #(
   parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG,
   localparam type rob_idx_t = `LEN5_ROB_IDX_T(Len5Cfg),
@@ -27,30 +21,32 @@ module load_store_unit #(
   localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
   localparam type adder_req_t = `LEN5_ADDER_REQ_T(Len5Cfg),
   localparam type adder_ans_t = `LEN5_ADDER_ANS_T(Len5Cfg),
-  localparam int unsigned LB_DEPTH = Len5Cfg.LDBUFF_DEPTH,
-  localparam int unsigned SB_DEPTH = Len5Cfg.STBUFF_DEPTH
+  localparam int unsigned IW = Len5Cfg.ISSUE_WIDTH,
+  localparam int unsigned WIDTH = Len5Cfg.LSU_ISSUE_WIDTH,
+  localparam int unsigned LB_WIDTH = Len5Cfg.LDBUFF_ISSUE_WIDTH,
+  localparam int unsigned SB_WIDTH = Len5Cfg.STBUFF_ISSUE_WIDTH,
+  localparam int unsigned SB_DEPTH = Len5Cfg.STBUFF_DEPTH,
+  localparam int unsigned SqIdxW = SB_DEPTH > 1 ? $clog2(SB_DEPTH) : 1
 ) (
   input logic clk_i,
   input logic rst_ni,
   input logic mis_flush_i,
   input logic except_flush_i,
 
-  /* Issue stage */
-  input  logic                                         issue_lb_valid_i,
-  input  logic                                         issue_sb_valid_i,
-  output logic                                         issue_lb_ready_o,
-  output logic                                         issue_sb_ready_o,
-  input  expipe_pkg::ldst_width_t                      issue_type_i,         // byte, halfword, ...
-  input  op_data_t                                     issue_rs1_i,          // base address
-  input  op_data_t                                     issue_rs2_i,          // data to store
-  input  logic                    [len5_pkg::XLEN-1:0] issue_imm_i,          // offset
-  input  rob_idx_t                                     issue_dest_rob_idx_i,
+  // Issue_stage
+  input  logic                [IW-1:0]                     issue_valid_i,
+  output logic                [IW-1:0]                     issue_ready_o,
+  input  expipe_pkg::eu_ctl_t [IW-1:0]                     issue_eu_ctl_i,
+  input  op_data_t            [IW-1:0]                     issue_rs1_i,
+  input  op_data_t            [IW-1:0]                     issue_rs2_i,
+  input  logic                [IW-1:0][len5_pkg::XLEN-1:0] issue_imm_i,
+  input  rob_idx_t            [IW-1:0]                     issue_dest_rob_idx_i,
 
-  /* Commit stage */
+  // Commit_stage
   input  logic     comm_sb_mem_clear_i,
   output rob_idx_t comm_sb_mem_idx_o,
 
-  /* Common data bus (CDB) */
+  // CDB
   input  logic      cdb_valid_i,
   input  logic      cdb_lb_ready_i,
   input  logic      cdb_sb_ready_i,
@@ -60,7 +56,7 @@ module load_store_unit #(
   output cdb_data_t cdb_lb_data_o,
   output cdb_data_t cdb_sb_data_o,
 
-  /* Memory system */
+  // Memory_system (loads)
   output logic                                              mem_load_valid_o,
   input  logic                                              mem_load_ready_i,
   input  logic                                              mem_load_valid_i,
@@ -74,6 +70,8 @@ module load_store_unit #(
   input  logic                                              mem_load_except_raised_i,
   input  len5_pkg::except_code_t                            mem_load_except_code_i,
 
+
+  // Memory_system (stores)
   output logic                                              mem_store_valid_o,
   input  logic                                              mem_store_ready_i,
   input  logic                                              mem_store_valid_i,
@@ -88,114 +86,198 @@ module load_store_unit #(
   input  len5_pkg::except_code_t                            mem_store_except_code_i
 );
 
-  localparam int unsigned IssueWidth = Len5Cfg.LSU_ISSUE_WIDTH;
+  import len5_pkg::*;
+  import expipe_pkg::*;
 
-  logic                                         alloc_lb_valid;
-  logic                                         alloc_sb_valid;
-  logic                                         alloc_lb_ready;
-  logic                                         alloc_sb_ready;
-  expipe_pkg::ldst_width_t                      alloc_type;
-  op_data_t                                     alloc_rs1;
-  op_data_t                                     alloc_rs2;
-  logic                    [len5_pkg::XLEN-1:0] alloc_imm;
-  rob_idx_t                                     alloc_dest_rob_idx;
+  // ----------
+  // DATA TYPES
+  // ----------
+  // Allocation FIFO payload
   typedef struct packed {
-    logic store;
-    expipe_pkg::ldst_width_t width;
-    logic [len5_pkg::XLEN-1:0] imm;
+    ldst_width_t width;
+    logic [XLEN-1:0] imm;
     rob_idx_t rob;
-  } alloc_payload_t;
-  alloc_payload_t [IssueWidth-1:0] fifo_payload_in, fifo_payload_out;
-  op_data_t [IssueWidth-1:0][1:0] fifo_operands_in, fifo_operands_out;
-  logic [IssueWidth-1:0] fifo_ready, fifo_valid;
-  logic fifo_pop_ready;
-  for (genvar k = 1; k < IssueWidth; k++) begin : gen_unused_allocation
-    assign fifo_payload_in[k]  = '0;
-    assign fifo_operands_in[k] = '0;
+  } payload_t;
+
+  // ----------------
+  // INTERNAL SIGNALS
+  // ----------------
+  // Allocation FIFO data, operands, and handshakes
+  payload_t [WIDTH-1:0] fifo_payload_in, fifo_payload_out;
+  op_data_t [WIDTH-1:0][1:0] fifo_operands_in, fifo_operands_out;
+  logic [WIDTH-1:0] fifo_push, fifo_ready, fifo_valid, fifo_pop_ready;
+
+  // One-hot routing from the mixed stream to each buffer's allocation lanes
+  localparam int unsigned LoadBuffer = 0;
+  localparam int unsigned StoreBuffer = 1;
+  logic [1:0][WIDTH-1:0] queue_valid, queue_ready, mapped_ready;
+  logic [1:0][WIDTH-1:0][WIDTH:0] request_channel;
+  payload_t [1:0][WIDTH-1:0] queue_payload;
+  op_data_t [1:0][WIDTH-1:0][1:0] queue_operands;
+  logic [WIDTH-1:0] lane_ready;
+  logic [LB_WIDTH-1:0] lb_ready;
+  logic [SB_WIDTH-1:0] sb_ready;
+  ldst_width_t [LB_WIDTH-1:0] lb_type;
+  ldst_width_t [SB_WIDTH-1:0] sb_type;
+  op_data_t [LB_WIDTH-1:0] lb_rs1;
+  op_data_t [SB_WIDTH-1:0] sb_rs1, sb_rs2;
+  logic [LB_WIDTH-1:0][XLEN-1:0] lb_imm;
+  logic [SB_WIDTH-1:0][XLEN-1:0] sb_imm;
+  rob_idx_t [LB_WIDTH-1:0] lb_rob;
+  rob_idx_t [SB_WIDTH-1:0] sb_rob;
+
+  // Exclusive SQ boundaries captured for newly allocated loads
+  logic [WIDTH-1:0][SqIdxW-1:0] load_sq_tail;
+  logic [WIDTH-1:0]            older_stores_remain;
+  logic [SB_WIDTH:0][SqIdxW-1:0] issue_sq_tail;
+  logic [SB_WIDTH:0] issue_older_stores_remain;
+  logic [WIDTH-1:0][SqIdxW-1:0] lane_sq_tail;
+  logic [WIDTH-1:0] lane_older_stores_remain;
+
+  // Load_buffer <--> Store_buffer
+  logic [SqIdxW-1:0] sq_head;
+  logic sq_removed;
+  logic [SB_DEPTH-1:0] sq_addr_ready, sq_data_ready;
+  logic [SB_DEPTH-1:0][XLEN-1:0] sq_addr, sq_data;
+  ldst_width_t [SB_DEPTH-1:0] sq_type;
+
+  // Load/store buffers <--> Address_adder
+  logic lb_adder_valid, sb_adder_valid, lb_adder_ready, sb_adder_ready;
+  logic adder_lb_valid, adder_sb_valid, adder_lb_ready, adder_sb_ready;
+  adder_req_t lb_adder_req, sb_adder_req;
+  adder_ans_t adder_lb_ans, adder_sb_ans;
+
+  // Combined misprediction and exception flush
+  logic flush;
+
+  assign flush = mis_flush_i || except_flush_i;
+
+  // ---------------------
+  // ALLOCATION FIFO INPUT
+  // ---------------------
+  // The operation identifies each candidate independently of its valid/ready handshake.
+  for (genvar k = 0; k < IW; k++) begin : gen_input
+    if (k < WIDTH) begin : gen_active
+      assign fifo_push[k]       = issue_valid_i[k];
+      assign fifo_payload_in[k] = {issue_eu_ctl_i[k].lsu, issue_imm_i[k], issue_dest_rob_idx_i[k]};
+      assign issue_ready_o[k]   = fifo_ready[k] && !flush;
+      always_comb begin
+        fifo_operands_in[k] = {issue_rs2_i[k], issue_rs1_i[k]};
+        for (int op = 0; op < 2; op++) begin
+          if (!fifo_operands_in[k][op].ready && cdb_valid_i &&
+              fifo_operands_in[k][op].rob_idx == cdb_data_i.rob_idx) begin
+            fifo_operands_in[k][op].ready = 1'b1;
+            fifo_operands_in[k][op].value = cdb_data_i.res_value;
+          end
+        end
+      end
+    end else begin : gen_unused
+      assign issue_ready_o[k] = 1'b0;
+    end
   end
-  if (IssueWidth > 1) begin : gen_unused_fifo_outputs
-    logic unused_outputs;
-    assign unused_outputs = ^{fifo_payload_out[IssueWidth-1:1], fifo_operands_out[IssueWidth-1:1],
-                              fifo_ready[IssueWidth-1:1], fifo_valid[IssueWidth-1:1]};
-  end
-  assign fifo_payload_in[0] = {issue_sb_valid_i, issue_type_i, issue_imm_i, issue_dest_rob_idx_i};
-  assign fifo_operands_in[0] = {issue_rs2_i, issue_rs1_i};
-  assign {alloc_type, alloc_imm, alloc_dest_rob_idx} = {
-    fifo_payload_out[0].width, fifo_payload_out[0].imm, fifo_payload_out[0].rob
-  };
-  assign {alloc_rs2, alloc_rs1} = fifo_operands_out[0];
-  assign alloc_lb_valid = fifo_valid[0] && !fifo_payload_out[0].store;
-  assign alloc_sb_valid = fifo_valid[0] && fifo_payload_out[0].store;
-  assign fifo_pop_ready = fifo_payload_out[0].store ? alloc_sb_ready : alloc_lb_ready;
-  // In bypass, readiness must not depend on issue valid (which depends on ready).
-  if (Len5Cfg.LSU_USE_FIFO) begin : gen_buffered_ready
-    assign issue_lb_ready_o = fifo_ready[0];
-    assign issue_sb_ready_o = fifo_ready[0];
-  end else begin : gen_direct_ready
-    logic unused_fifo_ready;
-    assign unused_fifo_ready = ^fifo_ready;
-    assign issue_lb_ready_o = alloc_lb_ready && !mis_flush_i;
-    assign issue_sb_ready_o = alloc_sb_ready && !mis_flush_i;
-  end
+
   rs_alloc_fifo #(
     .Len5Cfg(Len5Cfg),
-    .EU     (expipe_pkg::EU_LOAD_BUFFER)
+    .EU     (EU_LSU)
   ) u_alloc_fifo (
     .clk_i,
     .rst_ni,
-    .flush_i   (mis_flush_i),
+    .flush_i   (flush),
     .cdb_valid_i,
     .cdb_data_i,
-    .valid_i   ({{IssueWidth - 1{1'b0}}, issue_lb_valid_i || issue_sb_valid_i}),
+    .valid_i   (fifo_push),
     .ready_o   (fifo_ready),
     .valid_o   (fifo_valid),
-    .ready_i   ({{IssueWidth - 1{1'b0}}, fifo_pop_ready}),
+    .ready_i   (fifo_pop_ready),
     .payload_i (fifo_payload_in),
     .payload_o (fifo_payload_out),
     .operands_i(fifo_operands_in),
     .operands_o(fifo_operands_out)
   );
-  import len5_config_pkg::*;
-  import expipe_pkg::*;
-  import len5_pkg::*;
-  import memory_pkg::*;
 
-  // PARAMETERS
-  localparam int unsigned StIdxW = $clog2(SB_DEPTH);
+  // -----------------
+  // ALLOCATION ROUTING
+  // -----------------
+  // Pad unavailable buffer lanes with zero readiness.
+  assign queue_ready[LoadBuffer] = {{(WIDTH-LB_WIDTH){1'b0}}, lb_ready};
+  assign queue_ready[StoreBuffer] = {{(WIDTH-SB_WIDTH){1'b0}}, sb_ready};
 
-  // INTERNAL SIGNALS
-  // ----------------
+  // Rank candidates independently of grants, as in exec_stage.
+  for (genvar u = 0; u < 2; u++) begin : gen_route
+    logic [WIDTH-1:0] request;
+    logic [WIDTH-1:0][WIDTH-1:0] channel_select;
 
-  // Load buffer <--> store buffer
-  logic                            sb_lb_latest_valid;
-  logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_lb_latest_idx;
-  logic                            sb_lb_oldest_completed;
-  logic [Len5Cfg.STBUFF_TAG_W-1:0] sb_lb_oldest_idx;
-  logic [LB_DEPTH-1:0] lb_sb_pending, sb_lb_older_loads;
-  ldst_width_t sb_lb_mem_type;
-  logic        lb_sb_mem_blocked;
+    for (genvar i = 0; i < WIDTH; i++) begin : gen_requests
+      assign request[i] = (fifo_payload_out[i].width inside {S_BYTE, S_HALFWORD, S_WORD, S_DOUBLEWORD}) == (u == StoreBuffer);
+      assign channel_select[i] = request_channel[u][i][WIDTH-1:0] & {WIDTH{request[i]}};
+      assign mapped_ready[u][i] = |(channel_select[i] & queue_ready[u]);
+    end
 
-  // Load/store buffer  <--> address adder
-  logic lb_adder_valid, sb_adder_valid;
-  logic lb_adder_ready, sb_adder_ready;
-  logic adder_lb_valid, adder_sb_valid;
-  logic adder_lb_ready, adder_sb_ready;
-  adder_req_t lb_adder_req, sb_adder_req;
-  adder_ans_t adder_lb_ans, adder_sb_ans;
+    always_comb begin : request_channel_assignment
+      request_channel[u] = '0;
+      request_channel[u][0] = (WIDTH+1)'(1);
+      for (int i = 1; i < WIDTH; i++) begin
+        request_channel[u][i] = request[i-1] ? request_channel[u][i-1] << 1 : request_channel[u][i-1];
+      end
+    end
 
-  // Load-store buffers <--> level-zero cache control
-  logic                     sb_l0_valid;
-  logic        [  XLEN-1:0] sb_l0_addr;
-  logic        [StIdxW-1:0] sb_l0_idx;
-  logic        [  ALEN-1:0] sb_l0_cached_addr;
-  logic                     sb_l0_cached;
-  ldst_width_t              sb_l0_cached_width;
-  logic        [  XLEN-1:0] sb_l0_cached_value;
-  logic        [  XLEN-1:0] lb_l0_addr;
-  ldst_width_t              lb_l0_width;
-  logic        [StIdxW-1:0] l0_sb_idx;
-  logic                     l0_lb_valid;
-  logic        [  XLEN-1:0] l0_lb_value;
+    for (genvar k = 0; k < WIDTH; k++) begin : gen_payload
+      always_comb begin : payload_mux
+        queue_valid[u][k] = 1'b0;
+        queue_payload[u][k] = '0;
+        queue_operands[u][k] = '0;
+        for (int i = 0; i < WIDTH; i++) begin
+          queue_valid[u][k] |= channel_select[i][k] && fifo_valid[i] && fifo_pop_ready[i];
+          queue_payload[u][k] |= fifo_payload_out[i] & {$bits(payload_t){channel_select[i][k]}};
+          queue_operands[u][k][0] |= fifo_operands_out[i][0] & {$bits(op_data_t){channel_select[i][k]}};
+          if (u == StoreBuffer) begin
+            queue_operands[u][k][1] |= fifo_operands_out[i][1] & {$bits(op_data_t){channel_select[i][k]}};
+          end
+        end
+      end
+
+      if (u == LoadBuffer) begin : gen_load_boundary
+        always_comb begin : boundary_mux
+          load_sq_tail[k] = '0;
+          older_stores_remain[k] = 1'b0;
+          for (int i = 0; i < WIDTH; i++) begin
+            load_sq_tail[k] |= lane_sq_tail[i] & {SqIdxW{channel_select[i][k]}};
+            older_stores_remain[k] |= lane_older_stores_remain[i] && channel_select[i][k];
+          end
+        end
+      end
+    end
+  end
+
+  for (genvar i = 0; i < WIDTH; i++) begin : gen_ready
+    assign lane_ready[i] = mapped_ready[LoadBuffer][i] || mapped_ready[StoreBuffer][i];
+    assign fifo_pop_ready[i] = !flush && (&lane_ready[i:0]);
+
+    // The store rank before this mixed lane selects its exclusive SQ boundary.
+    always_comb begin : boundary_mux
+      lane_sq_tail[i] = '0;
+      lane_older_stores_remain[i] = 1'b0;
+      for (int s = 0; s <= SB_WIDTH; s++) begin
+        lane_sq_tail[i] |= issue_sq_tail[s] & {SqIdxW{request_channel[StoreBuffer][i][s]}};
+        lane_older_stores_remain[i] |= issue_older_stores_remain[s] && request_channel[StoreBuffer][i][s];
+      end
+    end
+  end
+
+  for (genvar k = 0; k < LB_WIDTH; k++) begin : gen_load_ports
+    assign lb_type[k] = queue_payload[LoadBuffer][k].width;
+    assign lb_imm[k] = queue_payload[LoadBuffer][k].imm;
+    assign lb_rob[k] = queue_payload[LoadBuffer][k].rob;
+    assign lb_rs1[k] = queue_operands[LoadBuffer][k][0];
+  end
+
+  for (genvar k = 0; k < SB_WIDTH; k++) begin : gen_store_ports
+    assign sb_type[k] = queue_payload[StoreBuffer][k].width;
+    assign sb_imm[k] = queue_payload[StoreBuffer][k].imm;
+    assign sb_rob[k] = queue_payload[StoreBuffer][k].rob;
+    assign sb_rs1[k] = queue_operands[StoreBuffer][k][0];
+    assign sb_rs2[k] = queue_operands[StoreBuffer][k][1];
+  end
 
   // --------------
   // LSU SUBSYSTEMS
@@ -206,116 +288,107 @@ module load_store_unit #(
   load_buffer #(
     .Len5Cfg(Len5Cfg)
   ) u_load_buffer (
-    .clk_i                (clk_i),
-    .rst_ni               (rst_ni),
-    .flush_i              (mis_flush_i),
-    .issue_valid_i        (alloc_lb_valid),
-    .issue_ready_o        (alloc_lb_ready),
-    .issue_type_i         (alloc_type),
-    .issue_rs1_i          (alloc_rs1),
-    .issue_imm_i          (alloc_imm),
-    .issue_dest_rob_idx_i (alloc_dest_rob_idx),
-    .cdb_valid_i          (cdb_valid_i),
-    .cdb_ready_i          (cdb_lb_ready_i),
-    .cdb_valid_o          (cdb_lb_valid_o),
-    .cdb_data_i           (cdb_data_i),
-    .cdb_data_o           (cdb_lb_data_o),
-    .sb_latest_valid_i    (sb_lb_latest_valid),
-    .sb_latest_idx_i      (sb_lb_latest_idx),
-    .sb_oldest_completed_i(sb_lb_oldest_completed),
-    .sb_oldest_idx_i      (sb_lb_oldest_idx),
-    .sb_pending_loads_o   (lb_sb_pending),
-    .sb_older_loads_i     (sb_lb_older_loads),
-    .sb_mem_addr_i        (mem_store_addr_o),
-    .sb_mem_type_i        (sb_lb_mem_type),
-    .sb_mem_blocked_o     (lb_sb_mem_blocked),
-    .adder_valid_i        (adder_lb_valid),
-    .adder_ready_i        (adder_lb_ready),
-    .adder_valid_o        (lb_adder_valid),
-    .adder_ready_o        (lb_adder_ready),
-    .adder_ans_i          (adder_lb_ans),
-    .adder_req_o          (lb_adder_req),
-    .l0_valid_i           (l0_lb_valid),
-    .l0_value_i           (l0_lb_value),
-    .l0_width_o           (lb_l0_width),
-    .mem_valid_o          (mem_load_valid_o),
-    .mem_ready_i          (mem_load_ready_i),
-    .mem_valid_i          (mem_load_valid_i),
-    .mem_ready_o          (mem_load_ready_o),
-    .mem_we_o             (mem_load_we_o),
-    .mem_addr_o           (mem_load_addr_o),
-    .mem_be_o             (mem_load_be_o),
-    .mem_tag_o            (mem_load_tag_o),
-    .mem_rdata_i          (mem_load_rdata_i),
-    .mem_tag_i            (mem_load_tag_i),
-    .mem_except_raised_i  (mem_load_except_raised_i),
-    .mem_except_code_i    (mem_load_except_code_i)
+    .clk_i,
+    .rst_ni,
+    .flush_i                    (flush),
+    .issue_valid_i              (queue_valid[LoadBuffer][LB_WIDTH-1:0]),
+    .issue_ready_o              (lb_ready),
+    .issue_type_i               (lb_type),
+    .issue_rs1_i                (lb_rs1),
+    .issue_imm_i                (lb_imm),
+    .issue_dest_rob_idx_i       (lb_rob),
+    .issue_sq_tail_i            (load_sq_tail[LB_WIDTH-1:0]),
+    .issue_older_stores_remain_i(older_stores_remain[LB_WIDTH-1:0]),
+    .cdb_valid_i,
+    .cdb_ready_i                (cdb_lb_ready_i),
+    .cdb_valid_o                (cdb_lb_valid_o),
+    .cdb_data_i,
+    .cdb_data_o                 (cdb_lb_data_o),
+    .sq_head_i                  (sq_head),
+    .sq_removed_i               (sq_removed),
+    .sq_addr_ready_i            (sq_addr_ready),
+    .sq_data_ready_i            (sq_data_ready),
+    .sq_addr_i                  (sq_addr),
+    .sq_data_i                  (sq_data),
+    .sq_type_i                  (sq_type),
+    .adder_valid_i              (adder_lb_valid),
+    .adder_ready_i              (adder_lb_ready),
+    .adder_valid_o              (lb_adder_valid),
+    .adder_ready_o              (lb_adder_ready),
+    .adder_ans_i                (adder_lb_ans),
+    .adder_req_o                (lb_adder_req),
+    .mem_valid_o                (mem_load_valid_o),
+    .mem_ready_i                (mem_load_ready_i),
+    .mem_valid_i                (mem_load_valid_i),
+    .mem_ready_o                (mem_load_ready_o),
+    .mem_we_o                   (mem_load_we_o),
+    .mem_addr_o                 (mem_load_addr_o),
+    .mem_be_o                   (mem_load_be_o),
+    .mem_tag_o                  (mem_load_tag_o),
+    .mem_rdata_i                (mem_load_rdata_i),
+    .mem_tag_i                  (mem_load_tag_i),
+    .mem_except_raised_i        (mem_load_except_raised_i),
+    .mem_except_code_i          (mem_load_except_code_i)
   );
-
   // STORE BUFFER
   // ------------
   store_buffer #(
     .Len5Cfg(Len5Cfg)
   ) u_store_buffer (
-    .clk_i                (clk_i),
-    .rst_ni               (rst_ni),
-    .flush_i              (mis_flush_i),
-    .issue_valid_i        (alloc_sb_valid),
-    .issue_ready_o        (alloc_sb_ready),
-    .issue_type_i         (alloc_type),
-    .issue_rs1_i          (alloc_rs1),
-    .issue_rs2_i          (alloc_rs2),
-    .issue_imm_i          (alloc_imm),
-    .issue_dest_rob_idx_i (alloc_dest_rob_idx),
-    .comm_mem_clear_i     (comm_sb_mem_clear_i),
-    .comm_mem_idx_o       (comm_sb_mem_idx_o),
-    .cdb_valid_i          (cdb_valid_i),
-    .cdb_ready_i          (cdb_sb_ready_i),
-    .cdb_valid_o          (cdb_sb_valid_o),
-    .cdb_data_i           (cdb_data_i),
-    .cdb_data_o           (cdb_sb_data_o),
-    .lb_latest_valid_o    (sb_lb_latest_valid),
-    .lb_latest_idx_o      (sb_lb_latest_idx),
-    .lb_oldest_completed_o(sb_lb_oldest_completed),
-    .lb_oldest_idx_o      (sb_lb_oldest_idx),
-    .lb_pending_i         (lb_sb_pending),
-    .lb_older_loads_o     (sb_lb_older_loads),
-    .lb_mem_type_o        (sb_lb_mem_type),
-    .lb_mem_blocked_i     (lb_sb_mem_blocked),
-    .adder_valid_i        (adder_sb_valid),
-    .adder_ready_i        (adder_sb_ready),
-    .adder_valid_o        (sb_adder_valid),
-    .adder_ready_o        (sb_adder_ready),
-    .adder_ans_i          (adder_sb_ans),
-    .adder_req_o          (sb_adder_req),
-    .l0_idx_i             (l0_sb_idx),
-    .l0_cached_o          (sb_l0_cached),
-    .l0_cached_addr_o     (sb_l0_cached_addr),
-    .l0_cached_width_o    (sb_l0_cached_width),
-    .l0_cached_value_o    (sb_l0_cached_value),
-    .mem_valid_o          (mem_store_valid_o),
-    .mem_ready_i          (mem_store_ready_i),
-    .mem_valid_i          (mem_store_valid_i),
-    .mem_ready_o          (mem_store_ready_o),
-    .mem_we_o             (mem_store_we_o),
-    .mem_addr_o           (mem_store_addr_o),
-    .mem_be_o             (mem_store_be_o),
-    .mem_wdata_o          (mem_store_wdata_o),
-    .mem_tag_o            (mem_store_tag_o),
-    .mem_tag_i            (mem_store_tag_i),
-    .mem_except_raised_i  (mem_store_except_raised_i),
-    .mem_except_code_i    (mem_store_except_code_i)
+    .clk_i,
+    .rst_ni,
+    .flush_i             (flush),
+    .issue_valid_i       (queue_valid[StoreBuffer][SB_WIDTH-1:0]),
+    .issue_ready_o       (sb_ready),
+    .issue_type_i        (sb_type),
+    .issue_rs1_i         (sb_rs1),
+    .issue_rs2_i         (sb_rs2),
+    .issue_imm_i         (sb_imm),
+    .issue_dest_rob_idx_i(sb_rob),
+    .comm_mem_clear_i    (comm_sb_mem_clear_i),
+    .comm_mem_idx_o      (comm_sb_mem_idx_o),
+    .cdb_valid_i,
+    .cdb_ready_i         (cdb_sb_ready_i),
+    .cdb_valid_o         (cdb_sb_valid_o),
+    .cdb_data_i,
+    .cdb_data_o          (cdb_sb_data_o),
+    .sq_head_o           (sq_head),
+    .issue_sq_tail_o     (issue_sq_tail),
+    .issue_older_stores_remain_o(issue_older_stores_remain),
+    .sq_removed_o        (sq_removed),
+    .sq_addr_ready_o     (sq_addr_ready),
+    .sq_data_ready_o     (sq_data_ready),
+    .sq_addr_o           (sq_addr),
+    .sq_data_o           (sq_data),
+    .sq_type_o           (sq_type),
+    .adder_valid_i       (adder_sb_valid),
+    .adder_ready_i       (adder_sb_ready),
+    .adder_valid_o       (sb_adder_valid),
+    .adder_ready_o       (sb_adder_ready),
+    .adder_ans_i         (adder_sb_ans),
+    .adder_req_o         (sb_adder_req),
+    .mem_valid_o         (mem_store_valid_o),
+    .mem_ready_i         (mem_store_ready_i),
+    .mem_valid_i         (mem_store_valid_i),
+    .mem_ready_o         (mem_store_ready_o),
+    .mem_we_o            (mem_store_we_o),
+    .mem_addr_o          (mem_store_addr_o),
+    .mem_be_o            (mem_store_be_o),
+    .mem_wdata_o         (mem_store_wdata_o),
+    .mem_tag_o           (mem_store_tag_o),
+    .mem_tag_i           (mem_store_tag_i),
+    .mem_except_raised_i (mem_store_except_raised_i),
+    .mem_except_code_i   (mem_store_except_code_i)
   );
-
   // LOAD ADDRESS ADDER
-  // -------------
+  // ------------------
   address_adder #(
     .Len5Cfg (Len5Cfg),
     .IS_STORE(1'b0)
   ) u_address_adder_load (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(mis_flush_i),
+    .clk_i,
+    .rst_ni,
+    .flush_i(flush),
     .valid_i(lb_adder_valid),
     .ready_i(lb_adder_ready),
     .valid_o(adder_lb_valid),
@@ -325,14 +398,14 @@ module load_store_unit #(
   );
 
   // STORE ADDRESS ADDER
-  // -------------
+  // -------------------
   address_adder #(
     .Len5Cfg (Len5Cfg),
     .IS_STORE(1'b1)
   ) u_address_adder_store (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
-    .flush_i(mis_flush_i),
+    .clk_i,
+    .rst_ni,
+    .flush_i(flush),
     .valid_i(sb_adder_valid),
     .ready_i(sb_adder_ready),
     .valid_o(adder_sb_valid),
@@ -341,42 +414,43 @@ module load_store_unit #(
     .ans_o  (adder_sb_ans)
   );
 
-  // LEVEL-ZERO CACHE CONTROL
-  // ------------------------
-  generate
-    if (Len5Cfg.LEN5_STORE_LOAD_FWD_EN) begin : gen_store_load_fwd
-      assign sb_l0_valid = mem_store_valid_o & mem_store_ready_i;
-      assign sb_l0_addr  = mem_store_addr_o;
-      assign sb_l0_idx   = mem_store_tag_o[StIdxW-1:0];
-      assign lb_l0_addr  = mem_load_addr_o;
-      l0_cache #(
-        .Len5Cfg(Len5Cfg)
-      ) u_l0_cache (
-        .clk_i            (clk_i),
-        .rst_ni           (rst_ni),
-        .flush_i          (except_flush_i),
-        .st_valid_i       (sb_l0_valid),
-        .st_addr_i        (sb_l0_addr),
-        .st_idx_i         (sb_l0_idx),
-        .st_cached_i      (sb_l0_cached),
-        .st_cached_addr_i (sb_l0_cached_addr),
-        .st_cached_width_i(sb_l0_cached_width),
-        .st_cached_value_i(sb_l0_cached_value),
-        .st_idx_o         (l0_sb_idx),
-        .ld_addr_i        (lb_l0_addr),
-        .ld_width_i       (lb_l0_width),
-        .ld_valid_o       (l0_lb_valid),
-        .ld_value_o       (l0_lb_value)
-      );
-    end else begin : gen_no_store_load_fwd
-      assign sb_l0_valid = '0;
-      assign sb_l0_addr  = '0;
-      assign sb_l0_idx   = '0;
-      assign lb_l0_addr  = '0;
-      assign l0_sb_idx   = '0;
-      assign l0_lb_valid = '0;
-      assign l0_lb_value = '0;
-    end
-  endgenerate
+  // ----------
+  // ASSERTIONS
+  // ----------
+`ifndef SYNTHESIS
+  for (genvar l = 0; l < Len5Cfg.LDBUFF_DEPTH; l++) begin : gen_check_older_stores
+    assert property (@(posedge clk_i) disable iff (!rst_ni || flush)
+                     !u_load_buffer.free_slots[l] |->
+                         (u_load_buffer.gen_dependencies[l].older_stores & ~u_store_buffer.occupied_slots) == '0)
+    else $fatal(1, "LQ older-store interval includes an empty SQ slot");
+  end
 
+  always_ff @(posedge clk_i)
+    if (rst_ni && !flush) begin
+      assert ($countones(queue_valid[LoadBuffer]) <= LB_WIDTH)
+      else $fatal(1, "load allocation exceeds its issue width");
+      assert ($countones(queue_valid[StoreBuffer]) <= SB_WIDTH)
+      else $fatal(1, "store allocation exceeds its issue width");
+      assert ($countones(queue_valid[LoadBuffer]) + $countones(queue_valid[StoreBuffer]) ==
+              $countones(fifo_valid & fifo_pop_ready))
+      else $fatal(1, "LSU routing lost or duplicated an accepted instruction");
+    end
+  assert property (@(posedge clk_i) disable iff (!rst_ni || flush)
+                   cdb_lb_valid_o && !cdb_lb_ready_i |=> cdb_lb_valid_o)
+  else $fatal(1, "LSU load completion withdrawn before acceptance");
+  assert property (@(posedge clk_i) disable iff (!rst_ni || flush)
+                   cdb_sb_valid_o && !cdb_sb_ready_i |=> cdb_sb_valid_o && $stable(
+      cdb_sb_data_o
+  ))
+  else $fatal(1, "LSU store completion changed under backpressure");
+  always_ff @(posedge clk_i)
+    if (rst_ni && !flush) begin
+      for (int k = 0; k < WIDTH; k++) begin
+        if (fifo_push[k] && fifo_ready[k])
+          for (int j = 0; j < k; j++)
+          assert (fifo_push[j] && fifo_ready[j])
+          else $fatal(1, "LSU transfer skipped older offer");
+      end
+    end
+`endif
 endmodule

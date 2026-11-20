@@ -34,11 +34,11 @@ module rs_alloc_fifo #(
   ) + 3 * len5_pkg::XLEN + Len5Cfg.ROB_IDX_LEN + 1,
   localparam int unsigned MemoryPayloadWidth = $bits(
       expipe_pkg::ldst_width_t
-  ) + len5_pkg::XLEN + Len5Cfg.ROB_IDX_LEN + 1,
+  ) + len5_pkg::XLEN + Len5Cfg.ROB_IDX_LEN,
   localparam int unsigned PayloadWidth =
         EU == expipe_pkg::EU_FPU ? FpuPayloadWidth :
         EU == expipe_pkg::EU_BRANCH_UNIT ? BranchPayloadWidth :
-        EU inside {expipe_pkg::EU_LOAD_BUFFER, expipe_pkg::EU_STORE_BUFFER} ? MemoryPayloadWidth : ArithmeticPayloadWidth,
+        EU == expipe_pkg::EU_LSU ? MemoryPayloadWidth : ArithmeticPayloadWidth,
   localparam type payload_t = logic [PayloadWidth-1:0],
   localparam type op_data_t = `LEN5_OP_DATA_T(Len5Cfg),
   localparam type cdb_data_t = `LEN5_CDB_DATA_T(Len5Cfg)
@@ -58,7 +58,7 @@ module rs_alloc_fifo #(
   input  cdb_data_t                           cdb_data_i
 );
   // A cached store survives flush, so its allocation data must not be overwritten.
-  localparam bit IsLsu = EU inside {expipe_pkg::EU_LOAD_BUFFER, expipe_pkg::EU_STORE_BUFFER};
+  localparam bit IsLsu = EU == expipe_pkg::EU_LSU;
   logic alloc_enable;
   assign alloc_enable = IsLsu ? !flush_i : 1'b1;
 
@@ -66,10 +66,10 @@ module rs_alloc_fifo #(
     logic unused_inputs;
     assign unused_inputs = ^{clk_i, rst_ni, cdb_valid_i, cdb_data_i};
 
-    assign ready_o = ready_i;
-    assign valid_o = valid_i & {WIDTH{alloc_enable}};
-    assign payload_o = payload_i;
-    assign operands_o = operands_i;
+    assign ready_o       = ready_i;
+    assign valid_o       = valid_i & {WIDTH{alloc_enable}};
+    assign payload_o     = payload_i;
+    assign operands_o    = operands_i;
   end else begin : gen_fifo
     logic unused_cdb_fields;
     assign unused_cdb_fields = ^{cdb_data_i.except_raised, cdb_data_i.except_code, cdb_data_i.flags};

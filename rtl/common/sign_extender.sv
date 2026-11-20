@@ -29,26 +29,26 @@ module sign_extender (
   always_comb begin : line_generation
     case (type_i)
       // Load bite
-      LS_BYTE:
+      L_BYTE:
       data_o = {
         {(XLEN - 1 * ByteLen) {data_i[1*ByteLen-1]}}, data_i[1*ByteLen-1:0]
       };  // sign extension
-      LS_BYTE_U: data_o = {{(XLEN - 1 * ByteLen) {1'b0}}, data_i[1*ByteLen-1:0]};  // zero padding
+      L_BYTE_U: data_o = {{(XLEN - 1 * ByteLen) {1'b0}}, data_i[1*ByteLen-1:0]};  // zero padding
 
       // Load halfword
-      LS_HALFWORD:
+      L_HALFWORD:
       data_o = {
         {(XLEN - 2 * ByteLen) {data_i[2*ByteLen-1]}}, data_i[2*ByteLen-1:0]
       };  // sign extension
-      LS_HALFWORD_U:
+      L_HALFWORD_U:
       data_o = {{(XLEN - 2 * ByteLen) {1'b0}}, data_i[2*ByteLen-1:0]};  // zero padding
 
       // Load word
-      LS_WORD:
+      L_WORD:
       data_o = {
         {(XLEN - 4 * ByteLen) {data_i[4*ByteLen-1]}}, data_i[4*ByteLen-1:0]
       };  // sign extension
-      LS_WORD_U: data_o = {{(XLEN - 4 * ByteLen) {1'b0}}, data_i[4*ByteLen-1:0]};  // zero padding
+      L_WORD_U: data_o = {{(XLEN - 4 * ByteLen) {1'b0}}, data_i[4*ByteLen-1:0]};  // zero padding
 
       // Load doubleword
       default: data_o = data_i;

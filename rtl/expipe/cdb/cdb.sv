@@ -29,11 +29,11 @@ module cdb #(
   input cdb_data_t max_prio_data_i,
 
   // Handshake from/to the reservation stations
-  input  logic [Len5Cfg.MAX_EU_N-2:0] rs_valid_i,
-  output logic [Len5Cfg.MAX_EU_N-2:0] rs_ready_o,
+  input  logic [expipe_pkg::CDB_SOURCE_COUNT-2:0] rs_valid_i,
+  output logic [expipe_pkg::CDB_SOURCE_COUNT-2:0] rs_ready_o,
 
   // Data from the reservation stations or issue queue.
-  input cdb_data_t [Len5Cfg.MAX_EU_N-2:0] rs_data_i,
+  input cdb_data_t [expipe_pkg::CDB_SOURCE_COUNT-2:0] rs_data_i,
 
   // Handshake from/to the ROB
   input logic rob_ready_i,
@@ -48,18 +48,16 @@ module cdb #(
 
 
   // CDB MUX
-  cdb_data_t                                low_prio_mux_data;
+  cdb_data_t                                            low_prio_mux_data;
 
   // Served unit index
-  logic                                     served_max_prio;
-  logic      [$clog2(Len5Cfg.MAX_EU_N)-1:0] served;
+  logic                                                 served_max_prio;
+  logic      [$clog2(expipe_pkg::CDB_SOURCE_COUNT)-1:0] served;
 
   // -----------
   // CDB ARBITER
   // -----------
-  cdb_arbiter #(
-    .Len5Cfg(Len5Cfg)
-  ) u_cdb_arbiter (
+  cdb_arbiter u_cdb_arbiter (
     .clk_i  (clk_i),
     .rst_ni (rst_ni),
     .flush_i(flush_i),

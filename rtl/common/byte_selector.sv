@@ -50,22 +50,22 @@ module byte_selector (
   always_comb begin : line_generation
     case (type_i)
       // Load bite
-      LS_BYTE:
+      L_BYTE:
       data_o = {{(XLEN - 1 * ByteLen) {selected_b[1*ByteLen-1]}}, selected_b};  // sign extension
-      LS_BYTE_U: data_o = {{(XLEN - 1 * ByteLen) {1'b0}}, selected_b};  // zero padding
+      L_BYTE_U: data_o = {{(XLEN - 1 * ByteLen) {1'b0}}, selected_b};  // zero padding
 
       // Load halfword
-      LS_HALFWORD:
+      L_HALFWORD:
       data_o = {{(XLEN - 2 * ByteLen) {selected_h[2*ByteLen-1]}}, selected_h};  // sign extension
-      LS_HALFWORD_U: data_o = {{(XLEN - 2 * ByteLen) {1'b0}}, selected_h};  // zero padding
+      L_HALFWORD_U: data_o = {{(XLEN - 2 * ByteLen) {1'b0}}, selected_h};  // zero padding
 
       // Load word
-      LS_WORD:
+      L_WORD:
       data_o = {{(XLEN - 4 * ByteLen) {selected_w[4*ByteLen-1]}}, selected_w};  // sign extension
-      LS_WORD_U: data_o = {{(XLEN - 4 * ByteLen) {1'b0}}, selected_w};  // zero padding
+      L_WORD_U: data_o = {{(XLEN - 4 * ByteLen) {1'b0}}, selected_w};  // zero padding
 
       // Load doubleword
-      LS_DOUBLEWORD: data_o = data_i;
+      L_DOUBLEWORD: data_o = data_i;
 
       default: data_o = data_i;
     endcase
@@ -78,14 +78,14 @@ module byte_selector (
 `ifndef VERILATOR
   always_comb begin
     case (type_i)
-      LS_HALFWORD, LS_HALFWORD_U:
+      L_HALFWORD, L_HALFWORD_U:
       assert (!byte_off[0])
       else
         $error(
             "HALFOWORD instr. with misaligned byte offset '%b' proceeded to cache. This must be avoided!",
             byte_off
         );
-      LS_WORD, LS_WORD_U:
+      L_WORD, L_WORD_U:
       assert (byte_off[1:0] == 2'b00)
       else
         $error(

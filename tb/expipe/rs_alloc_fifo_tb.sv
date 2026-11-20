@@ -18,19 +18,21 @@ module rs_alloc_fifo_case #(
     cfg.LSU_USE_FIFO = ENABLED;
     cfg.LSU_FIFO_DEPTH = DEPTH;
     cfg.LSU_ISSUE_WIDTH = LIMIT;
+    cfg.LDBUFF_ISSUE_WIDTH = LIMIT;
+    cfg.STBUFF_ISSUE_WIDTH = LIMIT;
     cfg.FPU_USE_FIFO = ENABLED;
     cfg.FPU_FIFO_DEPTH = DEPTH;
     cfg.FPU_ISSUE_WIDTH = LIMIT;
     return len5_config_pkg::build_config(cfg);
   endfunction
   localparam len5_config_pkg::len5_cfg Cfg = configuration();
-  localparam bit IsLsu = EU inside {expipe_pkg::EU_LOAD_BUFFER, expipe_pkg::EU_STORE_BUFFER};
+  localparam bit IsLsu = EU == expipe_pkg::EU_LSU;
   localparam int OPERANDS = EU == expipe_pkg::EU_FPU ? 3 : 2;
   localparam int PayloadWidth = Cfg.ROB_IDX_LEN + (EU == expipe_pkg::EU_FPU ?
       expipe_pkg::FPU_CTL_LEN + csr_pkg::FCSR_FRM_LEN :
       IsLsu ? $bits(
       expipe_pkg::ldst_width_t
-  ) + len5_pkg::XLEN + 1 : expipe_pkg::MAX_EU_CTL_LEN);
+  ) + len5_pkg::XLEN : expipe_pkg::MAX_EU_CTL_LEN);
   typedef `LEN5_OP_DATA_T(Cfg) operand_t;
   typedef `LEN5_CDB_DATA_T(Cfg) cdb_t;
   typedef struct packed {
@@ -191,7 +193,7 @@ module rs_alloc_fifo_tb;
         .WIDTH(2),
         .DEPTH(4),
         .LIMIT(1),
-        .EU(expipe_pkg::EU_LOAD_BUFFER),
+        .EU(expipe_pkg::EU_LSU),
         .ENABLED(enabled != 0)
     ) test_case (
         .clk,

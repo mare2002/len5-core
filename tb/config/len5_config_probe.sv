@@ -67,6 +67,7 @@ module len5_config_probe #(
     parameter int unsigned LDBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_DEPTH,
     parameter int unsigned STBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_DEPTH,
     parameter bit LSU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_SPILL_SKIP,
+    parameter bit LDBUFF_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_RR_ARBITER,
     parameter int unsigned ALU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_NUM_UNITS,
     parameter bit ALU_USE_FIFO = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_USE_FIFO,
     parameter int unsigned ALU_FIFO_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_FIFO_DEPTH,
@@ -86,6 +87,8 @@ module len5_config_probe #(
     parameter bit LSU_USE_FIFO = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_USE_FIFO,
     parameter int unsigned LSU_FIFO_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_FIFO_DEPTH,
     parameter int unsigned LSU_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_ISSUE_WIDTH,
+    parameter int unsigned LDBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_ISSUE_WIDTH,
+    parameter int unsigned STBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_ISSUE_WIDTH,
     parameter int unsigned ALU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RS_DEPTH,
     parameter bit ALU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_SPILL_SKIP,
     parameter bit ALU_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RR_ARBITER,
@@ -137,6 +140,7 @@ module len5_config_probe #(
             LDBUFF_DEPTH: LDBUFF_DEPTH,
             STBUFF_DEPTH: STBUFF_DEPTH,
             LSU_SPILL_SKIP: LSU_SPILL_SKIP,
+            LDBUFF_RR_ARBITER: LDBUFF_RR_ARBITER,
             ALU_NUM_UNITS: ALU_NUM_UNITS,
             ALU_USE_FIFO: ALU_USE_FIFO,
             ALU_FIFO_DEPTH: ALU_FIFO_DEPTH,
@@ -156,6 +160,8 @@ module len5_config_probe #(
             LSU_USE_FIFO: LSU_USE_FIFO,
             LSU_FIFO_DEPTH: LSU_FIFO_DEPTH,
             LSU_ISSUE_WIDTH: LSU_ISSUE_WIDTH,
+            LDBUFF_ISSUE_WIDTH: LDBUFF_ISSUE_WIDTH,
+            STBUFF_ISSUE_WIDTH: STBUFF_ISSUE_WIDTH,
             ALU_RS_DEPTH: ALU_RS_DEPTH,
             ALU_SPILL_SKIP: ALU_SPILL_SKIP,
             ALU_RR_ARBITER: ALU_RR_ARBITER,
@@ -218,6 +224,7 @@ module len5_config_probe #(
       $write(",\"LDBUFF_DEPTH\":%0d", Len5Cfg.LDBUFF_DEPTH);
       $write(",\"STBUFF_DEPTH\":%0d", Len5Cfg.STBUFF_DEPTH);
       $write(",\"LSU_SPILL_SKIP\":%0d", Len5Cfg.LSU_SPILL_SKIP);
+      $write(",\"LDBUFF_RR_ARBITER\":%0d", Len5Cfg.LDBUFF_RR_ARBITER);
       $write(",\"ALU_NUM_UNITS\":%0d", Len5Cfg.ALU_NUM_UNITS);
       $write(",\"ALU_USE_FIFO\":%0d", Len5Cfg.ALU_USE_FIFO);
       $write(",\"ALU_FIFO_DEPTH\":%0d", Len5Cfg.ALU_FIFO_DEPTH);
@@ -237,6 +244,8 @@ module len5_config_probe #(
       $write(",\"LSU_USE_FIFO\":%0d", Len5Cfg.LSU_USE_FIFO);
       $write(",\"LSU_FIFO_DEPTH\":%0d", Len5Cfg.LSU_FIFO_DEPTH);
       $write(",\"LSU_ISSUE_WIDTH\":%0d", Len5Cfg.LSU_ISSUE_WIDTH);
+      $write(",\"LDBUFF_ISSUE_WIDTH\":%0d", Len5Cfg.LDBUFF_ISSUE_WIDTH);
+      $write(",\"STBUFF_ISSUE_WIDTH\":%0d", Len5Cfg.STBUFF_ISSUE_WIDTH);
 
       $write(",\"ALU_RS_DEPTH\":%0d", Len5Cfg.ALU_RS_DEPTH);
       $write(",\"ALU_SPILL_SKIP\":%0d", Len5Cfg.ALU_SPILL_SKIP);

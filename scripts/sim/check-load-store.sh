@@ -20,7 +20,7 @@ if [[ -n $config_output ]]; then mapfile -t config_args <<< "$config_output"; fi
   rtl/packages/util_pkg.sv "${LOAD_STORE_CONFIG:-rtl/packages/len5_config_pkg.sv}" rtl/packages/len5_pkg.sv \
   rtl/packages/instr_pkg.sv rtl/packages/csr_pkg.sv rtl/packages/fetch_pkg.sv \
   rtl/packages/expipe_pkg.sv rtl/packages/memory_pkg.sv \
-  rtl/common/rs_alloc_fifo.sv \
+  rtl/common/prio_enc.sv rtl/common/prio_enc_multi.sv rtl/common/rr_arbiter_multi.sv rtl/common/rs_alloc_fifo.sv \
   rtl/common/modn_counter.sv rtl/common/sign_extender.sv rtl/common/byte_selector.sv \
   rtl/common/spill_cell_flush_cu.sv rtl/common/spill_cell_flush.sv \
   rtl/expipe/load-store-unit/address_adder.sv rtl/expipe/load-store-unit/load_buffer.sv \

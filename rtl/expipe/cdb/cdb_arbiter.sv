@@ -12,9 +12,7 @@
 // Author: Michele Caon
 // Date: 11/11/2019
 
-module cdb_arbiter #(
-  parameter len5_config_pkg::len5_cfg Len5Cfg = len5_config_pkg::DEFAULT_LEN5_CFG
-) (
+module cdb_arbiter (
   input logic clk_i,
   input logic rst_ni,
   input logic flush_i,
@@ -25,30 +23,30 @@ module cdb_arbiter #(
   output logic max_prio_ready_o,
 
   // Handshake from/to the units
-  input  logic [Len5Cfg.MAX_EU_N-2:0] valid_i,
-  output logic [Len5Cfg.MAX_EU_N-2:0] ready_o,
+  input  logic [expipe_pkg::CDB_SOURCE_COUNT-2:0] valid_i,
+  output logic [expipe_pkg::CDB_SOURCE_COUNT-2:0] ready_o,
 
   // Handshake from/to the ROB
   input  logic rob_ready_i,
   output logic rob_valid_o,
 
   // To the CDB MUX
-  output logic                                served_max_prio_o,
-  output logic [$clog2(Len5Cfg.MAX_EU_N)-1:0] served_o
+  output logic                                            served_max_prio_o,
+  output logic [$clog2(expipe_pkg::CDB_SOURCE_COUNT)-1:0] served_o
 );
 
   import expipe_pkg::*;
 
   // DEFINITIONS
-  logic [Len5Cfg.MAX_EU_N-2:0] rem_valid_q, msk_valid_d;
+  logic [expipe_pkg::CDB_SOURCE_COUNT-2:0] rem_valid_q, msk_valid_d;
 
   // Valid MUX
-  logic [          Len5Cfg.MAX_EU_N-2:0] mux_valid;
+  logic [          expipe_pkg::CDB_SOURCE_COUNT-2:0] mux_valid;
 
   // Valid priority encoder + decoder
-  logic [$clog2(Len5Cfg.MAX_EU_N-1)-1:0] enc_out;
-  logic                                  enc_valid;
-  logic [          Len5Cfg.MAX_EU_N-2:0] dec_valid_d;
+  logic [$clog2(expipe_pkg::CDB_SOURCE_COUNT-1)-1:0] enc_out;
+  logic                                              enc_valid;
+  logic [          expipe_pkg::CDB_SOURCE_COUNT-2:0] dec_valid_d;
 
   // ---------
   // VALID MUX
@@ -60,7 +58,7 @@ module cdb_arbiter #(
   // VALID PRIORITY ENCODER
   // ----------------------
   prio_enc #(
-    .N  (Len5Cfg.MAX_EU_N - 1),
+    .N  (expipe_pkg::CDB_SOURCE_COUNT - 1),
     .INV(1'b1)
   ) vaild_prio_enc (
     .lines_i(mux_valid),

@@ -19,7 +19,7 @@ module prio_enc #(
   parameter bit INV = 1'b0  // 0: MSB has the highest priority, 1: LSB has the highest priority
 ) (
   input  logic [        N-1:0] lines_i,
-  output logic [$clog2(N)-1:0] enc_o,
+  output logic [(N > 1 ? $clog2(N) : 1)-1:0] enc_o,
   output logic                 valid_o
 );
   generate

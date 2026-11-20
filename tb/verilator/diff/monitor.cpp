@@ -98,13 +98,13 @@ class Signals {
     }
 };
 unsigned access_size(uint64_t type) {
-    if (type == enum_values.at("LS_BYTE") || type == enum_values.at("LS_BYTE_U"))
+    if (type == enum_values.at("L_BYTE") || type == enum_values.at("L_BYTE_U") || type == enum_values.at("S_BYTE"))
         return 1;
-    if (type == enum_values.at("LS_HALFWORD") || type == enum_values.at("LS_HALFWORD_U"))
+    if (type == enum_values.at("L_HALFWORD") || type == enum_values.at("L_HALFWORD_U") || type == enum_values.at("S_HALFWORD"))
         return 2;
-    if (type == enum_values.at("LS_WORD") || type == enum_values.at("LS_WORD_U"))
+    if (type == enum_values.at("L_WORD") || type == enum_values.at("L_WORD_U") || type == enum_values.at("S_WORD"))
         return 4;
-    if (type == enum_values.at("LS_DOUBLEWORD"))
+    if (type == enum_values.at("L_DOUBLEWORD") || type == enum_values.at("S_DOUBLEWORD"))
         return 8;
     throw std::runtime_error("invalid LSU access type");
 }
@@ -117,6 +117,7 @@ struct Monitor::Impl {
     SpikeReference spike;
     Checker checker;
     std::vector<std::unique_ptr<Signals>> stations;
+    std::map<uint64_t, uint64_t> load_bases;
     std::string fault;
     bool injected = false;
     std::string isa() {
@@ -160,6 +161,7 @@ struct Monitor::Impl {
                 l.fields.count("dest_rob_idx") &&
                 layouts.count(path.substr(0, path.size() - 4) + "cdb_valid_o"))
                 stations.push_back(std::make_unique<Signals>(path.substr(0, path.size() - 4)));
+        // Count physical stations: the unified LSU still contains both LQ and SQ.
         const auto count = 4 + constants.at("tb_bare.Len5Cfg.LEN5_M_EN") +
                            constants.at("tb_bare.Len5Cfg.LEN5_DIV_EN") +
                            bool(constants.at("tb_bare.Len5Cfg.LEN5_F_EN") ||
@@ -173,6 +175,14 @@ struct Monitor::Impl {
             return true;
         }
         return false;
+    }
+    uint32_t store_index(uint64_t tag) {
+        const auto index = sb_signals.get("head_idx");
+        const auto expected = constants.at("tb_bare.Len5Cfg.BUFF_IDX_LEN") >=
+                                      constants.at("tb_bare.Len5Cfg.ROB_IDX_LEN")
+                                  ? sb_signals.get("data", "dest_rob_idx", index)
+                                  : index;
+        return tag == expected ? index : no_index;
     }
     void rise(Stamp t) {
         // Commit outputs refer to the OLD commit register at this edge. Process before reuse/flush.
@@ -197,8 +207,10 @@ struct Monitor::Impl {
             checker.load_request(top_signals.get("dp2mem_load_tag"),
                                  top_signals.get("dp2mem_load_addr"),
                                  top_signals.get("dp2mem_load_be"), t);
-        if (back_flush)
+        if (back_flush) {
             checker.flush_backend(t);
+            load_bases.clear();
+        }
         if (front_flush)
             checker.flush_frontend(t);
         if (comm_signals.get("cu_except_flush")) {
@@ -226,10 +238,15 @@ struct Monitor::Impl {
             }
         }
         if (!back_flush) {
-            for (auto *p : {&lb_signals, &sb_signals})
-                if (p->get("push"))
-                    checker.allocate(p->get("issue_dest_rob_idx_i"), p->get("tail_idx"),
-                                     p == &sb_signals, t);
+            for (auto *p : {&lb_signals, &sb_signals}) {
+                const auto accepted = p->get("issue_valid_i") & p->get("issue_ready_o");
+                const auto lanes = constants.at("tb_bare.Len5Cfg.LSU_ISSUE_WIDTH");
+                for (unsigned lane = 0; lane < lanes; ++lane)
+                    if (accepted & (uint64_t{1} << lane))
+                        checker.allocate(p->get("issue_dest_rob_idx_i", "", lane),
+                                         p->get(p == &sb_signals ? "insert_idx" : "new_idx", "", lane),
+                                         p == &sb_signals, t);
+            }
             if (branch_signals.get("rs_bu_valid") && branch_signals.get("bu_rs_ready") &&
                 branch_signals.get("cu_res_reg_en")) {
                 auto next = branch_signals.get("res_taken") ? branch_signals.get("res_target")
@@ -237,16 +254,21 @@ struct Monitor::Impl {
                 checker.resolve_branch(branch_signals.get("rs_bu_rob_idx"), next,
                                        branch_signals.get("res_mispredicted"), t);
             }
+            // The load buffer reuses rs1 storage after the address request is accepted.
+            if (lb_signals.get("addr_accepted"))
+                load_bases[lb_signals.get("adder_req_o", "tag")] = lb_signals.get("adder_req_o", "base");
             // Retained operands are read before the accepted CDB entry is removed.
             for (const auto &station : stations) {
                 auto *p = station.get();
                 if (p->get("cdb_valid_o") && p->get("cdb_ready_i")) {
-                    auto idx =
-                        p->get(layouts.count(p->prefix + "cdb_idx") ? "cdb_idx" : "head_idx");
-                    auto rs1 = p->get("data", "rs1_value", idx);
-                    auto rs2 = layouts.at(p->prefix + "data").fields.count("rs2_value")
-                                   ? p->get("data", "rs2_value", idx)
-                                   : 0;
+                    const bool load = p->prefix == lb;
+                    auto idx = p->get(load ? "result_idx" :
+                                      layouts.count(p->prefix + "cdb_idx") ? "cdb_idx" : "head_idx");
+                    const auto &fields = layouts.at(p->prefix + "data").fields;
+                    auto rs1 = load ? load_bases.at(idx)
+                                    : p->get("data", fields.count("rs1.value") ? "rs1.value" : "rs1_value", idx);
+                    auto rs2 = fields.count("rs2.value") ? p->get("data", "rs2.value", idx) :
+                               fields.count("rs2_value") ? p->get("data", "rs2_value", idx) : 0;
                     auto rs3 = layouts.at(p->prefix + "data").fields.count("rs3_value")
                                    ? p->get("data", "rs3_value", idx)
                                    : 0;
@@ -258,10 +280,12 @@ struct Monitor::Impl {
                         if (inject("cdb"))
                             value ^= 1;
                     }
-                    if (p->prefix == lb) {
+                    if (load) {
                         auto size = access_size(p->get("data", "load_type", idx));
+                        auto raw = p->get("data", "rs1_value", idx) >> (8 * p->get("data", "byte_offset", idx));
                         checker.memory(idx, false, p->get("data", "imm_addr_value", idx), size,
-                                       (1u << size) - 1, p->get("data", "value", idx), true, t);
+                                       (1u << size) - 1, raw, true, t);
+                        load_bases.erase(idx);
                     }
                     checker.execute(p->get("cdb_data_o", "rob_idx"), rs1, rs2, value,
                                     p->get("cdb_data_o", "except_raised"),
@@ -271,30 +295,33 @@ struct Monitor::Impl {
                 }
             }
             for (auto *p : {&lb_signals, &sb_signals}) {
-                if (p->get("save_addr")) {
+                if (p->get("adder_valid_i") && p->get("adder_ready_o")) {
                     auto idx = p->get("adder_ans_i", "tag");
                     auto size = access_size(
                         p->get("data", p == &sb_signals ? "store_type" : "load_type", idx));
+                    // At address response, these are the two states with store data already ready.
+                    const auto state = p == &sb_signals ? p->get("curr_state", "", idx) : 0;
+                    const bool data_ready = p == &sb_signals &&
+                        (state == enum_values.at("STORE_S_ADDR_REQ") || state == enum_values.at("STORE_S_ADDR_WAIT"));
                     checker.memory(idx, p == &sb_signals, p->get("adder_ans_i", "result"), size,
                                    (1u << size) - 1,
                                    p == &sb_signals ? p->get("data", "rs2_value", idx) : 0,
-                                   p == &sb_signals, t, p->get("adder_ans_i", "except_raised"));
+                                   data_ready, t,
+                                   p->get("adder_ans_i", "except_raised"));
                 }
             }
             // Forwarded loads capture a value without an external response.
             // Observe that capture before any store can write on the falling edge.
-            const auto &lb_layout = layouts.at(lb + "lb_op");
-            for (int idx = lb_layout.low; idx <= lb_layout.high; ++idx)
-                if (lb_signals.get("lb_op", "", idx) == enum_values.at("LOAD_OP_SAVE_CACHED"))
-                    checker.load_capture(idx, lb_signals.get("l0_value_i"), false, t);
-            const auto &sb_layout = layouts.at(sb + "curr_state");
-            for (int idx = sb_layout.low; idx <= sb_layout.high; ++idx)
-                if (sb_signals.get("curr_state", "", idx) != enum_values.at("STORE_S_MEM_REQ") &&
-                    sb_signals.get("next_state", "", idx) == enum_values.at("STORE_S_MEM_REQ"))
-                    checker.authorize(idx, sb_signals.get("data", "dest_rob_idx", idx), t);
-            if (sb_signals.get("mem_done"))
-                checker.store_response(sb_signals.get("mem_tag_i"),
-                                       sb_signals.get("mem_except_raised_i"), t);
+            const auto load_index = lb_signals.get("mem_idx");
+            if (lb_signals.get("mem_selected") && !lb_signals.get("mem_valid_o")) {
+                auto raw = lb_signals.get("forward_value", "", load_index);
+                auto offset = lb_signals.get("forward_offset", "", load_index);
+                checker.load_capture(load_index, raw >> (8 * offset), false, t);
+            }
+            if (constants.at("tb_bare.TbCfg.MEMORY_BACKEND") != 0 && sb_signals.get("mem_fire")) {
+                const auto index = sb_signals.get("head_idx");
+                checker.authorize(index, sb_signals.get("data", "dest_rob_idx", index), t);
+            }
         }
         // Observe acceptance into the input spill; the buffered bundle retains its identity.
         if (!front_flush && issue_signals.get("fetch_valid_i") &&
@@ -309,12 +336,16 @@ struct Monitor::Impl {
         if (constants.at("tb_bare.TbCfg.MEMORY_BACKEND") != 0 &&
             top_signals.get("dp2mem_store_valid") && top_signals.get("mem2dp_store_ready") &&
             top_signals.get("dp2mem_store_we")) {
-            auto tag = top_signals.get("dp2mem_store_tag");
-            if (inject("store")) tag = no_index;
-            checker.external_store(tag, top_signals.get("dp2mem_store_addr"),
+            auto index = store_index(top_signals.get("dp2mem_store_tag"));
+            if (inject("store")) index = no_index;
+            checker.external_store(index, top_signals.get("dp2mem_store_addr"),
                                    top_signals.get("dp2mem_store_be"),
                                    top_signals.get("dp2mem_store_wdata"), t);
         }
+        // A zero-latency response follows its accepted external write observation.
+        if (!back_flush && sb_signals.get("response_fire"))
+            checker.store_response(store_index(sb_signals.get("mem_tag_i")),
+                                   sb_signals.get("mem_except_raised_i"), t);
         checker.tick(t);
     }
 };
@@ -352,10 +383,13 @@ void Monitor::before_falling(Stamp t) {
         if (constants.at("tb_bare.TbCfg.MEMORY_BACKEND") == 0 &&
             impl_->top_signals.get("dp2mem_store_valid") &&
             impl_->top_signals.get("dp2mem_store_we")) {
-            auto tag = impl_->top_signals.get("dp2mem_store_tag");
+            const auto head = impl_->sb_signals.get("head_idx");
+            if (impl_->sb_signals.get("mem_fire"))
+                impl_->checker.authorize(head, impl_->sb_signals.get("data", "dest_rob_idx", head), t);
+            auto index = impl_->store_index(impl_->top_signals.get("dp2mem_store_tag"));
             if (impl_->inject("store"))
-                tag = no_index;
-            impl_->checker.external_store(tag, impl_->top_signals.get("dp2mem_store_addr"),
+                index = no_index;
+            impl_->checker.external_store(index, impl_->top_signals.get("dp2mem_store_addr"),
                                           impl_->top_signals.get("dp2mem_store_be"),
                                           impl_->top_signals.get("dp2mem_store_wdata"), t);
         }

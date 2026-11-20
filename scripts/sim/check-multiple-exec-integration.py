@@ -16,6 +16,20 @@ CASES = {
                        ALU_USE_FIFO=1, MULT_USE_FIFO=1, DIV_USE_FIFO=1, FPU_USE_FIFO=1,
                        BU_USE_FIFO=1, LSU_USE_FIFO=1, ALU_FIFO_DEPTH=4, MULT_FIFO_DEPTH=8,
                        DIV_FIFO_DEPTH=1, FPU_FIFO_DEPTH=2, BU_FIFO_DEPTH=4, LSU_FIFO_DEPTH=4),
+    "lsu-wide": dict(ISSUE_WIDTH=8, LSU_ISSUE_WIDTH=8, LDBUFF_DEPTH=8, STBUFF_DEPTH=8,
+                     LDBUFF_ISSUE_WIDTH=8, STBUFF_ISSUE_WIDTH=8),
+    "lsu-narrow": dict(ISSUE_WIDTH=8, LSU_ISSUE_WIDTH=4, LDBUFF_DEPTH=4, STBUFF_DEPTH=8, MAX_EU_N=8,
+                       LDBUFF_ISSUE_WIDTH=4, STBUFF_ISSUE_WIDTH=4),
+    "lsu-fifo": dict(ISSUE_WIDTH=4, LSU_ISSUE_WIDTH=4, LDBUFF_DEPTH=4, STBUFF_DEPTH=4,
+                     LSU_USE_FIFO=1, LSU_FIFO_DEPTH=8, LSU_SPILL_SKIP=0,
+                     LDBUFF_ISSUE_WIDTH=4, STBUFF_ISSUE_WIDTH=4),
+    "lsu-depth-one": dict(ISSUE_WIDTH=2, LSU_ISSUE_WIDTH=2, LDBUFF_DEPTH=1, STBUFF_DEPTH=1,
+                          LDBUFF_ISSUE_WIDTH=2, STBUFF_ISSUE_WIDTH=2),
+    "lsu-load-wide": dict(ISSUE_WIDTH=8, LSU_ISSUE_WIDTH=8, LDBUFF_DEPTH=8, STBUFF_DEPTH=8,
+                          LDBUFF_ISSUE_WIDTH=8, STBUFF_ISSUE_WIDTH=1, COMMIT_SPILL_SKIP=0),
+    "lsu-store-wide": dict(ISSUE_WIDTH=8, LSU_ISSUE_WIDTH=8, LDBUFF_DEPTH=8, STBUFF_DEPTH=8,
+                           LDBUFF_ISSUE_WIDTH=1, STBUFF_ISSUE_WIDTH=8, LSU_USE_FIFO=1,
+                           LSU_FIFO_DEPTH=16, LDBUFF_RR_ARBITER=1, COMMIT_SPILL_SKIP=0),
     "alu-mult": dict(ALU_NUM_UNITS=2, MULT_NUM_UNITS=2, ISSUE_WIDTH=4,
                      ALU_RR_ARBITER=0, MULT_RR_ARBITER=0),
     "alu-div": dict(ALU_NUM_UNITS=2, DIV_NUM_UNITS=2, ISSUE_WIDTH=2),
@@ -67,15 +81,17 @@ def spike_options(model):
     (model / "diff-options.vc").write_text(f'-CFLAGS "{flags}"\n-LDFLAGS "{libs} -ldl -lpthread -lz"\n')
 
 
-def firmware(args, directory, fp32):
+def firmware(args, directory, fp32, precise_faults=False):
     directory.mkdir(parents=True, exist_ok=True)
-    name = "mixed-fp32" if fp32 else "mixed"
+    name = "lsu-precise-faults" if precise_faults else "mixed-fp32" if fp32 else "mixed"
     elf, image = directory / f"{name}.elf", directory / f"{name}.hex"
     isa, abi = ("rv64imf_zicsr", "lp64f") if fp32 else ("rv64imfd_zicsr", "lp64d")
+    source = ROOT / ("tb/expipe/load-store-unit/lsu_precise_faults.S" if precise_faults
+                     else "tb/expipe/multiple_exec_integration.S")
     invoke([args.riscv_prefix + "-gcc", "-march=" + isa, "-mabi=" + abi,
             *(["-DLEN5_FP32_ONLY"] if fp32 else []), "-nostdlib", "-nostartfiles",
             "-Wl,-Ttext=0x10000", "-Wl,-e,_start", "-Wl,--no-relax",
-            ROOT / "tb/expipe/multiple_exec_integration.S", "-o", elf], ROOT,
+            source, "-o", elf], ROOT,
            directory / f"{name}-compile.log", 30)
     invoke([args.riscv_prefix + "-objcopy", "-O", "verilog", "--verilog-data-width=1", elf, image],
            ROOT, directory / f"{name}-objcopy.log", 30)
@@ -126,6 +142,18 @@ def check_case(args, name, output):
         raise RuntimeError(f"differential/program completion check failed: {run}")
     result.update(status="passed", committed=report["committed"])
     print(f"PASS Spike {name}: {report['committed']} commits", flush=True)
+    if name.startswith("lsu-"):
+        fault_image = firmware(args, output / "firmware", False, precise_faults=True)
+        fault_run = directory / "precise-faults"
+        (fault_run / "logs").mkdir(parents=True, exist_ok=True)
+        invoke([model / "Vtb_bare", "--run_dir=" + str(fault_run), "--max_cycles=5000",
+                "--dump_waves=false", "--dump_trace=false", "--log_level=LOG_LOW",
+                "+firmware=" + str(fault_image)], ROOT, fault_run / "console.log", 30)
+        if "(SUCCESS)" not in (fault_run / "console.log").read_text():
+            raise RuntimeError(f"precise memory fault program failed: {fault_run}")
+        result["precise_faults"] = "passed"
+        print(f"PASS precise load/store access and alignment traps {name}", flush=True)
+
     return result
 
 

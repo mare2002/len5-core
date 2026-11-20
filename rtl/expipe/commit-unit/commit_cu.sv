@@ -471,6 +471,9 @@ module commit_cu (
         comm_csr_sel_o = COMM_CSR_SEL_ZERO;
       end
       EXCEPT_LOAD_PC: begin
+        // Discard fetch/IQ bundles refilled while trap CSRs were being saved.
+        ex_mis_flush_o     = 1'b1;
+        except_flush_o    = 1'b1;
         fe_except_raised_o = 1'b1;
         comm_rd_sel_o      = COMM_RD_SEL_EXCEPT;
         issue_resume_o     = 1'b1;

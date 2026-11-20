@@ -231,13 +231,17 @@ package expipe_pkg;
 
   // Load-store unit control
   typedef enum logic [MAX_EU_CTL_LEN-1:0] {
-    LS_BYTE,
-    LS_BYTE_U,
-    LS_HALFWORD,
-    LS_HALFWORD_U,
-    LS_WORD,
-    LS_WORD_U,
-    LS_DOUBLEWORD
+    L_BYTE,
+    L_BYTE_U,
+    L_HALFWORD,
+    L_HALFWORD_U,
+    L_WORD,
+    L_WORD_U,
+    L_DOUBLEWORD,
+    S_BYTE,
+    S_HALFWORD,
+    S_WORD,
+    S_DOUBLEWORD
   } ldst_width_t;
 
   // EU control union
@@ -288,14 +292,26 @@ package expipe_pkg;
 
   // Assigned execution unit
   typedef enum logic [2:0] {
-    EU_STORE_BUFFER,
-    EU_LOAD_BUFFER,
+    EU_LSU,
     EU_BRANCH_UNIT,
     EU_INT_ALU,
     EU_INT_MULT,
     EU_INT_DIV,
     EU_FPU
   } issue_eu_t;
+
+  // Completion sources are independent of dispatch destinations.
+  typedef enum logic [2:0] {
+    CDB_STORE_BUFFER,
+    CDB_LOAD_BUFFER,
+    CDB_BRANCH_UNIT,
+    CDB_INT_ALU,
+    CDB_INT_MULT,
+    CDB_INT_DIV,
+    CDB_FPU
+  } cdb_source_t;
+  localparam int unsigned CDB_SOURCE_COUNT = int'(CDB_FPU) + 1;
+
 
   // Operand source
   typedef enum logic [1:0] {

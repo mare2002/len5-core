@@ -249,19 +249,24 @@ module issue_stage #(
   assign special_grant = cu_issue_special && iq_valid[0] && comm_ready_i[0];
 
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_grants
-    logic lane_ready, granted;
+    logic dispatch_allowed, eligible, older_accepted, lane_ready, granted;
 
-    assign lane_ready = iq_valid[i] && comm_ready_i[i] && !operand_serializing[i] &&
+    assign dispatch_allowed = iq_valid[i] && comm_ready_i[i] && !operand_serializing[i];
+    assign eligible = cu_issue_enable && dispatch_allowed;
+    assign lane_ready = cu_issue_enable && dispatch_allowed &&
         (operand_dispatch[i].direct_result || operand_skip_eu[i] || ex_ready_i[i]);
 
     // A blocked older lane prevents every younger grant.
     if (i == 0) begin : gen_head
-      assign granted = (cu_issue_enable && lane_ready) || special_grant;
+      assign older_accepted = 1'b1;
+      assign granted        = lane_ready || special_grant;
     end else begin : gen_younger
-      assign granted = cu_issue_enable && gen_grants[i-1].granted && lane_ready;
+      assign older_accepted = gen_grants[i-1].granted;
+      assign granted        = gen_grants[i-1].granted && lane_ready;
     end
     assign issue_grant[i] = granted;
-    assign ex_valid_o[i] = granted && cu_issue_enable &&
+    // Offer only after older acceptance; own readiness determines the grant.
+    assign ex_valid_o[i] = eligible && older_accepted &&
         !operand_dispatch[i].direct_result && !operand_skip_eu[i];
   end
 
@@ -500,17 +505,23 @@ module issue_stage #(
   for (genvar i = 0; i < Len5Cfg.ISSUE_WIDTH; i++) begin : gen_check_dispatch
     always @(posedge clk_i) begin
       if (rst_ni) begin
+        assert (!ex_valid_o[i] || (comm_ready_i[i] && !iq_flush && !ex_mis_i))
+        else $error("execution offer without ROB capacity or during recovery");
         assert (!issue_grant[i] || (comm_ready_i[i] && !iq_flush && !ex_mis_i))
         else $error("dispatch without ROB capacity or during recovery");
         assert (!issue_grant[i] || ((!rs1_dep[i].valid || rs1_bundle[i]) &&
             (!rs2_dep[i].valid || rs2_bundle[i]) && (!rs3_dep[i].valid || rs3_bundle[i])))
         else $error("accepted queue dependency requires an older granted producer");
-        assert (!ex_valid_o[i] || issue_grant[i])
-        else $error("execution insertion without ROB allocation");
+        assert ((ex_valid_o[i] && ex_ready_i[i]) ==
+                  (issue_grant[i] && cu_issue_enable && !operand_dispatch[i].direct_result && !operand_skip_eu[i]))
+        else $error("execution acceptance and ROB allocation disagree");
       end
     end
     if (i > 0) begin : gen_check_prefix
       always @(posedge clk_i) begin
+        if (rst_ni)
+          assert (!ex_valid_o[i] || issue_grant[i-1])
+          else $error("execution offer bypassed older lane");
         if (rst_ni) begin
           assert (!issue_grant[i] || issue_grant[i-1])
           else $error("younger instruction bypassed a blocked issue lane");

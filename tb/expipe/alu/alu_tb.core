@@ -93,6 +93,7 @@ targets:
     - LDBUFF_DEPTH
     - STBUFF_DEPTH
     - LSU_SPILL_SKIP
+    - LDBUFF_RR_ARBITER
     - ALU_NUM_UNITS
     - ALU_RS_DEPTH
     - ALU_SPILL_SKIP
@@ -226,6 +227,9 @@ parameters:
     datatype: int
     paramtype: vlogparam
   LSU_SPILL_SKIP:
+    datatype: int
+    paramtype: vlogparam
+  LDBUFF_RR_ARBITER:
     datatype: int
     paramtype: vlogparam
   ALU_NUM_UNITS:

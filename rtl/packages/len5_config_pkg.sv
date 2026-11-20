@@ -56,6 +56,8 @@ package len5_config_pkg;
     bit LSU_USE_FIFO;
     int unsigned LSU_FIFO_DEPTH;
     int unsigned LSU_ISSUE_WIDTH;
+    int unsigned LDBUFF_ISSUE_WIDTH;
+    int unsigned STBUFF_ISSUE_WIDTH;
 
 
     // Enable M extension support
@@ -158,9 +160,10 @@ package len5_config_pkg;
     int unsigned IQ_DEPTH;  // number of entries in the issue queue
 
     // LOAD/STORE UNIT
-    int unsigned LDBUFF_DEPTH;  // number of entries in the load buffer
-    int unsigned STBUFF_DEPTH;  // number of entries in the store buffer
+    int unsigned LDBUFF_DEPTH;  // number of entries in the load buffer (positive power of two)
+    int unsigned STBUFF_DEPTH;  // number of entries in the store buffer (positive power of two)
     bit LSU_SPILL_SKIP;  // make address adder fully combinational
+    bit LDBUFF_RR_ARBITER;  // round-robin load address selection instead of fixed priority
 
     // ALU UNIT
     int unsigned ALU_NUM_UNITS;
@@ -221,6 +224,8 @@ package len5_config_pkg;
     bit LSU_USE_FIFO;
     int unsigned LSU_FIFO_DEPTH;
     int unsigned LSU_ISSUE_WIDTH;
+    int unsigned LDBUFF_ISSUE_WIDTH;
+    int unsigned STBUFF_ISSUE_WIDTH;
 
     bit LEN5_M_EN;
     bit LEN5_DIV_EN;
@@ -245,6 +250,7 @@ package len5_config_pkg;
     int unsigned LDBUFF_DEPTH;
     int unsigned STBUFF_DEPTH;
     bit LSU_SPILL_SKIP;
+    bit LDBUFF_RR_ARBITER;
     int unsigned ALU_NUM_UNITS;
     int unsigned ALU_RS_DEPTH;
     bit ALU_SPILL_SKIP;
@@ -313,6 +319,8 @@ package len5_config_pkg;
       LSU_USE_FIFO: 1'b0,
       LSU_FIFO_DEPTH: 32'd4,
       LSU_ISSUE_WIDTH: 32'd1,
+      LDBUFF_ISSUE_WIDTH: 32'd1,
+      STBUFF_ISSUE_WIDTH: 32'd1,
 
       LEN5_M_EN: 1'b1,
       LEN5_DIV_EN: 1'b1,
@@ -321,7 +329,7 @@ package len5_config_pkg;
       LEN5_C_EN: 1'b0,
       LEN5_A_EN: 1'b0,
       LEN5_STORE_LOAD_FWD_EN: 1'b1,
-      MAX_EU_N: 32'd7,
+      MAX_EU_N: 32'd6,
       ONLY_DOUBLEWORD_MEM_ACCESSES: 1'b0,
       LEN5_CSR_HPMCOUNTERS_EN: 1'b1,
       MMAP_MASK: 64'hffffffffe0000000,
@@ -337,6 +345,7 @@ package len5_config_pkg;
       LDBUFF_DEPTH: 32'd8,
       STBUFF_DEPTH: 32'd16,
       LSU_SPILL_SKIP: 1'b1,
+      LDBUFF_RR_ARBITER: 1'b0,
       ALU_NUM_UNITS: 32'd1,
       ALU_RS_DEPTH: 32'd8,
       ALU_SPILL_SKIP: 1'b1,
@@ -385,6 +394,8 @@ package len5_config_pkg;
     cfg.LSU_USE_FIFO = user_cfg.LSU_USE_FIFO;
     cfg.LSU_FIFO_DEPTH = user_cfg.LSU_FIFO_DEPTH;
     cfg.LSU_ISSUE_WIDTH = user_cfg.LSU_ISSUE_WIDTH;
+    cfg.LDBUFF_ISSUE_WIDTH = user_cfg.LDBUFF_ISSUE_WIDTH;
+    cfg.STBUFF_ISSUE_WIDTH = user_cfg.STBUFF_ISSUE_WIDTH;
 
     cfg.ISSUE_DECODE_SPILL_EN = user_cfg.ISSUE_DECODE_SPILL_EN;
     cfg.LEN5_M_EN = user_cfg.LEN5_M_EN;
@@ -410,6 +421,7 @@ package len5_config_pkg;
     cfg.LDBUFF_DEPTH = user_cfg.LDBUFF_DEPTH;
     cfg.STBUFF_DEPTH = user_cfg.STBUFF_DEPTH;
     cfg.LSU_SPILL_SKIP = user_cfg.LSU_SPILL_SKIP;
+    cfg.LDBUFF_RR_ARBITER = user_cfg.LDBUFF_RR_ARBITER;
     cfg.ALU_NUM_UNITS = user_cfg.ALU_NUM_UNITS;
     cfg.ALU_RS_DEPTH = user_cfg.ALU_RS_DEPTH;
     cfg.ALU_SPILL_SKIP = user_cfg.ALU_SPILL_SKIP;
@@ -435,8 +447,8 @@ package len5_config_pkg;
     cfg.LEN5_MULTIPLE_ISSUES_BITS = $clog2(user_cfg.LEN5_MULTIPLE_ISSUES);
     cfg.LWIDTH = 32 * user_cfg.LEN5_MULTIPLE_ISSUES;
     cfg.FLEN = user_cfg.LEN5_D_EN ? 64 : 32;
-    cfg.LDBUFF_TAG_W = $clog2(user_cfg.LDBUFF_DEPTH);
-    cfg.STBUFF_TAG_W = $clog2(user_cfg.STBUFF_DEPTH);
+    cfg.LDBUFF_TAG_W = user_cfg.LDBUFF_DEPTH > 1 ? $clog2(user_cfg.LDBUFF_DEPTH) : 1;
+    cfg.STBUFF_TAG_W = user_cfg.STBUFF_DEPTH > 1 ? $clog2(user_cfg.STBUFF_DEPTH) : 1;
     cfg.BUFF_IDX_LEN = cfg.LDBUFF_TAG_W > cfg.STBUFF_TAG_W ? cfg.LDBUFF_TAG_W : cfg.STBUFF_TAG_W;
     cfg.ROB_IDX_LEN = $clog2(user_cfg.ROB_DEPTH);
     cfg.COMMIT_UNIT_DEPTH = user_cfg.ROB_DEPTH + 3;
@@ -444,7 +456,7 @@ package len5_config_pkg;
     cfg.MULT_EU_N = user_cfg.LEN5_M_EN ? 1 : 0;
     cfg.DIV_EU_N = user_cfg.LEN5_DIV_EN ? 1 : 0;
     cfg.FP_EU_N = (user_cfg.LEN5_D_EN | user_cfg.LEN5_F_EN) ? 1 : 0;
-    cfg.EU_N = 4 + cfg.MULT_EU_N + cfg.DIV_EU_N + cfg.FP_EU_N;
+    cfg.EU_N = 3 + cfg.MULT_EU_N + cfg.DIV_EU_N + cfg.FP_EU_N;
     cfg.REGSTAT_CNT_W = $clog2(cfg.COMMIT_UNIT_DEPTH);
     cfg.IMEM_DATA_WIDTH = user_cfg.LEN5_MULTIPLE_ISSUES > 2 ? 32 * user_cfg.LEN5_MULTIPLE_ISSUES : 64;
     cfg.TAG_COUNT = 1 << cfg.BUFF_IDX_LEN;
@@ -455,7 +467,7 @@ package len5_config_pkg;
 
   // Use explicit fatal checks so constant evaluation also rejects invalid builds without --assert.
   function automatic bit check_build(len5_cfg cfg, int rs_fifo_eu = -1);
-    int unsigned depths          [6];
+    int unsigned depths          [4];
     int unsigned max_outstanding;
     bit          derived_valid;
     // IDs follow expipe_pkg::issue_eu_t; that package depends on this one.
@@ -491,6 +503,10 @@ package len5_config_pkg;
       $fatal(1, "BU_RS_DEPTH must be a positive power of two");
     if (cfg.LSU_ISSUE_WIDTH < 1 || cfg.LSU_ISSUE_WIDTH > cfg.ISSUE_WIDTH)
       $fatal(1, "LSU_ISSUE_WIDTH must be in 1..ISSUE_WIDTH");
+    if (cfg.LDBUFF_ISSUE_WIDTH < 1 || cfg.LDBUFF_ISSUE_WIDTH > cfg.LSU_ISSUE_WIDTH)
+      $fatal(1, "LDBUFF_ISSUE_WIDTH must be in 1..LSU_ISSUE_WIDTH");
+    if (cfg.STBUFF_ISSUE_WIDTH < 1 || cfg.STBUFF_ISSUE_WIDTH > cfg.LSU_ISSUE_WIDTH)
+      $fatal(1, "STBUFF_ISSUE_WIDTH must be in 1..LSU_ISSUE_WIDTH");
     if (cfg.LSU_USE_FIFO && (cfg.LSU_FIFO_DEPTH == 0 ||
         (cfg.LSU_FIFO_DEPTH & (cfg.LSU_FIFO_DEPTH - 1)) != 0))
       $fatal(1, "LSU_FIFO_DEPTH must be positive power of two");
@@ -512,19 +528,14 @@ package len5_config_pkg;
       $fatal(
           1, "check_build: enabled execution-unit categories require at least one physical unit"
       );
-    depths = '{
-        cfg.RAS_DEPTH,
-        cfg.LDBUFF_DEPTH,
-        cfg.STBUFF_DEPTH,
-        cfg.ALU_RS_DEPTH,
-        cfg.BU_RS_DEPTH,
-        cfg.ROB_DEPTH
-    };
+    if (cfg.LDBUFF_DEPTH == 0 || (cfg.LDBUFF_DEPTH & (cfg.LDBUFF_DEPTH - 1)) != 0)
+      $fatal(1, "check_build: LDBUFF_DEPTH must be a positive power of two");
+    if (cfg.STBUFF_DEPTH == 0 || (cfg.STBUFF_DEPTH & (cfg.STBUFF_DEPTH - 1)) != 0)
+      $fatal(1, "check_build: STBUFF_DEPTH must be a positive power of two");
+    depths = '{cfg.RAS_DEPTH, cfg.ALU_RS_DEPTH, cfg.BU_RS_DEPTH, cfg.ROB_DEPTH};
     foreach (depths[i]) begin
       if (depths[i] < 2)
-        $fatal(
-            1, "check_build: RAS, ROB, buffer and reservation-station depths must be at least two"
-        );
+        $fatal(1, "check_build: RAS, ROB and reservation-station depths must be at least two");
     end
     if ((cfg.LEN5_M_EN && cfg.MULT_RS_DEPTH < 2) ||
         (cfg.LEN5_DIV_EN && cfg.DIV_RS_DEPTH < 2) ||
@@ -533,10 +544,10 @@ package len5_config_pkg;
           1,
           "check_build: enabled execution units require reservation-station depths of at least two"
       );
-    if (cfg.MAX_EU_N < 7)
+    if (cfg.MAX_EU_N < 6)
       $fatal(
           1,
-          "check_build: MAX_EU_N must accommodate all seven architectural execution-unit identifiers"
+          "check_build: MAX_EU_N must accommodate all six architectural execution-unit identifiers"
       );
     if (cfg.BPU_HLEN <= cfg.LEN5_MULTIPLE_ISSUES_BITS || cfg.BPU_HLEN >= 32 ||
         cfg.BPU_BTB_BITS == 0 || cfg.BPU_BTB_BITS >= 32)
@@ -544,8 +555,8 @@ package len5_config_pkg;
     derived_valid = cfg.LEN5_MULTIPLE_ISSUES_BITS == $clog2(cfg.LEN5_MULTIPLE_ISSUES);
     derived_valid &= cfg.LWIDTH == 32 * cfg.LEN5_MULTIPLE_ISSUES;
     derived_valid &= cfg.FLEN == (cfg.LEN5_D_EN ? 64 : 32);
-    derived_valid &= cfg.LDBUFF_TAG_W == $clog2(cfg.LDBUFF_DEPTH);
-    derived_valid &= cfg.STBUFF_TAG_W == $clog2(cfg.STBUFF_DEPTH);
+    derived_valid &= cfg.LDBUFF_TAG_W == (cfg.LDBUFF_DEPTH > 1 ? $clog2(cfg.LDBUFF_DEPTH) : 1);
+    derived_valid &= cfg.STBUFF_TAG_W == (cfg.STBUFF_DEPTH > 1 ? $clog2(cfg.STBUFF_DEPTH) : 1);
     derived_valid &= cfg.BUFF_IDX_LEN == (cfg.LDBUFF_TAG_W > cfg.STBUFF_TAG_W ? cfg.LDBUFF_TAG_W : cfg.STBUFF_TAG_W);
     derived_valid &= cfg.ROB_IDX_LEN == $clog2(cfg.ROB_DEPTH);
     derived_valid &= cfg.COMMIT_UNIT_DEPTH == cfg.ROB_DEPTH + 3;
@@ -554,7 +565,7 @@ package len5_config_pkg;
     derived_valid &= cfg.MULT_EU_N == (cfg.LEN5_M_EN ? 1 : 0);
     derived_valid &= cfg.DIV_EU_N == (cfg.LEN5_DIV_EN ? 1 : 0);
     derived_valid &= cfg.FP_EU_N == ((cfg.LEN5_F_EN || cfg.LEN5_D_EN) ? 1 : 0);
-    derived_valid &= cfg.EU_N == 4 + cfg.MULT_EU_N + cfg.DIV_EU_N + cfg.FP_EU_N;
+    derived_valid &= cfg.EU_N == 3 + cfg.MULT_EU_N + cfg.DIV_EU_N + cfg.FP_EU_N;
     derived_valid &= cfg.IMEM_DATA_WIDTH == (cfg.LEN5_MULTIPLE_ISSUES > 2 ? 32 * cfg.LEN5_MULTIPLE_ISSUES : 64);
     derived_valid &= cfg.TAG_COUNT == (1 << cfg.BUFF_IDX_LEN);
     max_outstanding = cfg.TAG_COUNT > cfg.FETCH_MEMIF_FIFO_DEPTH ? cfg.TAG_COUNT : cfg.FETCH_MEMIF_FIFO_DEPTH;

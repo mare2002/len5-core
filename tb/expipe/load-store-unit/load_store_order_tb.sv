@@ -27,6 +27,8 @@ module load_store_order_tb #(
     parameter bit LSU_USE_FIFO = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_USE_FIFO,
     parameter int unsigned LSU_FIFO_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_FIFO_DEPTH,
     parameter int unsigned LSU_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_ISSUE_WIDTH,
+    parameter int unsigned LDBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_ISSUE_WIDTH,
+    parameter int unsigned STBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_ISSUE_WIDTH,
     parameter bit LEN5_M_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_M_EN,
     parameter bit LEN5_DIV_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_DIV_EN,
     parameter bit LEN5_F_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_F_EN,
@@ -52,6 +54,7 @@ module load_store_order_tb #(
     parameter int unsigned LDBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_DEPTH,
     parameter int unsigned STBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_DEPTH,
     parameter bit LSU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_SPILL_SKIP,
+    parameter bit LDBUFF_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_RR_ARBITER,
     parameter int unsigned ALU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_NUM_UNITS,
     parameter int unsigned ALU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RS_DEPTH,
     parameter bit ALU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_SPILL_SKIP,
@@ -99,6 +102,8 @@ module load_store_order_tb #(
             LSU_USE_FIFO: LSU_USE_FIFO,
             LSU_FIFO_DEPTH: LSU_FIFO_DEPTH,
             LSU_ISSUE_WIDTH: LSU_ISSUE_WIDTH,
+            LDBUFF_ISSUE_WIDTH: LDBUFF_ISSUE_WIDTH,
+            STBUFF_ISSUE_WIDTH: STBUFF_ISSUE_WIDTH,
             LEN5_M_EN: LEN5_M_EN,
             LEN5_DIV_EN: LEN5_DIV_EN,
             LEN5_F_EN: LEN5_F_EN,
@@ -122,6 +127,7 @@ module load_store_order_tb #(
             LDBUFF_DEPTH: LDBUFF_DEPTH,
             STBUFF_DEPTH: STBUFF_DEPTH,
             LSU_SPILL_SKIP: LSU_SPILL_SKIP,
+            LDBUFF_RR_ARBITER: LDBUFF_RR_ARBITER,
             ALU_NUM_UNITS: ALU_NUM_UNITS,
             ALU_RS_DEPTH: ALU_RS_DEPTH,
             ALU_SPILL_SKIP: ALU_SPILL_SKIP,
@@ -162,8 +168,8 @@ module load_store_order_tb #(
   /* verilator lint_off SYNCASYNCNET */
   logic rst_n = 0, flush = 0;
   /* verilator lint_on SYNCASYNCNET */
-  logic issue_load = 0, issue_store = 0, load_ready, store_ready;
-  ldst_width_t issue_type = LS_DOUBLEWORD;
+  logic issue_load = 0, issue_store = 0, load_ready, store_ready, issue_ready;
+  eu_ctl_t issue_ctl = '{lsu: L_DOUBLEWORD};
   op_data_t rs1, rs2;
   rob_idx_t issue_idx = 0;
   logic     broadcast_valid = 0;
@@ -178,6 +184,9 @@ module load_store_order_tb #(
   logic [7:0] store_be;
   logic [Len5Cfg.BUFF_IDX_LEN-1:0] store_tag, store_rsp_tag;
 
+  assign load_ready = issue_ready;
+  assign store_ready = issue_ready;
+
   load_store_unit #(
       .Len5Cfg(Len5Cfg)
   ) dut (
@@ -185,11 +194,9 @@ module load_store_order_tb #(
       .rst_ni                   (rst_n),
       .mis_flush_i              (flush),
       .except_flush_i           (flush),
-      .issue_lb_valid_i         (issue_load),
-      .issue_sb_valid_i         (issue_store),
-      .issue_lb_ready_o         (load_ready),
-      .issue_sb_ready_o         (store_ready),
-      .issue_type_i             (issue_type),
+      .issue_valid_i            (issue_load || issue_store),
+      .issue_ready_o            (issue_ready),
+      .issue_eu_ctl_i           (issue_ctl),
       .issue_rs1_i              (rs1),
       .issue_rs2_i              (rs2),
       .issue_imm_i              (64'b0),
@@ -317,6 +324,7 @@ module load_store_order_tb #(
     rst_n           = 0;
     issue_load      = 0;
     issue_store     = 0;
+    issue_ctl.lsu      = L_DOUBLEWORD;
     broadcast_valid = 0;
     load_gnt        = 1;
     store_gnt       = 1;
@@ -344,7 +352,7 @@ module load_store_order_tb #(
                        ldst_width_t access_type, bit address_ready = 1);
     rs1         = '{ready: address_ready, rob_idx: rob_idx_t'(27), value: address};
     rs2         = '{ready: 1'b1, rob_idx: '0, value: value};
-    issue_type  = access_type;
+    issue_ctl.lsu  = access_type;
     issue_idx   = idx;
     issue_load  = is_load;
     issue_store = !is_load;
@@ -379,8 +387,8 @@ module load_store_order_tb #(
     reset_dut();
     load_gnt = 0;
     expect_load(1, 64'h8877665544332211);
-    issue(1, 1, 0, 0, LS_DOUBLEWORD, 0);
-    issue(0, 2, 64'h1000, 64'h99, LS_DOUBLEWORD);
+    issue(1, 1, 0, 0, L_DOUBLEWORD, 0);
+    issue(0, 2, 64'h1000, 64'h99, S_DOUBLEWORD);
     cycles(8);
     assert (stores == 0)
     else $fatal(1, "Store passed an older load with unknown address");
@@ -401,8 +409,8 @@ module load_store_order_tb #(
     reset_dut();
     load_gnt = 0;
     expect_load(1, 64'h44332211);
-    issue(1, 1, 64'h1000, 0, LS_WORD_U);
-    issue(0, 2, 64'h1003, 64'haa, LS_BYTE);
+    issue(1, 1, 64'h1000, 0, L_WORD_U);
+    issue(0, 2, 64'h1003, 64'haa, S_BYTE);
     cycles(8);
     assert (stores == 0)
     else $fatal(1, "Narrow store overwrote part of an older wide load");
@@ -416,14 +424,14 @@ module load_store_order_tb #(
     load_gnt  = 0;
     store_gnt = 0;
     expect_load(1, 64'h8877665544332211);
-    issue(1, 1, 64'h1000, 0, LS_DOUBLEWORD);
-    issue(0, 2, 64'h1008, 64'h77, LS_DOUBLEWORD);
+    issue(1, 1, 64'h1000, 0, L_DOUBLEWORD);
+    issue(0, 2, 64'h1008, 64'h77, S_DOUBLEWORD);
     load_gnt = 1;
     await_load(1);
     cycles(2);
     for (int i = 0; i < Len5Cfg.LDBUFF_DEPTH; i++) begin
       expect_load(rob_idx_t'(i + 3), 64'h77);
-      issue(1, rob_idx_t'(i + 3), 0, 0, LS_DOUBLEWORD, 0);
+      issue(1, rob_idx_t'(i + 3), 0, 0, L_DOUBLEWORD, 0);
     end
     store_gnt = 1;
     cycles(10);
@@ -443,9 +451,9 @@ module load_store_order_tb #(
     reset_dut();
     load_gnt = 0;
     expect_load(1, 64'h8877665544332211);
-    issue(1, 1, 64'h1000, 0, LS_DOUBLEWORD);
+    issue(1, 1, 64'h1000, 0, L_DOUBLEWORD);
     cycles(3);
-    issue(0, 2, 64'h1008, 64'h77, LS_DOUBLEWORD);
+    issue(0, 2, 64'h1008, 64'h77, S_DOUBLEWORD);
     cycles(8);
     assert (stores == 1 && !seen[1])
     else $fatal(1, "Disjoint store unnecessarily waited for a load");
@@ -456,8 +464,8 @@ module load_store_order_tb #(
     reset_dut();
     load_gnt = 0;
     expect_load(1, 64'h44);
-    issue(1, 1, 64'h1003, 0, LS_BYTE_U);
-    issue(0, 2, 64'h1000, 64'hdeadbeef, LS_WORD);
+    issue(1, 1, 64'h1003, 0, L_BYTE_U);
+    issue(0, 2, 64'h1000, 64'hdeadbeef, S_WORD);
     cycles(8);
     assert (stores == 0)
     else $fatal(1, "Partial overlap was not protected");
@@ -465,52 +473,50 @@ module load_store_order_tb #(
     await_load(1);
     cycles(8);
 
-    // Cached value exists while the load waits for an unrelated older store.
-    // The load must forward on dependency release, with memory reads disabled.
+    // A removed store is visible through memory. A younger overlapping store
+    // must wait until the load captures that value; there is no retired-store cache.
     reset_dut();
-    issue(0, 1, 64'h1000, 64'h18, LS_DOUBLEWORD);
+    issue(0, 1, 64'h1000, 64'h18, S_DOUBLEWORD);
     cycles(10);
     store_gnt = 0;
-    load_gnt  = 0;
-    issue(0, 2, 64'h1008, 64'h10, LS_DOUBLEWORD);
+    load_gnt  = 1;
+    issue(0, 2, 64'h1008, 64'h10, S_DOUBLEWORD);
     expect_load(3, 64'h18);
-    issue(1, 3, 64'h1000, 0, LS_DOUBLEWORD);
-    issue(0, 4, 64'h1000, 0, LS_DOUBLEWORD);
+    issue(1, 3, 64'h1000, 0, L_DOUBLEWORD);
+    issue(0, 4, 64'h1000, 0, S_DOUBLEWORD);
     cycles(5);
     store_gnt = 1;
     await_load(3);
-    assert (reads == 0)
-    else $fatal(1, "Cached load accessed memory");
+    assert (reads == 1)
+    else $fatal(1, "Removed store must be read from memory exactly once");
     cycles(10);
     assert (stores == 3)
     else $fatal(1, "Younger store stayed blocked after forwarding");
 
-    // Response tags lag request tags: each address must retain the pointer
-    // to its own store entry. Exercise both queues wrapping and reusing slots.
+    // Removed stores must be visible in memory after queue wrap and slot reuse.
     reset_dut();
-    load_gnt = 0;
     for (int i = 0; i < 20; i++) begin
-      issue(0, 1, 64'h1000 + 8 * 64'(i % 16), 64'(i + 1), LS_DOUBLEWORD);
+      issue(0, 1, 64'h1000 + 8 * 64'(i % 16), 64'(i + 1), S_DOUBLEWORD);
       cycles(10);
       expect_load(2, 64'(i + 1));
-      issue(1, 2, 64'h1000 + 8 * 64'(i % 16), 0, LS_DOUBLEWORD);
+      issue(1, 2, 64'h1000 + 8 * 64'(i % 16), 0, L_DOUBLEWORD);
       await_load(2);
       cycles(2);
     end
-    assert (reads == 0)
-    else $fatal(1, "L0 used a response tag instead of the request tag");
+    assert (reads == 20)
+    else $fatal(1, "Removed-store loads were duplicated or dropped");
 
     // Flushing an unresolved load and blocked store must release dependencies.
     reset_dut();
-    issue(1, 1, 0, 0, LS_DOUBLEWORD, 0);
-    issue(0, 2, 64'h1000, 64'h12, LS_DOUBLEWORD);
+    issue(1, 1, 0, 0, L_DOUBLEWORD, 0);
+    issue(0, 2, 64'h1000, 64'h12, S_DOUBLEWORD);
     cycles(5);
     assert (stores == 0)
     else $fatal(1, "Unresolved load did not block the store");
     flush = 1;
     cycles(1);
     flush = 0;
-    issue(0, 3, 64'h1000, 64'h34, LS_DOUBLEWORD);
+    issue(0, 3, 64'h1000, 64'h34, S_DOUBLEWORD);
     cycles(10);
     assert (stores == 1)
     else $fatal(1, "Flush left stale load dependencies");
@@ -522,7 +528,7 @@ module load_store_order_tb #(
     flush    = 0;
     load_gnt = 0;
     expect_load(4, 64'h34);
-    issue(1, 4, 64'h1000, 0, LS_DOUBLEWORD);
+    issue(1, 4, 64'h1000, 0, L_DOUBLEWORD);
     cycles(8);
     assert (!seen[4])
     else $fatal(1, "Invalid L0 entry forwarded after a flush");

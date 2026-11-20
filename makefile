@@ -619,3 +619,16 @@ check-rs-alloc-fifo:
 .PHONY: check-branch-rs-alloc
 check-branch-rs-alloc:
 	@bash scripts/sim/check-branch-rs-alloc.sh
+
+# LSU allocation, forwarding, precise completion, and ROB fault ordering.
+.PHONY: check-issue-offer check-lsu
+check-issue-offer:
+	scripts/sim/check-issue-offer.sh
+
+check-lsu: check-issue-offer
+	@bash scripts/sim/check-lsu-issue-route.sh
+	@bash scripts/sim/check-lsu-address-select.sh
+	@bash scripts/sim/check-lsu-redesign.sh
+	@bash scripts/sim/check-lsu-rob-precision.sh
+	@bash scripts/sim/check-load-store.sh
+	@LOAD_STORE_TOP=load_store_killed_tb LOAD_BUFFER_DRAIN_ON_FLUSH=1 BUILD_DIR=build/lsu-redesign/killed bash scripts/sim/check-load-store.sh

@@ -133,6 +133,16 @@ correctness passed. These commands were not rerun for this consolidation.
 
 ## 3. R02 — Exception flush and redirect leave a recovery window
 
+**LSU integration follow-up:** `commit_cu.EXCEPT_LOAD_PC` now asserts both existing
+pipeline flush signals again at the late trap redirect, clearing fetch and IQ
+bundles refilled during CSR saves. The new
+[LSU fault/recovery tests](../expipe/load-store-unit/VERIFICATION.md#recorded-results)
+pass store/load access and alignment traps, exact trap metadata, younger-state
+preservation, and MRET recovery at global issue widths two, four, and eight,
+including FIFO allocation and depth-one queues. The captures below remain the
+historical evidence; their original frontend reproducer matrix was not rerun.
+
+
 The same full-core captures observed unexpected-stream NOPs entering issue and
 asserting qualified commit register-file enables around exception entry:
 

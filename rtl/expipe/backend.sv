@@ -183,9 +183,9 @@ module backend #(
 
   // Execution stage <--> CDB
   // ------------------------
-  logic [Len5Cfg.MAX_EU_N-1:0] cdb_ex_ready;
-  logic [Len5Cfg.MAX_EU_N-1:0] ex_cdb_valid;
-  cdb_data_t [Len5Cfg.MAX_EU_N-1:0] ex_cdb_data;
+  logic [CDB_SOURCE_COUNT-1:0] cdb_ex_ready;
+  logic [CDB_SOURCE_COUNT-1:0] ex_cdb_valid;
+  cdb_data_t [CDB_SOURCE_COUNT-1:0] ex_cdb_data;
 
   // Execution stage <--> commit stage
   // ---------------------------------
@@ -518,12 +518,12 @@ module backend #(
     .clk_i           (clk_i),
     .rst_ni          (rst_ni),
     .flush_i         (ex_mis_flush),
-    .max_prio_valid_i(ex_cdb_valid[0]),
-    .max_prio_ready_o(cdb_ex_ready[0]),
-    .max_prio_data_i (ex_cdb_data[0]),
-    .rs_valid_i      (ex_cdb_valid[Len5Cfg.MAX_EU_N-1:1]),
-    .rs_ready_o      (cdb_ex_ready[Len5Cfg.MAX_EU_N-1:1]),
-    .rs_data_i       (ex_cdb_data[Len5Cfg.MAX_EU_N-1:1]),
+    .max_prio_valid_i(ex_cdb_valid[CDB_STORE_BUFFER]),
+    .max_prio_ready_o(cdb_ex_ready[CDB_STORE_BUFFER]),
+    .max_prio_data_i (ex_cdb_data[CDB_STORE_BUFFER]),
+    .rs_valid_i      (ex_cdb_valid[CDB_SOURCE_COUNT-1:CDB_LOAD_BUFFER]),
+    .rs_ready_o      (cdb_ex_ready[CDB_SOURCE_COUNT-1:CDB_LOAD_BUFFER]),
+    .rs_data_i       (ex_cdb_data[CDB_SOURCE_COUNT-1:CDB_LOAD_BUFFER]),
     .rob_ready_i     (comm_cdb_ready),
     .valid_o         (cdb_others_valid),
     .data_o          (cdb_others_data)

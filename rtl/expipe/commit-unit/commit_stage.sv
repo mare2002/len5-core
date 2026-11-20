@@ -109,6 +109,10 @@ module commit_stage #(
   rob_entry_t rob_reg_head_entry;
   rob_idx_t   rob_reg_idx;
 
+  // Store write authorization
+  logic rob_sb_mem_clear;
+  logic inreg_blocks_store, spill_blocks_store;
+
   // ROB <--> Operands forwarding logic
   logic [Len5Cfg.ISSUE_WIDTH-1:0] rob_opfwd_rs1_valid, rob_opfwd_rs1_ready;
   logic [Len5Cfg.ISSUE_WIDTH-1:0][XLEN-1:0] rob_opfwd_rs1_value;
@@ -184,7 +188,7 @@ module commit_stage #(
     .opfwd_rs3_ready_o  (rob_opfwd_rs3_ready),
     .opfwd_rs3_value_o  (rob_opfwd_rs3_value),
     .sb_mem_idx_i       (sb_mem_idx_i),
-    .sb_mem_clear_o     (sb_mem_clear_o),
+    .sb_mem_clear_o     (rob_sb_mem_clear),
     .comm_valid_o       (rob_reg_valid),
     .comm_ready_i       (reg_rob_ready),
     .comm_data_o        (rob_reg_head_entry),
@@ -400,6 +404,13 @@ module commit_stage #(
   assign csr_rd_idx_o   = comm_reg_data.data.rd_idx;
 
   // Data to others
+  // Mispredictions use except_code independently of except_raised.
+  assign inreg_blocks_store = inreg_cu_valid &&
+      (inreg_data_out.data.except_raised || inreg_data_out.data.except_code == E_MISPREDICTION);
+  assign spill_blocks_store = inreg_buff_full &&
+      (inreg_buff_data.data.except_raised || inreg_buff_data.data.except_code == E_MISPREDICTION);
+  // CU ready stays high for ordinary commits and low throughout recovery/serialization.
+  assign sb_mem_clear_o = rob_sb_mem_clear && cu_inreg_ready && !inreg_blocks_store && !spill_blocks_store;
   assign ex_mis_flush_o = cu_mis_flush;
   assign except_flush_o = cu_except_flush;
 

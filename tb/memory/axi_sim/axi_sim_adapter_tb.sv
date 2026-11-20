@@ -26,6 +26,8 @@ module axi_sim_adapter_tb #(
     parameter bit LSU_USE_FIFO = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_USE_FIFO,
     parameter int unsigned LSU_FIFO_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_FIFO_DEPTH,
     parameter int unsigned LSU_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_ISSUE_WIDTH,
+    parameter int unsigned LDBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_ISSUE_WIDTH,
+    parameter int unsigned STBUFF_ISSUE_WIDTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_ISSUE_WIDTH,
     parameter bit LEN5_M_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_M_EN,
     parameter bit LEN5_DIV_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_DIV_EN,
     parameter bit LEN5_F_EN = len5_config_pkg::DEFAULT_LEN5_CFG.LEN5_F_EN,
@@ -51,6 +53,7 @@ module axi_sim_adapter_tb #(
     parameter int unsigned LDBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_DEPTH,
     parameter int unsigned STBUFF_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.STBUFF_DEPTH,
     parameter bit LSU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.LSU_SPILL_SKIP,
+    parameter bit LDBUFF_RR_ARBITER = len5_config_pkg::DEFAULT_LEN5_CFG.LDBUFF_RR_ARBITER,
     parameter int unsigned ALU_NUM_UNITS = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_NUM_UNITS,
     parameter int unsigned ALU_RS_DEPTH = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_RS_DEPTH,
     parameter bit ALU_SPILL_SKIP = len5_config_pkg::DEFAULT_LEN5_CFG.ALU_SPILL_SKIP,
@@ -98,6 +101,8 @@ module axi_sim_adapter_tb #(
             LSU_USE_FIFO: LSU_USE_FIFO,
             LSU_FIFO_DEPTH: LSU_FIFO_DEPTH,
             LSU_ISSUE_WIDTH: LSU_ISSUE_WIDTH,
+            LDBUFF_ISSUE_WIDTH: LDBUFF_ISSUE_WIDTH,
+            STBUFF_ISSUE_WIDTH: STBUFF_ISSUE_WIDTH,
             LEN5_M_EN: LEN5_M_EN,
             LEN5_DIV_EN: LEN5_DIV_EN,
             LEN5_F_EN: LEN5_F_EN,
@@ -121,6 +126,7 @@ module axi_sim_adapter_tb #(
             LDBUFF_DEPTH: LDBUFF_DEPTH,
             STBUFF_DEPTH: STBUFF_DEPTH,
             LSU_SPILL_SKIP: LSU_SPILL_SKIP,
+            LDBUFF_RR_ARBITER: LDBUFF_RR_ARBITER,
             ALU_NUM_UNITS: ALU_NUM_UNITS,
             ALU_RS_DEPTH: ALU_RS_DEPTH,
             ALU_SPILL_SKIP: ALU_SPILL_SKIP,
@@ -508,7 +514,6 @@ module axi_sim_adapter_tb #(
         flushes++;
         assert (!instr_request);
       end
-      if (data_flush) store_pending = '0;
       if (accepted_now[0]) begin
         expected_i = fetch_expected(addr[0]);
         expected_fetches.push_back(expected_i);
@@ -550,7 +555,7 @@ module axi_sim_adapter_tb #(
         code  = store_we ? fault(addr[2], count, 2) : E_ST_ACCESS_FAULT;
         if (code == E_UNKNOWN && addr[2] == DBase + 248) code = E_ST_ACCESS_FAULT;
         expected_stores[store_tag] = code;
-        store_pending[store_tag]   = !data_flush;
+        store_pending[store_tag]   = 1'b1;
         if (code != E_UNKNOWN) faults[2]++;
         if (store_we && fault(
                 addr[2], count, 2
@@ -839,6 +844,38 @@ module axi_sim_adapter_tb #(
         block_channels = '0;
         drain();
       end
+    end
+
+    // Pipeline flush preserves both native B and local completions under backpressure.
+    for (int which = 0; which < 4; which++) begin
+      int           before_completion;
+      id_t          held_tag;
+      except_code_t held_code;
+      before_completion = completed[2];
+      ready[2]          = 0;
+      be[2]             = 255;
+      case (which)
+        0: addr[2] = DBase + 160;
+        1: addr[2] = DBase + 248;
+        2: addr[2] = TbCfg.SERIAL_ADDR;
+        3: addr[2] = DBase - 8;
+      endcase
+      data_flush = which == 3;
+      request_once(2);
+      for (int tries = 0; tries < 200 && !rsp.store_valid; tries++) tick();
+      assert (rsp.store_valid)
+      else $fatal(1, "Store completion missing across flush");
+      held_tag   = rsp.store_tag;
+      held_code  = rsp.store_code;
+      data_flush = 1;
+      repeat (3) begin
+        tick();
+        assert (rsp.store_valid && rsp.store_tag == held_tag && rsp.store_code == held_code)
+        else $fatal(1, "Flush changed a stalled store completion");
+      end
+      data_flush = 0;
+      drain();
+      assert (completed[2] == before_completion + 1);
     end
 
     for (int step = 0; step < cycles; step++) begin
