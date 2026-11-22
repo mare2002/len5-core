@@ -1,0 +1,175 @@
+architectures:
+  enabled:
+  - normal_ooo
+  - len5_ooo_commit
+  - basic_block_ooo_commit
+simulation:
+  mode: event_driven
+  seed: 42
+  dispatch_width: 4
+  cdb_width: null
+  commit_width: null
+  rob_size: 32
+  max_cycles: 1000000
+  cdb_policy: oldest_completed
+  record_events: false
+  parallel:
+    workers: auto
+smt:
+  mode: disabled
+  threads: 2
+  initial_priority: 0
+  dispatch_policy: majority_feedback
+  tie_policy: retain_priority
+  workloads:
+    thread_0: null
+    thread_1: null
+  benchmark_pairs: []
+  measurement:
+    reference_thread: auto
+execution:
+  units:
+    alu:
+      count: 2
+      latency:
+        type: fixed
+        value: 1
+      initiation_interval: 1
+      rs_size: 12
+      rs_issue_width: 2
+    mul:
+      count: 1
+      latency:
+        type: fixed
+        value: 3
+      initiation_interval: 1
+      rs_size: 6
+      rs_issue_width: 1
+    div:
+      count: 1
+      latency:
+        type: uniform
+        min: 6
+        max: 14
+      initiation_interval: 8
+      rs_size: 4
+      rs_issue_width: 1
+    branch:
+      count: 1
+      latency:
+        type: fixed
+        value: 1
+      initiation_interval: 1
+      rs_size: 8
+      rs_issue_width: 1
+    lsu:
+      count: 2
+      latency:
+        type: fixed
+        value: 1
+      initiation_interval: 1
+      rs_size: 12
+      rs_issue_width: 2
+    fp:
+      count: 1
+      latency:
+        type: fixed
+        value: 4
+      initiation_interval: 1
+      rs_size: 8
+      rs_issue_width: 1
+  shared_rs: null
+basic_block:
+  max_active_blocks: 16
+  max_stores_per_new_block: 1
+  max_instructions: 32
+  registers:
+    integer_physical: 64
+    fp_physical: 64
+    reuse_destination_within_block: true
+  merging:
+    width: 1
+    require_younger_complete: true
+    require_older_complete: false
+    reject_store_conflicts: true
+    selection_policy: oldest_eligible
+  flushing:
+    width: 2
+    direction: youngest_first
+    immediate_logical_invalidation: true
+    incremental_resource_reclamation: true
+    allow_unaffected_merges: true
+branch:
+  misprediction_probability: 0.05
+  recovery_latency:
+    type: uniform
+    min: 5
+    max: 12
+memory:
+  l1:
+    miss_probability: 0.12
+    latency: 2
+  l2:
+    miss_probability: 0.3
+    latency: 7
+  llc:
+    miss_probability: 0.35
+    latency: 16
+  dram_latency:
+    type: uniform
+    min: 40
+    max: 80
+  queue_delay:
+    type: fixed
+    value: 0
+  store_latency:
+    type: fixed
+    value: 4
+  max_outstanding_loads: 10
+  mshr_capacity: 5
+  response_width: 2
+  load_buffer_capacity: 16
+  store_buffer_capacity: 12
+  store_drain_width: 1
+workload:
+  type: random
+  instructions: 3000
+  trace: null
+  trace_hart: 0
+  trace_skip: 0
+  trace_start_pc: null
+  trace_stop_at_self_jump: false
+  mix:
+    alu: 52
+    mul: 8
+    div: 4
+    branch: 10
+    jump: 3
+    load: 12
+    store: 8
+    fp: 3
+  dependencies:
+    probability: 0.65
+    max_count: 3
+    distance:
+      type: uniform
+      min: 1
+      max: 24
+    chain_probability: 0.25
+    load_density: 0.25
+    register_locality: 0.65
+    hot_registers: 8
+  memory_addresses: 128
+  branch_taken_probability: 0.6
+storage:
+  integer_width: 64
+  fp_width: 64
+  address_width: 64
+plotting:
+  preset: essential
+analysis:
+  seeds:
+  - 42
+  - 43
+  - 44
+  confidence: 0.95

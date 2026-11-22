@@ -300,6 +300,16 @@ benchmark-spike: | $(BUILD_DIR)/spike/
 	@echo "## Building suite $(SUITE) benchmark $(BENCHMARK)"
 	$(MAKE) -BC sw benchmark SUITE=$(SUITE) BUILD_DIR=$(BUILD_DIR)/spike BENCHMARK=$(BENCHMARK) CDEFS=-DSPIKE_CHECK
 
+# Python system-level simulator
+.PHONY: sim-run sim-run-benchmarks sim-plots sim-sweep sim-test
+.PHONY: sim-list-benchmarks sim-help sim-clean-results
+
+sim-run sim-run-benchmarks sim-plots sim-sweep sim-test \
+sim-list-benchmarks sim-help sim-clean-results:
+	$(MAKE) -C python $@ BUILD_DIR="$(BUILD_DIR)" \
+		SIM_PROJECT="$(if $(filter-out file default undefined,$(origin PROJECT)),$(PROJECT))" \
+		SIM_JOBS="$(if $(filter-out file default undefined,$(origin JOBS)),$(JOBS))"
+
 # Simple test application
 .PHONY: app-helloworld
 app-helloworld:
