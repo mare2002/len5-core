@@ -134,11 +134,10 @@ module arith_rs #(
   typedef struct packed {
     logic [EU_CTL_LEN-1:0] eu_ctl;  // Control signals for the EU
     rob_idx_t rs1_rob_idx;  // The entry of the rob that will contain the required operand.
-    logic [XLEN-1:0] rs1_value;  // The value of the first operand
+    logic [XLEN-1:0] rs1_value;  // First operand until execution completes, then result
     rob_idx_t rs2_rob_idx;  // The entry of the rob that will contain the required operand.
     logic [XLEN-1:0] rs2_value;  // The value of the second operand
     rob_idx_t dest_rob_idx;  // The entry of the ROB where the result will be stored
-    logic [XLEN-1:0] res_value;
     logic except_raised;
     except_code_t except_code;
   } arith_rs_data_t;
@@ -434,7 +433,7 @@ module arith_rs #(
             end
           end
           ARITH_OP_SAVE_RES: begin
-            data[i].res_value     <= eu_result_i[completion_unit[i]];
+            data[i].rs1_value     <= eu_result_i[completion_unit[i]];
             data[i].except_raised <= eu_except_raised_i[completion_unit[i]];
             data[i].except_code   <= eu_except_code_i[completion_unit[i]];
           end
@@ -453,7 +452,7 @@ module arith_rs #(
   // CDB
   assign cdb_valid_o              = cdb_selected_valid && !flush_i;
   assign cdb_data_o.rob_idx       = data[cdb_idx].dest_rob_idx;
-  assign cdb_data_o.res_value     = data[cdb_idx].res_value;
+  assign cdb_data_o.res_value     = data[cdb_idx].rs1_value;
   assign cdb_data_o.except_raised = data[cdb_idx].except_raised;
   assign cdb_data_o.except_code   = data[cdb_idx].except_code;
   assign cdb_data_o.flags.raw     = '0;  // no flags set

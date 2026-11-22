@@ -437,9 +437,23 @@ module arith_rs_multi_case #(
     flush = 1'b0;
     #1;
     assert (!cdb_valid_out && request_valid == '0) else $fatal(1, "flush retained work");
-    enqueue(55);
+
+    // Reuse a flushed slot with rs1 waiting on a late CDB broadcast.
+    set_issue(0, 55, operand(0, 31, 0), operand(1, 0, 255), operand(1, 0, 355),
+              64'hfedc_ba98_7654_3210, 255, 355);
+    tick();
+    issue_valid = '0;
     request_ready = '1;
     zero_latency = 1'b1;
+    cdb_valid_in = 1'b1;
+    cdb_in.rob_idx = rob_idx_t'(55);
+    cdb_in.res_value = '1;
+    tick();
+    assert (request_valid == '0 && !cdb_valid_out) else $fatal(1, "rs1 woke on destination tag");
+    cdb_in.rob_idx = rob_idx_t'(31);
+    cdb_in.res_value = 64'hfedc_ba98_7654_3210;
+    tick();
+    cdb_valid_in = 1'b0;
     wait_dispatch(55, 1);
     zero_latency = 1'b0;
     drain();

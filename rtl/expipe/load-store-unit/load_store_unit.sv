@@ -172,6 +172,9 @@ module load_store_unit #(
         end
       end
     end else begin : gen_unused
+      logic unused_inputs;
+      assign unused_inputs = ^{issue_valid_i[k], issue_eu_ctl_i[k], issue_rs1_i[k],
+                               issue_rs2_i[k], issue_imm_i[k], issue_dest_rob_idx_i[k]};
       assign issue_ready_o[k] = 1'b0;
     end
   end
