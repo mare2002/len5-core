@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from heapq import heappop, heappush
 
-from .instruction import Register
+from .instruction import Instruction, Register
 from .memory import Memory, overlaps
 from .metrics import Metrics
 from .state import Entry
@@ -13,10 +13,12 @@ Physical = tuple[str, int]
 
 
 class Registers:
-    def __init__(self, config: dict):
-        self.capacity = {"x": config["integer_physical"], "f": config["fp_physical"]}
-        self.free = {"x": list(range(31, config["integer_physical"])),
-                     "f": list(range(32, config["fp_physical"]))}
+    def __init__(self, config: dict, *, unbounded: bool = False):
+        self.unbounded = unbounded
+        self.capacity = ({"x": 31, "f": 32} if unbounded else
+                         {"x": config["integer_physical"], "f": config["fp_physical"]})
+        self.free = {"x": list(range(31, self.capacity["x"])),
+                     "f": list(range(32, self.capacity["f"]))}
         self.architectural = {**{("x", i): ("x", i - 1) for i in range(1, 32)},
                               **{("f", i): ("f", i) for i in range(32)}}
         self.refs: Counter[Physical] = Counter(self.architectural.values())
@@ -27,7 +29,13 @@ class Registers:
         return self.capacity[bank] - len(self.free[bank])
 
     def allocate(self, bank: str) -> Physical:
-        physical = bank, heappop(self.free[bank])
+        if self.free[bank]:
+            index = heappop(self.free[bank])
+        else:
+            assert self.unbounded
+            index = self.capacity[bank]
+            self.capacity[bank] += 1
+        physical = bank, index
         assert physical not in self.refs
         self.refs[physical] = 1
         self.values[physical] = 0
@@ -58,7 +66,6 @@ class Span:
     retired: int = 0
     store_count: int = 0
     sealed: bool = False
-    confirmed: bool = False
     branch: Entry | None = None
     mapping: dict[Register, Physical] = field(default_factory=dict)
     ownership: dict[str, int] = field(default_factory=lambda: {"x": 0, "f": 0})
@@ -115,13 +122,14 @@ class Reclaim:
 
 class Blocks:
     def __init__(self, config: dict, memory: Memory, stats: Metrics,
-                 pool: list[Group | None] | None = None, thread_id: int = 0):
+                 pool: list[Group | None] | None = None, thread_id: int = 0, *, unbounded: bool = False):
         self.config = config
         self.stats = stats
         self.pool = pool
+        self.unbounded = unbounded
         self.thread_id = thread_id
         self.memory = memory
-        self.prf = Registers(config["registers"])
+        self.prf = Registers(config["registers"], unbounded=unbounded)
         self.groups: list[Group] = []
         self.reclaim: dict[int, Reclaim] = {}
         self.owners: dict[int, Span] = {}
@@ -138,15 +146,21 @@ class Blocks:
         if (span := self.open_span) is not None:
             span.sealed = True
 
-    def can_allocate(self, kind: str, dest: Register | None) -> str:
+    def can_allocate(self, instruction: Instruction) -> str:
         span = self.open_span
-        if span is not None and kind == "store" and span.store_count >= self.config["max_stores_per_new_block"]:
+        kind, dest = instruction.kind, instruction.destination
+        if span is not None and (
+            (kind == "store" and span.store_count >= self.config["max_stores_per_new_block"])
+            # A load that waits for a store's memory response cannot complete in the same block.
+            or (kind == "load" and any(overlaps(store.instruction, instruction) for store in span.stores))
+        ):
             span.sealed = True
             span = None
-        if span is None and (None not in self.pool if self.pool is not None
+        if span is None and not self.unbounded and (None not in self.pool if self.pool is not None
                              else self.reserved >= self.config["max_active_blocks"]):
             return "block_capacity"
-        if dest is not None and (span is None or dest not in span.mapping) and not self.prf.free[dest[0]]:
+        if (not self.prf.unbounded and dest is not None and (span is None or dest not in span.mapping)
+                and not self.prf.free[dest[0]]):
             # Closing a partially filled block lets its results replace the architectural map.
             if span is not None:
                 span.sealed = True
@@ -160,6 +174,8 @@ class Blocks:
             span = Span(entry.index)
             group = Group(self.age, [span], thread_id=self.thread_id)
             if self.pool is not None:
+                if self.unbounded and None not in self.pool:
+                    self.pool.append(None)
                 group.slot = self.pool.index(None)
                 self.pool[group.slot] = group
             self.groups.append(group)
@@ -198,7 +214,7 @@ class Blocks:
 
     def reset_registers(self) -> None:
         freed = self.prf.freed
-        self.prf = Registers(self.config["registers"])
+        self.prf = Registers(self.config["registers"], unbounded=self.unbounded)
         self.prf.freed = freed
 
     def discard_speculation(self) -> None:
@@ -208,9 +224,8 @@ class Blocks:
         self.reserved = 0
         self.prf.refs = Counter(self.prf.architectural.values())
         self.prf.values = {p: self.prf.values[p] for p in self.prf.refs}
-        registers = self.config["registers"]
-        for bank, key in (("x", "integer_physical"), ("f", "fp_physical")):
-            self.prf.free[bank] = [index for index in range(registers[key]) if (bank, index) not in self.prf.refs]
+        for bank, size in self.prf.capacity.items():
+            self.prf.free[bank] = [index for index in range(size) if (bank, index) not in self.prf.refs]
 
     def write(self, entry: Entry) -> None:
         if entry.physical is not None:
@@ -261,30 +276,15 @@ class Blocks:
         group.spans = kept
 
     def publish(self, cycle: int) -> int:
-        confirmed = True
-        for group in self.groups:
-            for span in group.spans:
-                span.confirmed = confirmed
-                confirmed = confirmed and span.branch is None
         committed = 0
         while self.groups:
             group = self.groups[0]
-            # Stores before an unresolved branch are safe when this group is oldest.
-            for span in group.spans:
-                if not span.confirmed:
-                    break
-                span.stores = [store for store in span.stores if not store.serviced]
-                for store in span.stores:
-                    if not store.authorized:
-                        if not store.done:
-                            break
-                        self.memory.authorize(store, cycle)
-                if any(not store.authorized for store in span.stores):
-                    break
-            if (not group.complete or group.recovering or
-                    any(not store.authorized for span in group.spans for store in span.stores)):
+            # A store retires locally after preparation, so its group can complete before memory service.
+            if not group.complete or group.recovering:
                 break
             for span in group.spans:
+                for store in span.stores:
+                    self.memory.authorize(store, cycle)
                 self.prf.publish(span.mapping)
                 committed += span.count
             self.groups.pop(0)
@@ -301,7 +301,7 @@ class Blocks:
                 continue
             if self.config["merging"]["require_older_complete"] and not older.complete:
                 continue
-            if any(overlaps(a, b) for o in older.spans for a in o.stores if not a.serviced
+            if any(overlaps(a.instruction, b.instruction) for o in older.spans for a in o.stores if not a.serviced
                    for y in younger.spans for b in y.stores if not b.serviced):
                 conflicts.add((older.age, younger.age))
                 continue
@@ -318,7 +318,9 @@ class Blocks:
         candidates = self.candidates(conflicts)
         self.stats.samples["merge_candidates"].add(len(candidates))
         merged = 0
-        for _ in range(self.config["merging"]["width"] if width is None else width):
+        if width is None:
+            width = len(self.groups) - 1 if self.unbounded else self.config["merging"]["width"]
+        for _ in range(width):
             if not candidates:
                 break
             index = candidates[0]

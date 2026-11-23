@@ -3,6 +3,7 @@
 from heapq import heappop, heappush
 from itertools import chain
 
+from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES
 from .state import Entry
 
 
@@ -11,16 +12,19 @@ class ROB:
         self.size = size
         self.len5 = architecture == "len5_ooo_commit"
         self.protect_unresolved_head = protect_unresolved_head
-        self.individual = architecture == "basic_block_ooo_commit"
+        self.unbounded = architecture in IDEAL_ARCHITECTURES
+        self.individual = self.unbounded or architecture in BLOCK_ARCHITECTURES
         self.entries: dict[int, Entry] = {}
         self.slots: dict[int, Entry] = {}
-        self.free = list(range(size)) if self.individual else []
+        self.free = list(range(size)) if self.individual and not self.unbounded else []
         self.tail = 0
         self.clear_index = 0
         self.released: dict[int, Entry] = {}
 
     @property
     def full(self) -> bool:
+        if self.unbounded:
+            return False
         return not self.free if self.individual else self.tail in self.slots or self.reuse_delayed
 
     @property
@@ -40,7 +44,8 @@ class ROB:
     def add(self, entry: Entry) -> None:
         assert not self.full
         if self.individual:
-            entry.slot = heappop(self.free)
+            # With no free slots, existing indices form a dense prefix.
+            entry.slot = heappop(self.free) if self.free else len(self.slots)
         else:
             entry.slot = self.tail
             self.tail = (self.tail + 1) % self.size

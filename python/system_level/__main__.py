@@ -176,7 +176,9 @@ def run_experiment(args: argparse.Namespace, scripts: SpikeTools, root: Path, co
                 if "isolated_thread" in row:
                     suffix = f" (T{row['isolated_thread']} alone)"
                 label = row["architecture"] + suffix
-                print(f"  {label:<32} {row['mean']:.4f} IPC, {row['storage_bits']:,} bits")
+                bits = row["storage_bits"]
+                storage = "unbounded storage" if bits is None else f"{bits:,} bits"
+                print(f"  {label:<32} {row['mean']:.4f} IPC, {storage}")
 
 
 def main() -> None:

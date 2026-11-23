@@ -76,7 +76,8 @@ class ReplayTests(unittest.TestCase):
 
     def test_mixed_spike_and_synthetic_baselines_replay_and_cache(self):
         trace = Path(__file__).parent / "fixtures" / "hello-world.spike.log"
-        config = configure({"smt": {"mode": "both", "measurement": {
+        config = configure({"architectures": {"enabled": list(ARCHITECTURES)},
+            "smt": {"mode": "both", "measurement": {
             "reference_thread": 0},
             "workloads": {"thread_0": {"name": "hello", "type": "spike", "trace": str(trace)},
                           "thread_1": {"name": "random-short", "instructions": 3,
@@ -103,7 +104,7 @@ class ReplayTests(unittest.TestCase):
         benchmark = benchmark_summary("test", {"hello + random-short": report})
         bars = Mock()
         group_bars(bars, benchmark["benchmarks"], [r for r in benchmark["metrics"] if r["metric"] == "ipc"], "benchmark")
-        self.assertEqual(bars.bar.call_count, 9)
+        self.assertEqual(bars.bar.call_count, 3 * len(ARCHITECTURES))
 
     def test_reference_auto_chooses_cycles_instead_of_instruction_count(self):
         def only(kind):

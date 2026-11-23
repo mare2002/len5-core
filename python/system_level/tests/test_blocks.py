@@ -1,7 +1,7 @@
 from collections import Counter
 import unittest
 
-from system_level.config import ARCHITECTURES, unit
+from system_level.config import ARCHITECTURES, BLOCK_ARCHITECTURES, unit
 from system_level.instruction import Instruction as I
 from system_level.workload import Timing
 
@@ -22,6 +22,57 @@ def block_sim(program, timings=None, **changes):
 
 
 class BlockTests(unittest.TestCase):
+    def test_stores_authorize_only_after_the_oldest_group_completes(self):
+        program = [I("div"), I("branch"), I("load", address=16, size=8),
+                   I("store", address=8, size=8), I("mul")]
+        times = [timing(15), timing(), timing(memory=5), timing(), timing(25)]
+        for architecture in BLOCK_ARCHITECTURES:
+            with self.subTest(architecture=architecture):
+                result = make(program, architecture, times, basic_block={
+                    "merging": {"require_older_complete": True}}).run()
+                dispatch = events(result, "block_dispatch")
+                self.assertNotEqual(dispatch[1]["block"], dispatch[2]["block"])
+                self.assertEqual([e["block"] for e in dispatch[2:]], [dispatch[2]["block"]] * 3)
+                authorization, = cycles(result, "store_authorize", 3)
+                self.assertEqual(authorization, cycles(result, "local_retire", 4)[0])
+                self.assertGreater(authorization, cycles(result, "broadcast", 2)[0])
+                self.assertGreater(authorization, cycles(result, "local_retire", 0)[0])
+                self.assertGreater(cycles(result, "store_complete", 3)[0], authorization)
+
+    def test_store_group_seals_before_blocked_younger_load_or_store(self):
+        for architecture in BLOCK_ARCHITECTURES:
+            for younger in (I("load", address=8, size=8), I("load"), I("store", address=16, size=8)):
+                with self.subTest(architecture=architecture, younger=younger):
+                    program = [I("store", address=8, size=8), younger]
+                    result = make(program, architecture, basic_block={"max_stores_per_new_block": 2},
+                                  memory={"store_buffer_capacity": 1}).run()
+                    first, second = events(result, "block_dispatch")
+                    self.assertNotEqual(first["block"], second["block"])
+                    complete, = cycles(result, "store_complete", 0)
+                    self.assertGreaterEqual(cycles(result, "issue", 1)[0], complete)
+
+    def test_ready_store_waits_for_an_incomplete_older_group(self):
+        program = [I("div"), I("store", address=8)]
+        for architecture in BLOCK_ARCHITECTURES:
+            with self.subTest(architecture=architecture):
+                result = make(program, architecture, [timing(15), timing()],
+                              basic_block={"max_instructions": 1, "merging": {"require_older_complete": True}}).run()
+                self.assertLess(cycles(result, "local_retire", 1)[0], cycles(result, "local_retire", 0)[0])
+                self.assertEqual(cycles(result, "store_authorize", 1), cycles(result, "local_retire", 0))
+
+    def test_faulting_group_never_authorizes_its_prepared_store(self):
+        program = [I("store", address=8, size=8), I("load", address=16, size=8, pc=0x100)]
+        for architecture in BLOCK_ARCHITECTURES:
+            with self.subTest(architecture=architecture):
+                sim = make(program, architecture)
+                sim.step()
+                list(sim.rob.entries.values())[1].faulted = True
+                with self.assertRaisesRegex(RuntimeError, "precise exception at PC 0x100"):
+                    sim.run()
+                result = sim.report()
+                self.assertTrue(events(result, "store_prepare", 0))
+                self.assertFalse(events(result, "store_authorize"))
+
     def test_backend_flush_does_not_wait_for_older_divide(self):
         p = [I("div", destination=x(1)), I("branch"), I("alu")]
         r = block_sim(p, [timing(12), timing(1, True, 3), timing()]).run()
@@ -85,7 +136,8 @@ class BlockTests(unittest.TestCase):
         r = block_sim(p, [timing(12), timing(memory=30), timing()]).run()
         self.assertGreater(r["counts"]["merge_store_conflict_pair_cycles"], 0)
         self.assertEqual(events(r, "merge"), [])
-        self.assertGreater(cycles(r, "store_authorize", 2)[0], cycles(r, "store_authorize", 1)[0])
+        self.assertEqual([e["index"] for e in events(r, "store_authorize")], [1, 2])
+        self.assertGreater(cycles(r, "store_drain", 2)[0], cycles(r, "store_drain", 1)[0])
         self.assertGreaterEqual(cycles(r, "store_complete", 2)[0], cycles(r, "store_complete", 1)[0])
 
     def test_flush_widths_and_overlap(self):

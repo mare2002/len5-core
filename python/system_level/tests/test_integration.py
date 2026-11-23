@@ -119,7 +119,7 @@ class IntegrationTests(unittest.TestCase):
         rows = [row for row in summary["metrics"] if row["metric"] == "ipc"]
         group_bars(ax, summary["benchmarks"], rows, "benchmark")
         bars = ax.bar.call_args_list
-        self.assertEqual([call.kwargs["color"] for call in bars], list(COLOR.values()))
+        self.assertEqual([call.kwargs["color"] for call in bars], [COLOR[a] for a in (NORMAL, LEN5, BLOCKS)])
         self.assertEqual([call.args[1] for call in bars], [[1, 1], [1.25, 2], [2, 4.5]])
         self.assertLess(bars[0].args[0][0], bars[1].args[0][0])
         self.assertLess(bars[1].args[0][0], bars[2].args[0][0])

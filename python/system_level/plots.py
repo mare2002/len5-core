@@ -7,12 +7,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import re
 
-from .analysis import BLOCKS, LEN5, NORMAL, PAIRS
+from .analysis import BLOCKS, IDEAL, IDEAL_OOO, LEN5, NORMAL, PAIRS
+from .config import BLOCK_ARCHITECTURES
 from .results import metric_rows
 
-LABEL = {NORMAL: "Normal OoO", LEN5: "LEN5 OoO commit", BLOCKS: "Basic-block OoO commit"}
-COLOR = {NORMAL: "#51687c", LEN5: "#148274", BLOCKS: "#b44e2b"}
-SHORT = {NORMAL: "Normal", LEN5: "LEN5", BLOCKS: "Basic-block"}
+LABEL = {NORMAL: "Normal OoO", LEN5: "LEN5 OoO commit", BLOCKS: "Basic-block OoO commit",
+         IDEAL: "Ideal Commit", IDEAL_OOO: "Ideal Block Commit"}
+COLOR = {NORMAL: "#51687c", LEN5: "#148274", BLOCKS: "#b44e2b", IDEAL: "#714aa5", IDEAL_OOO: "#2265ad"}
+SHORT = {NORMAL: "Normal", LEN5: "LEN5", BLOCKS: "Basic-block", IDEAL: "Ideal", IDEAL_OOO: "Ideal Block"}
 METRIC_LABELS = {"ipc": "Instructions per cycle", "cycles": "Cycles", "committed": "Committed instructions",
                  "rob_occupancy": "Mean occupied ROB entries", "cdb_utilization": "CDB utilization (fraction)",
                  "smt_throughput_improvement": "SMT throughput improvement (%)",
@@ -107,7 +109,7 @@ def group_bars(ax, categories: list[str], rows: list[dict], category: str,
     ax.legend(fontsize=8)
 
 
-def sweep_lines(ax, report: dict, rows: list[dict]) -> None:
+def sweep_lines(ax, report: dict, rows: list[dict], *, label_values: bool = False) -> None:
     axes = list(report["sweep"])
     series = defaultdict(list)
     for row in rows:
@@ -115,7 +117,7 @@ def sweep_lines(ax, report: dict, rows: list[dict]) -> None:
         other = []
         for axis in axes[1:]:
             value = row["parameters"][axis]
-            if arch != BLOCKS and all(path.startswith("basic_block.") for path in axis.split("+")):
+            if arch not in BLOCK_ARCHITECTURES and all(path.startswith("basic_block.") for path in axis.split("+")):
                 if value != report["sweep"][axis][0]:
                     break
             else:
@@ -134,9 +136,14 @@ def sweep_lines(ax, report: dict, rows: list[dict]) -> None:
             name += f" · T{isolated} alone"
         if other:
             name += " · " + ", ".join(f"{axis_name(axis)} = {value}" for axis, value in other)
-        ax.errorbar(x, [row["mean"] for row in group], yerr=errors(group),
+        y = [row["mean"] for row in group]
+        ax.errorbar(x, y, yerr=errors(group),
                     marker="s" if mode == "enabled" else "o", capsize=3,
                     label=name, color=COLOR[architecture], linestyle=styles[next_style[architecture] % len(styles)])
+        if label_values:
+            for position, ipc in zip(x, y):
+                ax.annotate(f"{ipc:.2f}", (position, ipc), xytext=(0, 5), textcoords="offset points",
+                            ha="center", fontsize=7, color=COLOR[architecture])
         next_style[architecture] += 1
     ax.set_xlabel(axis_name(axes[0]))
     ax.legend(fontsize=8)
@@ -152,6 +159,7 @@ def plot_workload(report: dict, output: Path, detailed: bool) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.container import BarContainer
 
     def save(fig, ax, metric: str, ylabel: str) -> None:
         ax.set_ylabel(ylabel)
@@ -171,7 +179,7 @@ def plot_workload(report: dict, output: Path, detailed: bool) -> None:
     for metric, rows in by_metric.items():
         fig, ax = plt.subplots(figsize=(8, 4.7))
         if report["sweep"]:
-            sweep_lines(ax, report, rows)
+            sweep_lines(ax, report, rows, label_values=metric == "ipc")
         elif any(row.get("smt_mode") == "enabled" or "isolated_thread" in row for row in rows):
             group_bars(ax, [""], [dict(row, run="") for row in rows], "run")
         else:
@@ -179,10 +187,17 @@ def plot_workload(report: dict, output: Path, detailed: bool) -> None:
             archs = [row["architecture"] for row in rows]
             ax.bar([LABEL[a] for a in archs], [row["mean"] for row in rows],
                    color=[COLOR[a] for a in archs], yerr=errors(rows), capsize=4)
+        if metric == "ipc" and not report["sweep"]:
+            for bars in ax.containers:
+                if isinstance(bars, BarContainer):
+                    ax.bar_label(bars, fmt="%.2f", padding=3, fontsize=8)
+            ax.margins(y=.15)
         save(fig, ax, metric, metric_label(metric))
     runs = report["runs"]
     modes = {run.get("smt_mode", "disabled") for run in runs}
-    ipc = report["ipc_summary"]
+    ipc = [row for row in report["ipc_summary"] if row["storage_bits"] is not None]
+    if not ipc:
+        return
 
     fig, ax = plt.subplots(figsize=(8, 4.7))
     for architecture in LABEL:
@@ -201,7 +216,8 @@ def plot_workload(report: dict, output: Path, detailed: bool) -> None:
     if "enabled" in modes:
         storage = {}
         for run in runs:
-            storage.setdefault((run["architecture"], run.get("smt_mode", "disabled")), run["storage"])
+            if run["storage"]["total_bits"] is not None:
+                storage.setdefault((run["architecture"], run.get("smt_mode", "disabled")), run["storage"])
         variants = [(arch, mode) for arch in LABEL for mode in ("disabled", "enabled") if (arch, mode) in storage]
         components = dict.fromkeys(key for variant in variants for key, value in storage[variant].items()
                                    if value and key.endswith("_bits") and key not in

@@ -2,12 +2,12 @@
 
 from heapq import heappop, heappush
 
+from .instruction import Instruction
 from .metrics import Metrics
 from .state import Entry
 
 
-def overlaps(a: Entry, b: Entry) -> bool:
-    x, y = a.instruction, b.instruction
+def overlaps(x: Instruction, y: Instruction) -> bool:
     if x.address is None or y.address is None:
         return True
     return x.address < y.address + max(1, y.size) and y.address < x.address + max(1, x.size)
@@ -45,7 +45,7 @@ class Memory:
 
     def load_blocked(self, entry: Entry) -> str:
         for store in self.store_buffers[entry.thread_id].values():
-            if store.valid and store.index < entry.index and overlaps(store, entry):
+            if store.valid and store.index < entry.index and overlaps(store.instruction, entry.instruction):
                 if not entry.conflict_seen:
                     self.thread_stats[entry.thread_id].counts["store_load_conflicts"] += 1
                     entry.conflict_seen = True

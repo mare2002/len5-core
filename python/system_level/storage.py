@@ -1,6 +1,9 @@
 """Count modeled state bits under an explicit register and checkpoint layout."""
 
 
+from .config import IDEAL_ARCHITECTURES
+
+
 def index_bits(entries: int) -> int:
     return (entries - 1).bit_length()
 
@@ -10,6 +13,8 @@ def estimate(config: dict, architecture: str, threads: int | None = None) -> dic
         threads = 2 if config.get("smt", {}).get("mode") == "enabled" else 1
     if threads not in (1, 2):
         raise ValueError("storage estimate requires one or two hardware threads")
+    if architecture in IDEAL_ARCHITECTURES:
+        return {"rob_bits": None, "total_bits": None, "total_bytes": None}
     tid = index_bits(threads)
     rob_entries = config["simulation"]["rob_size"]
     widths = config["storage"]

@@ -5,7 +5,7 @@ from heapq import heappop, heappush
 from itertools import islice
 
 from .blocks import Blocks, Group
-from .config import ARCHITECTURES, UNIT_FOR
+from .config import ARCHITECTURES, BLOCK_ARCHITECTURES, IDEAL, IDEAL_OOO, UNIT_FOR
 from .instruction import Instruction, Register
 from .memory import Memory
 from .metrics import Metrics
@@ -21,6 +21,8 @@ class Simulator:
         if architecture not in ARCHITECTURES or not program or len(program) != len(timings):
             raise ValueError("simulation requires a known architecture and matching nonempty program and timings")
         self.architecture = architecture
+        self.ideal_commit = architecture == IDEAL
+        self.ideal_blocks = architecture == IDEAL_OOO
         self.config = config
         self.program = program
         self.timings = timings
@@ -35,8 +37,8 @@ class Simulator:
         self.memory = memory if memory is not None else Memory(config["memory"], self.stats)
         self.rob = ROB(self.options["rob_size"], architecture,
                        protect_unresolved_head=config.get("smt", {}).get("mode", "disabled") != "disabled")
-        self.blocks = (Blocks(config["basic_block"], self.memory, self.stats, block_pool, self.thread_id)
-                       if self.rob.individual else None)
+        self.blocks = (Blocks(config["basic_block"], self.memory, self.stats, block_pool, self.thread_id,
+                              unbounded=self.ideal_blocks) if architecture in BLOCK_ARCHITECTURES else None)
         self.enabled = {name: unit for name, unit in config["execution"]["units"].items() if unit["count"]}
         self.lanes = ({name: [(0, 0, 0)] * unit["count"] for name, unit in self.enabled.items()}
                       if core is None else core.lanes)
@@ -113,8 +115,12 @@ class Simulator:
                 stall = "rs_full:" + station
             else:
                 stall = self.memory.dispatch_stall(instruction.kind, self.thread_id)
-                if not stall and self.blocks:
-                    stall = self.blocks.can_allocate(instruction.kind, dest)
+                if self.blocks:
+                    if not stall:
+                        stall = self.blocks.can_allocate(instruction)
+                    elif stall == "store_buffer_full" and (span := self.blocks.open_span) and span.stores:
+                        # The open block must be able to publish before the buffer can gain space.
+                        self.blocks.seal()
             if stall:
                 self.dispatch_stall = stall
                 self.stats.counts["dispatch_stall:" + stall] += 1
@@ -256,7 +262,8 @@ class Simulator:
         if self.blocks:
             for thread in self.threads:
                 miss = min((entry for _, entry in selected
-                            if entry.thread_id == thread.thread_id and entry.timing.mispredict),
+                            if entry.thread_id == thread.thread_id and entry.timing.mispredict
+                            and not entry.faulted),
                            key=lambda entry: entry.uid, default=None)
                 if miss is not None:
                     thread.recover(miss)
@@ -269,26 +276,27 @@ class Simulator:
             del self.cdb[entry.uid]
             entry.done = True
             entry.completed = self.cycle
-            if entry.version is not None:
-                entry.version.ready = True
-                if owner.blocks:
-                    owner.blocks.write(entry)
-                else:
-                    entry.result = entry.uid
-            if entry.instruction.control:
-                if owner.blocks:
-                    owner.blocks.resolve(entry)
-                if owner.blocks is None and entry.timing.mispredict and not entry.faulted:
-                    owner.detect_misprediction(entry)
-                else:
-                    entry.checkpoint = None
-            for consumer in owner.readers.pop(entry.uid, {}).values():
-                assert consumer.valid and consumer.thread_id == entry.thread_id
-                reg = consumer.waiting.pop(entry.uid)
-                consumer.operands[reg] = entry.uid
-                if not consumer.waiting:
-                    consumer.ready_since = self.cycle + 1
-                    self.log("wakeup", consumer, producer=entry.uid)
+            if not ((owner.blocks or owner.ideal_commit) and entry.faulted):
+                if entry.version is not None:
+                    entry.version.ready = True
+                    if owner.blocks:
+                        owner.blocks.write(entry)
+                    else:
+                        entry.result = entry.uid
+                if entry.instruction.control:
+                    if owner.blocks:
+                        owner.blocks.resolve(entry)
+                    if owner.blocks is None and entry.timing.mispredict and not entry.faulted:
+                        owner.detect_misprediction(entry)
+                    else:
+                        entry.checkpoint = None
+                for consumer in owner.readers.pop(entry.uid, {}).values():
+                    assert consumer.valid and consumer.thread_id == entry.thread_id
+                    reg = consumer.waiting.pop(entry.uid)
+                    consumer.operands[reg] = entry.uid
+                    if not consumer.waiting:
+                        consumer.ready_since = self.cycle + 1
+                        self.log("wakeup", consumer, producer=entry.uid)
             if entry.kind == "load":
                 del self.memory.loads[entry.uid]
                 owner.stats.samples["load_result_latency"].add(self.cycle - entry.issued)
@@ -382,28 +390,75 @@ class Simulator:
 
     def retire(self) -> int:
         if self.blocks:
-            retire = list(islice((entry for entry in self.rob.entries.values() if entry.done), self.commit_width))
+            ready = (entry for entry in self.rob.entries.values() if entry.done and not entry.faulted)
+            retire = list(ready if self.ideal_blocks else islice(ready, self.commit_width))
             for entry in retire:
                 self.local_retire(entry)
             count = len(retire)
         else:
             count = len(self.commit_stage)
             for entry in self.commit_stage:
-                if entry.timing.mispredict:
-                    self.recover(entry)
-                    entry.checkpoint = None
-                if entry.instruction.destination is not None:
-                    self.rf[entry.instruction.destination] = entry.result
-                self.log("commit", entry)
+                self.commit_entry(entry)
             self.commit_stage.clear()
             self.committed += count
         self.record_retirement(count)
         return count
 
+    def commit_entry(self, entry: Entry) -> None:
+        if entry.timing.mispredict:
+            self.recover(entry)
+            entry.checkpoint = None
+        if entry.instruction.destination is not None:
+            self.rf[entry.instruction.destination] = entry.result
+        self.log("commit", entry)
+
+    def retire_ideal(self) -> tuple[int, bool]:
+        count = 0
+        flushed = False
+        older_writes: set[Register] = set()
+        older_memory = False
+        for entry in list(self.rob.entries.values()):
+            if entry.faulted:
+                if entry is self.rob.head and entry.done:
+                    self.record_retirement(count)
+                    self.log("precise_exception", entry)
+                    raise RuntimeError(f"{self.architecture}: precise exception at PC {entry.instruction.pc:#x}")
+                break
+            producer_pending = any(producer in self.rob.entries for producer in entry.operands.values())
+            if entry.kind == "store":
+                if entry.prepared and not (entry.authorized or producer_pending or older_memory):
+                    self.memory.authorize(entry, self.cycle, ready_cycle=entry.prepared)
+                if not entry.serviced:
+                    break
+            dest = entry.instruction.destination
+            memory = entry.kind in ("load", "store")
+            ordered = dest not in older_writes and not producer_pending and not (memory and older_memory)
+            # Unresolved control or memory may still invalidate younger architectural state.
+            if not entry.done and (memory or entry.instruction.control):
+                break
+            if entry.instruction.control and entry.timing.mispredict and not ordered:
+                break
+            if not entry.done or not ordered:
+                older_memory |= memory
+                if dest is not None:
+                    older_writes.add(dest)
+                continue
+            if entry is not self.rob.head:
+                self.stats.counts["out_of_order_commits"] += 1
+            self.rob.remove(entry)
+            self.commit_entry(entry)
+            self.committed += 1
+            count += 1
+            if entry.timing.mispredict:
+                flushed = True
+                break
+        self.record_retirement(count)
+        return count, flushed
+
     def record_retirement(self, count: int) -> None:
         if self.rob.entries and not count:
             self.stats.counts["retire_blocked_cycles"] += 1
-        if count == self.commit_width:
+        if not self.rob.unbounded and count == self.commit_width:
             self.stats.counts["retirement_width_saturated_cycles"] += 1
         self.stats.counts["rob_retirements"] += count
 
@@ -425,7 +480,8 @@ class Simulator:
     def observe_recovery(self, cycles: int = 1) -> None:
         if self.pending_recovery is not None:
             self.stats.counts["recovery_pending_cycles"] += cycles
-            if self.pending_recovery.uid in self.rob.entries and self.pending_recovery is not self.rob.head:
+            if (not self.ideal_commit and self.pending_recovery.uid in self.rob.entries
+                    and self.pending_recovery is not self.rob.head):
                 self.stats.counts["recovery_wait_for_rob_head_cycles"] += cycles
             self.stats.samples["recovery_pending_rob_occupancy"].add(len(self.rob.entries), cycles)
 
@@ -441,7 +497,10 @@ class Simulator:
     def step(self) -> int:
         self.cycle += 1
         backend_flushing = bool(self.commit_stage and self.commit_stage[-1].timing.mispredict)
-        retired = self.retire()
+        if self.ideal_commit:
+            retired, backend_flushing = self.retire_ideal()
+        else:
+            retired = self.retire()
         accepted = 0
         merged, flushed = 0, 0
         published = 0
@@ -452,9 +511,8 @@ class Simulator:
                 merged = self.blocks.merge(self.cycle)
             else:
                 self.stats.samples["merge_candidates"].add(0)
-            published = self.blocks.publish(self.cycle)
-            self.committed += published
-        else:
+            published = self.publish_blocks()
+        elif not self.ideal_commit:
             if not backend_flushing:
                 accepted = self.accept_commit()
             self.stats.samples["commit_stage_occupancy"].add(accepted)
@@ -474,6 +532,18 @@ class Simulator:
         self.rob.released.clear()
         return (retired + accepted + merged + flushed + issued + dispatched + broadcasts + published
                 + self.stats.counts["stores_serviced"] - old_stores)
+
+    def publish_blocks(self) -> int:
+        published = self.blocks.publish(self.cycle)
+        self.committed += published
+        head = self.rob.head
+        if (head and head.faulted and head.done
+                and self.blocks.owners[head.uid] in self.blocks.groups[0].spans
+                and not any(store.authorized and store.uid < head.uid
+                            for store in self.memory.store_buffers[self.thread_id].values())):
+            self.log("precise_exception", head)
+            raise RuntimeError(f"{self.architecture}: precise exception at PC {head.instruction.pc:#x}")
+        return published
 
     def skip_idle(self) -> None:
         # A quiescent statistical core can advance directly to the next timed event.
@@ -497,7 +567,7 @@ class Simulator:
             self.stats.counts["dispatch_stall:" + self.dispatch_stall] += cycles
         if self.rob.entries:
             self.stats.counts["retire_blocked_cycles"] += cycles
-        if self.blocks is None:
+        if self.blocks is None and not self.ideal_commit:
             self.stats.samples["commit_stage_occupancy"].add(0, cycles)
         if self.blocks:
             self.stats.samples["merge_candidates"].add(0, cycles)
@@ -585,7 +655,8 @@ class Simulator:
                       cdb_utilization=counts["broadcasts"] / (elapsed * self.cdb_width),
                       issue_utilization=stats.samples["issue_throughput"].total /
                       (elapsed * issue_capacity),
-                      retirement_utilization=counts["rob_retirements"] / (elapsed * self.commit_width),
+                      retirement_utilization=None if self.rob.unbounded else
+                      counts["rob_retirements"] / (elapsed * self.commit_width),
                       execution_units={eu: {
                           "issues": counts["issues:" + eu],
                           "issue_utilization": counts["issues:" + eu] / (elapsed * unit["count"]),
@@ -595,8 +666,8 @@ class Simulator:
         if self.blocks:
             for name, section, metric in (("merge", "merging", "merges"),
                                           ("flush", "flushing", "flush_operations")):
-                report[name + "_utilization"] = counts[metric] / (
-                    elapsed * self.blocks.config[section]["width"])
+                report[name + "_utilization"] = (None if self.ideal_blocks and name == "merge" else
+                                                counts[metric] / (elapsed * self.blocks.config[section]["width"]))
         if stats.events is not None:
             report["events"] = stats.events
         return report

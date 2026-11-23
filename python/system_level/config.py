@@ -9,7 +9,12 @@ from sys import float_info
 
 import yaml
 
-ARCHITECTURES = ("normal_ooo", "len5_ooo_commit", "basic_block_ooo_commit")
+DEFAULT_ARCHITECTURES = ("normal_ooo", "len5_ooo_commit", "basic_block_ooo_commit")
+IDEAL = "ideal_commit"
+IDEAL_OOO = "ideal_commit_ooo"
+IDEAL_ARCHITECTURES = (IDEAL, IDEAL_OOO)
+BLOCK_ARCHITECTURES = (DEFAULT_ARCHITECTURES[2], IDEAL_OOO)
+ARCHITECTURES = (*DEFAULT_ARCHITECTURES, *IDEAL_ARCHITECTURES)
 SMT_MODES = ("disabled", "enabled", "both")
 KINDS = ("alu", "mul", "div", "branch", "jump", "load", "store", "fp")
 UNIT_FOR = {**{kind: kind for kind in KINDS[:3]}, "branch": "branch", "jump": "branch",
@@ -26,7 +31,7 @@ def unit(count: int, latency: int, interval: int, rs: int, width: int) -> dict:
 
 
 DEFAULTS = {
-    "architectures": {"enabled": list(ARCHITECTURES)},
+    "architectures": {"enabled": list(DEFAULT_ARCHITECTURES)},
     "simulation": {"mode": "event_driven", "seed": 42, "dispatch_width": 4,
                    "cdb_width": None, "commit_width": None, "rob_size": 32,
                    "max_cycles": 1_000_000, "cdb_policy": "oldest_completed", "record_events": False,

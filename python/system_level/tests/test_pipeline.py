@@ -1,6 +1,6 @@
 import unittest
 
-from system_level.config import ARCHITECTURES, configure, fixed, unit
+from system_level.config import ARCHITECTURES, BLOCK_ARCHITECTURES, IDEAL, configure, fixed, unit
 from system_level.instruction import Instruction as I
 from system_level.simulator import Simulator
 from system_level.workload import Timing, sample_timing
@@ -286,7 +286,8 @@ class PipelineTests(unittest.TestCase):
                     self.assertEqual(cycles(r, "broadcast"), [3, 4, 6])
                     self.assertEqual(cycles(r, "wakeup", 2), [4])
                     self.assertEqual(r["counts"]["cdb_contention_cycles"], 1)
-                    self.assertEqual((r["committed"], r["cycles"]), (3, 7 if architecture == ARCHITECTURES[2] else 8))
+                    expected_cycles = 7 if architecture in (*BLOCK_ARCHITECTURES, IDEAL) else 8
+                    self.assertEqual((r["committed"], r["cycles"]), (3, expected_cycles))
 
     def test_zero_latency_lsu_keeps_memory_response_limit(self):
         p = [I("load", address=address, size=8) for address in (8, 16)]
@@ -356,8 +357,8 @@ class PipelineTests(unittest.TestCase):
                     self.assertEqual(cycles(r, "issue"), [2, 10, 10, 10, 10, 10])
                     self.assertEqual(r["samples"]["issue_throughput"]["peak"], 5)
                     self.assertEqual(r["samples"]["cdb_throughput"]["peak"], 1)
-                    retirements = cycles(r, "local_retire" if architecture == ARCHITECTURES[2] else "commit")
-                    self.assertEqual(len(set(retirements)), len(p))
+                    retirements = cycles(r, "local_retire" if architecture in BLOCK_ARCHITECTURES else "commit")
+                    self.assertEqual(len(set(retirements)), len(p) - int(architecture == IDEAL))
                     self.assertAlmostEqual(r["issue_utilization"], len(p) / (8 * r["cycles"]))
 
     def test_len5_lookahead_and_in_order_store(self):

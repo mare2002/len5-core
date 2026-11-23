@@ -2,16 +2,14 @@
 from pathlib import Path
 from statistics import fmean, geometric_mean
 
-from .analysis import BLOCKS, LEN5, NORMAL, atomic_output
-from .matrix import PERCENT_METRICS, color_limits, heatmap_label
+from .analysis import IDEAL, IDEAL_OOO, PAIRS, atomic_output
+from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES
+from .matrix import PERCENT_METRICS, RATIO_METRICS, color_limits, heatmap_label
 from .plots import COLOR, LABEL, SHORT
 
 
-COMPARISONS = (
-    (LEN5, "vs_normal", "LEN5 / Normal"),
-    (BLOCKS, "vs_normal", "Basic-block / Normal"),
-    (BLOCKS, "vs_len5", "Basic-block / LEN5"),
-)
+COMPARISONS = tuple((arch, RATIO_METRICS[baseline], f"{SHORT[arch]} / {SHORT[baseline]}")
+                    for arch, baseline in PAIRS)
 STORAGE_FIELDS = {
     "ROB": ("rob_bits",),
     "Register files": ("register_file_bits",),
@@ -32,9 +30,10 @@ def pair_values(matrix: dict, arch: str, view: str, metric: str) -> dict[tuple, 
     return values
 
 
-def _comparisons(matrix, view):
+def _comparisons(matrix, view, *, architectures=LABEL):
     return [(label, values) for arch, metric, label in COMPARISONS
-            if (values := pair_values(matrix, arch, view, metric))]
+            if arch in architectures
+            and (values := pair_values(matrix, arch, view, metric))]
 
 
 def _storage(report):
@@ -110,6 +109,8 @@ def write_suite_summary(report: dict, matrix: dict, output: Path, *, dashboard: 
                       "| Architecture | SMT | Bits |", "|---|---|---:|"])
         lines.extend(f"| {LABEL[a]} | {m} | {storage[a, m]['total_bits']:,} |"
                      for a in archs for m in modes if (a, m) in storage)
+    if any(r["architecture"] in IDEAL_ARCHITECTURES and r.get("storage", {}).get("total_bits") is None for r in runs):
+        lines.append("\nIdeal baselines with unbounded structures have no finite hardware storage estimate.")
     lines.extend(["", "## Results", ""])
     if dashboard:
         lines.append("- [Interactive workload matrix](dashboard.html)")
@@ -180,8 +181,12 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
 
     ratios = _comparisons(matrix, view)
     if ratios and view == "smt":
-        heatmap(ratios, "Throughput by ordered workload pair", "Paired IPC ratio",
+        bounded = [arch for arch in LABEL if arch not in IDEAL_ARCHITECTURES]
+        heatmap(_comparisons(matrix, view, architectures=bounded), "Throughput by ordered workload pair", "Paired IPC ratio",
                 "speedup/architecture_ratios", metric="vs_normal", ratio=True, vector=True)
+        for arch in (IDEAL, IDEAL_OOO):
+            heatmap(_comparisons(matrix, view, architectures=(arch,)), f"{LABEL[arch]} throughput by workload pair",
+                    "Paired IPC ratio", f"speedup/{arch}_ratios", metric="vs_normal", ratio=True, vector=True)
     if view == "smt":
         heatmap([(SHORT[a], pair_values(matrix, a, view, "weighted_speedup")) for a in archs],
                 "SMT weighted speedup", "Sum of thread IPC / isolated IPC", "performance/weighted_speedup",
@@ -208,7 +213,7 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
         ax.legend()
         save(fig, "speedup/improvement_distribution")
 
-        fig, ax = plt.subplots(figsize=(7, 3.5), layout="constrained")
+        fig, ax = plt.subplots(figsize=(7, 4.6 if IDEAL_OOO in archs else 3.5), layout="constrained")
         for offset, mode, marker in [(-.10, "isolated", "o"), (.10, "smt", "s")]:
             comps = dict(_comparisons(matrix, mode))
             indices = [i for i, (_, _, label) in enumerate(COMPARISONS) if label in comps]
@@ -216,7 +221,9 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
                 ax.scatter([geometric_mean(comps[COMPARISONS[i][2]].values()) for i in indices],
                            [i+offset for i in indices], label=mode.upper(), marker=marker)
         ax.axvline(1, color=".35", ls="--", lw=1)
-        ax.set_yticks(range(len(COMPARISONS)), [c[2] for c in COMPARISONS])
+        shown = sorted({i for mode in ("isolated", "smt") for i, (_, _, label) in enumerate(COMPARISONS)
+                        if label in dict(_comparisons(matrix, mode))})
+        ax.set_yticks(shown, [COMPARISONS[i][2] for i in shown])
         ax.set(xlabel="Geometric mean paired IPC ratio", title="Architectural performance across workload pairs")
         ax.legend()
         save(fig, "speedup/geomean_improvement")
@@ -240,8 +247,8 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
 
     pressure([("retire_blocked", "Pending ROB work,\nno retirement"), ("cdb_contention", "CDB requests\nexceed bandwidth")],
              archs, f"{view_label} backend stalls as a share of core cycles", "rob/backend_bottlenecks")
-    if BLOCKS in archs:
-        pressure([("merge_utilization", "Merge engine"), ("flush_utilization", "Flush engine")], [BLOCKS],
+    if block_archs := [arch for arch in archs if arch in BLOCK_ARCHITECTURES]:
+        pressure([("merge_utilization", "Merge engine"), ("flush_utilization", "Flush engine")], block_archs,
                  "Basic-block bandwidth used", "basic_blocks/engine_utilization")
 
     storage = _storage(report)

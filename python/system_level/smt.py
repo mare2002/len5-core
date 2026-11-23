@@ -2,7 +2,7 @@
 
 from collections import Counter
 
-from .config import UNIT_FOR
+from .config import BLOCK_ARCHITECTURES, IDEAL_OOO, UNIT_FOR
 from .instruction import Instruction
 from .memory import Memory
 from .metrics import Metrics
@@ -40,8 +40,10 @@ class SMT:
             stats.events = self.stats.events
             stats.counts.update(smt_priority_cycles=0, smt_no_dispatch_grant_cycles=0)
         self.memory = Memory(config["memory"], self.stats, per_thread)
-        self.pool = ([None] * config["basic_block"]["max_active_blocks"]
-                     if architecture == "basic_block_ooo_commit" else None)
+        self.pool = None
+        if architecture in BLOCK_ARCHITECTURES:
+            slots = 0 if architecture == IDEAL_OOO else config["basic_block"]["max_active_blocks"]
+            self.pool = [None] * slots
         self.core = Simulator(architecture, config, program, timings[0], stats=per_thread[0],
                               memory=self.memory, block_pool=self.pool)
         other = Simulator(architecture, config, program if other_program is None else other_program,
@@ -88,6 +90,16 @@ class SMT:
                     thread_0=counts[0], thread_1=counts[1], next_priority=self.dispatch_priority)
 
     def commit(self, flushing: list[bool]) -> list[int]:
+        if self.core.rob.unbounded:
+            if self.core.ideal_blocks:
+                retired = [thread.retire() for thread in self.threads]
+            else:
+                retired = []
+                for tid, thread in enumerate(self.threads):
+                    count, flushing[tid] = thread.retire_ideal()
+                    retired.append(count)
+            self.stats.counts["retire_blocked_cycles"] += not any(retired) and any(t.rob.entries for t in self.threads)
+            return retired
         # Conventional CUs consume last cycle's grants before the next acceptance phase.
         local = self.pool is not None
         retired = [0, 0] if local else [thread.retire() for thread in self.threads]
@@ -103,7 +115,7 @@ class SMT:
                     continue
                 thread = self.threads[tid]
                 if local:
-                    entry = next((entry for entry in thread.rob.entries.values() if entry.done), None)
+                    entry = next((entry for entry in thread.rob.entries.values() if entry.done and not entry.faulted), None)
                     if entry is not None:
                         thread.local_retire(entry)
                         retired[tid] += 1
@@ -142,15 +154,16 @@ class SMT:
         before = sum(t.stats.samples["merge_candidates"].total for t in self.threads)
         for tid in (self.merge_priority, 1 - self.merge_priority):
             if not recovering[tid] or config["flushing"]["allow_unaffected_merges"]:
-                merged[tid] = blocks[tid].merge(cycle, config["merging"]["width"] - sum(merged))
+                width = None if self.core.ideal_blocks else config["merging"]["width"] - sum(merged)
+                merged[tid] = blocks[tid].merge(cycle, width)
             else:
                 blocks[tid].stats.samples["merge_candidates"].add(0)
         if merged[self.merge_priority]:
             self.merge_priority = 1 - self.merge_priority
         self.stats.samples["merge_candidates"].add(sum(t.stats.samples["merge_candidates"].total
                                                       for t in self.threads) - before)
-        for tid, thread in enumerate(self.threads):
-            thread.committed += blocks[tid].publish(cycle)
+        for thread in self.threads:
+            thread.publish_blocks()
         for name, histogram, count in (("merge", "merges_per_cycle", sum(merged)),
                                        ("flush", "flushes_per_cycle", sum(flushed))):
             self.stats.samples[name + "_operations_per_cycle"].add(count)

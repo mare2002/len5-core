@@ -3,6 +3,8 @@ architectures:
   - normal_ooo
   - len5_ooo_commit
   - basic_block_ooo_commit
+  # - ideal_commit
+  # - ideal_commit_ooo
 simulation:
   mode: event_driven
   seed: 42

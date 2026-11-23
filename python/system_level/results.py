@@ -11,7 +11,8 @@ from statistics import geometric_mean
 
 import yaml
 
-from .analysis import BLOCKS, LEN5, PAIRS, summarize, write_csv, write_json
+from .analysis import BLOCKS, IDEAL, LEN5, PAIRS, summarize, write_csv, write_json
+from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES
 from .benchmarks import name_component
 
 BLOCK_COUNTERS = ("block_", "blocks_", "flush", "merge", "physical_", "register_pressure",
@@ -92,7 +93,7 @@ def metrics(run: dict) -> dict[str, float]:
     for level, total in run["histograms"].get("cache_outcomes", {}).items():
         values["cache_requests:" + level] = total
     for key, value in run.get("storage", {}).items():
-        if key not in BLOCK_STORAGE or run["architecture"] == BLOCKS:
+        if value is not None and (key not in BLOCK_STORAGE or run["architecture"] == BLOCKS):
             values["storage:" + key] = value
     for thread in run.get("threads", ()):
         for metric, value in metrics(thread).items():
@@ -109,9 +110,11 @@ def applicable_count(metric: str, run: dict) -> bool:
         return False
     arch = run["architecture"]
     if field.startswith(BLOCK_COUNTERS):
-        return arch == BLOCKS
+        return arch in BLOCK_ARCHITECTURES
     if field == "out_of_order_commits":
-        return arch == LEN5
+        return arch in (LEN5, IDEAL)
+    if field in ("retirement_width_saturated_cycles", "recovery_wait_for_rob_head_cycles"):
+        return arch not in IDEAL_ARCHITECTURES
     if field == "statistical_cycles_skipped":
         return run["mode"] == "statistical"
     return True

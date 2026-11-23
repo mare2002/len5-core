@@ -3,7 +3,8 @@
 from collections import defaultdict
 from math import isfinite
 
-from .analysis import BLOCKS, LEN5, NORMAL
+from .analysis import BLOCKS, IDEAL, LEN5, NORMAL, PAIRS
+from .config import ARCHITECTURES
 from .results import metric_summary
 
 # Labels include units and describe the denominator for every normalized metric.
@@ -14,6 +15,8 @@ LABELS = {
     "weighted_speedup": "Weighted speedup (× isolated throughput)",
     "vs_normal": "IPC relative to normal OoO (×)",
     "vs_len5": "IPC relative to LEN5 OoO (×)",
+    "vs_blocks": "IPC relative to basic-block OoO (×)",
+    "vs_ideal": "IPC relative to Ideal Commit (×)",
     "rob_occupancy": "ROB occupancy (entries)",
     "cdb_utilization": "CDB bandwidth utilization (fraction)",
     "issue_utilization": "Execution issue utilization (fraction)",
@@ -23,6 +26,7 @@ LABELS = {
     "squash_rate": "Squashed instructions per 1,000 commits",
     "block_occupancy": "Active basic blocks (slots)",
     "merge_utilization": "Block merge bandwidth utilization (fraction)",
+    "merge_rate": "Block merges per core cycle",
     "flush_utilization": "Block flush bandwidth utilization (fraction)",
     "cycles": "Completion time (core cycles)",
     "storage_bits": "Modeled hardware storage (bits)",
@@ -31,6 +35,7 @@ LABELS = {
 
 PERCENT_METRICS = {"cdb_utilization", "issue_utilization", "cdb_contention", "retire_blocked",
                    "merge_utilization", "flush_utilization"}
+RATIO_METRICS = {NORMAL: "vs_normal", LEN5: "vs_len5", BLOCKS: "vs_blocks", IDEAL: "vs_ideal"}
 
 
 def heatmap_label(value: float | None, metric: str) -> str:
@@ -58,6 +63,7 @@ def measured(run: dict) -> dict:
                                           "cdb_utilization", "merge_utilization", "flush_utilization")
               if run.get(key) is not None}
     for key, source in (("rob_occupancy", "rob_occupancy"), ("block_occupancy", "block_occupancy"),
+                        ("merge_rate", "merge_operations_per_cycle"),
                         ("recovery_wait", "recovery_detection_to_flush")):
         sample = run.get("samples", {}).get(source, {})
         if sample.get("samples") and sample.get("mean") is not None:
@@ -68,7 +74,7 @@ def measured(run: dict) -> dict:
             values[key] = run["counts"].get(source, 0) / run["cycles"]
         if run.get("committed"):
             values["squash_rate"] = 1000 * run["counts"].get("squashed_instructions", 0) / run["committed"]
-    if "total_bits" in run.get("storage", {}):
+    if run.get("storage", {}).get("total_bits") is not None:
         values["storage_bits"] = run["storage"]["total_bits"]
     return values
 
@@ -101,7 +107,7 @@ def _trial_views(joint: dict | None, alone: dict, paired: bool) -> dict:
     for tid, run in alone.items():
         isolated[f"thread_{tid}_ipc"] = run["ipc"]
         isolated_cycles[tid] = run["cycles"]
-        if "total_bits" in run.get("storage", {}):
+        if run.get("storage", {}).get("total_bits") is not None:
             isolated["storage_bits"] = run["storage"]["total_bits"]
     if joint:
         smt = views["smt"] = measured(joint)
@@ -184,9 +190,10 @@ def build_matrix(report: dict) -> dict:
                             sorting_ipcs[name].append((source["seed"], tid, ipc))
             for arch, views in by_seed.items():
                 for view, values in views.items():
-                    for baseline, metric in ((NORMAL, "vs_normal"), (LEN5, "vs_len5")):
-                        if arch == baseline or (baseline == LEN5 and arch != BLOCKS):
+                    for numerator, baseline in PAIRS:
+                        if arch != numerator:
                             continue
+                        metric = RATIO_METRICS[baseline]
                         denominator = by_seed.get(baseline, {}).get(view, {}).get("ipc")
                         key = keys[arch].get(view)
                         if denominator and key is not None and key == keys[baseline].get(view) and "ipc" in values:
@@ -224,6 +231,6 @@ def build_matrix(report: dict) -> dict:
                 for f in report.get("failures", ())]
     return {"suite": report.get("suite", "Benchmark suite"), "names": sorted(names), "pairs": cells,
             "paired": bool(pairs),
-            "architectures": [a for a in (NORMAL, LEN5, BLOCKS) if a in arch_names],
+            "architectures": [a for a in ARCHITECTURES if a in arch_names],
             "sort_ipc": rank, "limits": limits, "limit_labels": limit_labels, "labels": LABELS, "confidence": confidence,
             "seeds": report.get("seeds", []), "failures": failures}

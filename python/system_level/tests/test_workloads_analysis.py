@@ -101,7 +101,10 @@ class AnalysisTests(unittest.TestCase):
     def test_storage_breakdown_and_independent_banks(self):
         c = configure({"basic_block": {"max_active_blocks": 4, "registers": {
             "integer_physical": 48, "fp_physical": 128}}})
-        a, b, block = [estimate(c, name) for name in ARCHITECTURES]
+        a, b, block, *ideals = [estimate(c, name) for name in ARCHITECTURES]
+        for ideal in ideals:
+            self.assertIsNone(ideal["rob_bits"])
+            self.assertIsNone(ideal["total_bits"])
         self.assertEqual(a["register_file_bits"], (31 + 32) * 64)
         self.assertEqual(b["rob_bits"] - a["rob_bits"], 32 * 3)
         self.assertEqual(a["mapping_bits"], 0)

@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 import unittest
 
-from system_level.analysis import BLOCKS, LEN5, NORMAL
+from system_level.analysis import BLOCKS, IDEAL, IDEAL_OOO, LEN5, NORMAL
 from system_level.dashboard import write_dashboard
 from system_level.matrix import build_matrix, color_limits, heatmap_label
 from test_integration import temporary_build
@@ -77,7 +77,7 @@ class MatrixTests(unittest.TestCase):
 
     def test_ipc_uses_recorded_counts_over_the_shared_window(self):
         rows = []
-        counts = {NORMAL: (127, 85), LEN5: (127, 71), BLOCKS: (127, 0)}
+        counts = {NORMAL: (127, 85), LEN5: (127, 71), BLOCKS: (127, 0), IDEAL: (127, 98), IDEAL_OOO: (127, 112)}
         for arch, committed in counts.items():
             cycles = 151
             row = smt(("alpha", "beta"), arch, 11, sum(committed) / cycles)
@@ -93,6 +93,8 @@ class MatrixTests(unittest.TestCase):
                 self.assertEqual(view[metric]["mean"], record["committed"] / row["cycles"])
                 self.assertEqual(view[metric]["label"], f"{record['ipc']:.2f}")
         self.assertEqual(heatmap_label(None, "ipc"), "—")
+        self.assertAlmostEqual(cell["architectures"][IDEAL]["smt"]["vs_blocks"]["mean"], 225 / 127)
+        self.assertAlmostEqual(cell["architectures"][IDEAL_OOO]["smt"]["vs_ideal"]["mean"], 239 / 225)
         self.assertEqual(heatmap_label(.137, "cdb_utilization"), "13.7%")
         self.assertEqual(heatmap_label(123000, "storage_bits"), "123.0k")
 

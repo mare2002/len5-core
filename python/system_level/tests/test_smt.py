@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 from system_level.analysis import experiment, flatten
 from system_level.analysis import program_for
-from system_level.config import ARCHITECTURES, configure, unit
+from system_level.config import ARCHITECTURES, BLOCK_ARCHITECTURES, DEFAULT_ARCHITECTURES, IDEAL, configure, unit
 from system_level.instruction import Instruction as I
 from system_level.plots import COLOR, group_bars, plot_category
 from system_level.results import benchmark_summary, metric_rows
@@ -17,7 +17,7 @@ from system_level.workload import Timing, make_workload, sample_timing
 
 from test_pipeline import x
 
-NORMAL, LEN5, BLOCKS = ARCHITECTURES
+NORMAL, LEN5, BLOCKS = DEFAULT_ARCHITECTURES
 
 
 def timing(execution=1, memory=3, miss=False, redirect=0):
@@ -119,7 +119,7 @@ class SMTTests(unittest.TestCase):
 
     def test_dependencies_and_commit_limits_all_architectures(self):
         p = [I("div", destination=x(1)), I("alu", (x(1),), x(2)), I("alu", destination=x(3))]
-        for architecture in ARCHITECTURES:
+        for architecture in DEFAULT_ARCHITECTURES:
             with self.subTest(architecture=architecture):
                 t = ([timing(8), timing(0), timing(0)], [timing(12), timing(0), timing(0)])
                 sim = core(p, architecture, t, simulation={"dispatch_width": 3, "commit_width": 1})
@@ -144,7 +144,7 @@ class SMTTests(unittest.TestCase):
         p = [I("alu")] * 8
         t = [timing(0)] * len(p)
         for mode in ("event_driven", "statistical"):
-            for architecture in ARCHITECTURES:
+            for architecture in DEFAULT_ARCHITECTURES:
                 for width in (2, 4, 8):
                     with self.subTest(mode=mode, architecture=architecture, width=width):
                         sim = core(p, architecture, (t, t), simulation={
@@ -200,9 +200,12 @@ class SMTTests(unittest.TestCase):
                 result = sim.run()
                 miss = cycles(result, "mispredict", 0)[0]
                 self.assertEqual(events(result, "mispredict", 1), [])
-                if architecture == BLOCKS:
+                if architecture in BLOCK_ARCHITECTURES:
                     self.assertEqual(cycles(result, "squash", 0, 2), [miss])
                     self.assertEqual(events(result, "backend_flush", 0), [])
+                elif architecture == IDEAL:
+                    self.assertEqual(cycles(result, "backend_flush", 0, 1), [miss + 1])
+                    self.assertLess(miss + 1, cycles(result, "commit", 0, 0)[0])
                 else:
                     accept = cycles(result, "commit_accept", 0, 1)[0]
                     flush = cycles(result, "backend_flush", 0, 1)[0]
@@ -311,7 +314,7 @@ class SMTTests(unittest.TestCase):
 
     def test_private_and_shared_storage_components_and_required_subtotals(self):
         cfg = configure({"smt": {"mode": "enabled", "threads": 2}, "simulation": {"rob_size": 32}})
-        for arch in ARCHITECTURES:
+        for arch in DEFAULT_ARCHITECTURES:
             with self.subTest(architecture=arch):
                 one, two = estimate(cfg, arch, 1), estimate(cfg, arch)
                 for key in ("rob_bits", "register_file_bits", "store_buffer_bits"):
@@ -341,7 +344,8 @@ class SMTTests(unittest.TestCase):
         self.assertAlmostEqual(report["threads"][1]["slowdown"], 1.25)
 
     def test_independent_pairs_and_single_thread_reporting(self):
-        config = configure({"smt": {"mode": "both"}, "workload": {"instructions": 85}})
+        config = configure({"architectures": {"enabled": list(ARCHITECTURES)},
+                            "smt": {"mode": "both"}, "workload": {"instructions": 85}})
         program = make_workload(config, 42)
         first = sample_timing(program, config, 42)
         second = sample_timing(program, config, 42, thread_id=1)
@@ -350,7 +354,7 @@ class SMTTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         results = experiment(config, [42])
         self.assertEqual(results, experiment(config, [42]))
-        self.assertEqual(len(results["runs"]), 6)
+        self.assertEqual(len(results["runs"]), 2 * len(ARCHITECTURES))
         for arch in ARCHITECTURES:
             original = configure({"workload": {"instructions": 85}})
             isolated = Simulator(arch, original, program, first).run()
@@ -366,7 +370,7 @@ class SMTTests(unittest.TestCase):
             self.assertAlmostEqual(multi["weighted_speedup"], sum(t["ipc"] / t["isolated_ipc"] for t in multi["threads"]))
         rows = [row for row in metric_rows(results) if row["metric"] == "weighted_speedup"]
         self.assertEqual({row["smt_mode"] for row in rows}, {"enabled"})
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), len(ARCHITECTURES))
 
     def test_spike_workload_is_parsed_once_and_benchmark_plot_grouping(self):
         fixture = Path(__file__).parent / "fixtures" / "hello-world.spike.log"
@@ -385,7 +389,7 @@ class SMTTests(unittest.TestCase):
         group_bars(ax, ["example"], rows, "benchmark")
         self.assertEqual(ax.bar.call_count, 6)
         self.assertEqual([call.kwargs["color"] for call in ax.bar.call_args_list],
-                         [COLOR[architecture] for architecture in ARCHITECTURES for _ in range(2)])
+                         [COLOR[architecture] for architecture in DEFAULT_ARCHITECTURES for _ in range(2)])
         self.assertEqual([call.kwargs["hatch"] for call in ax.bar.call_args_list], [None, "//"] * 3)
         self.assertEqual(plot_category("thread_1:rs_occupancy:alu"), "reservation_stations")
         self.assertEqual(plot_category("weighted_speedup"), "speedup")
