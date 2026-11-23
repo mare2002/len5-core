@@ -139,7 +139,7 @@ class PipelineTests(unittest.TestCase):
                     self.assertEqual(cycles(r, "commit", 2), [younger_commit + int(width == 1)])
 
     def test_dispatch_can_read_a_result_in_the_commit_register(self):
-        p = [I("alu", destination=x(1)), I("alu", (x(1),)), I("alu", (x(1),))]
+        p = [I("mul", destination=x(1)), I("alu", (x(1),)), I("alu", (x(1),))]
         for architecture in ARCHITECTURES[:2]:
             with self.subTest(architecture=architecture):
                 r = make(p, architecture, simulation={"dispatch_width": 1},
@@ -275,7 +275,7 @@ class PipelineTests(unittest.TestCase):
                     self.assertEqual(cycles(r, "commit"), [5 + latency])
 
     def test_zero_latency_cdb_contention_and_wakeup(self):
-        p = [I("alu", destination=x(1)), I("alu", destination=x(2)), I("alu", (x(1), x(2)))]
+        p = [I("alu", destination=x(1)), I("alu", destination=x(2)), I("mul", (x(1), x(2)))]
         t = [Timing(0, "", 0, False, 0)] * len(p)
         for architecture in ARCHITECTURES:
             for mode in ("event_driven", "statistical"):
@@ -289,6 +289,76 @@ class PipelineTests(unittest.TestCase):
                     expected_cycles = 7 if architecture in (*BLOCK_ARCHITECTURES, IDEAL) else 8
                     self.assertEqual((r["committed"], r["cycles"]), (3, expected_cycles))
 
+    def test_local_forwarding_wakes_multiple_consumers_during_cdb_contention(self):
+        p = [I("alu", destination=x(1)), I("alu", destination=x(2)),
+             I("alu", (x(2),)), I("alu", (x(1), x(2))), I("mul", (x(2),))]
+        t = [Timing(0, "", 0, False, 0)] * len(p)
+        for architecture in ARCHITECTURES:
+            for mode in ("event_driven", "statistical"):
+                with self.subTest(architecture=architecture, mode=mode):
+                    r = make(p, architecture, t, simulation={"mode": mode, "cdb_width": 1}).run()
+                    self.assertEqual(cycles(r, "issue"), [2, 2, 3, 3, 5])
+                    self.assertEqual(cycles(r, "broadcast", 1), [4])
+                    local = [e for e in events(r, "wakeup") if e.get("source") == "local"]
+                    self.assertEqual([(e["index"], e["producer"], e["cycle"]) for e in local],
+                                     [(2, 2, 2), (3, 2, 2)])
+                    self.assertEqual(cycles(r, "wakeup", 4), [4])
+                    self.assertEqual(len(events(r, "wakeup")), 3)
+                    self.assertEqual(r["committed"], len(p))
+
+    def test_multicycle_arithmetic_completion_forwards_in_its_own_station(self):
+        for kind in ("alu", "mul", "div", "fp"):
+            with self.subTest(kind=kind):
+                reg = ("f", 1) if kind == "fp" else x(1)
+                p = [I(kind, destination=reg), I(kind, (reg,)), I("store", (reg,), address=8, size=8)]
+                t = [Timing(2, "l1", 3, False, 0)] * len(p)
+                r = make(p, timings=t, execution={"units": {kind: unit(1, 2, 1, 4, 1)}}).run()
+                self.assertEqual(cycles(r, "execution_complete", 0), [4])
+                self.assertEqual(cycles(r, "broadcast", 0), [5])
+                self.assertEqual(cycles(r, "wakeup", 1), [4])
+                self.assertEqual(cycles(r, "issue", 1), [5])
+                self.assertEqual(cycles(r, "issue", 2), [6])
+
+    def test_consumer_waits_for_cdb_operand_after_local_forward(self):
+        p = [I("alu", destination=x(1)), I("mul", destination=x(2)),
+             I("alu", (x(1), x(2)), x(3))]
+        t = [Timing(n, "", 0, False, 0) for n in (1, 3, 0)]
+        s = make(p, timings=t)
+        for _ in range(3):
+            s.step()
+        consumer = s.rob.entries[3]
+        self.assertEqual(consumer.operands, {x(1): 1})
+        self.assertEqual(consumer.waiting, {2: x(2)})
+        r = s.run()
+        self.assertEqual(cycles(r, "wakeup", 2), [6])
+        self.assertEqual(cycles(r, "issue", 2), [7])
+
+    def test_dispatch_latches_only_current_cycle_local_completion(self):
+        t = Timing(0, "", 0, False, 0)
+        for kind, issue in (("alu", 3), ("mul", 4)):
+            with self.subTest(kind=kind):
+                p = [I("alu", destination=x(1)), I(kind, (x(1),))]
+                r = make(p, timings=[t] * len(p), simulation={"dispatch_width": 1},
+                         execution={"shared_rs": {"size": 4, "issue_width": 2}}).run()
+                self.assertEqual(cycles(r, "dispatch", 1), [2])
+                self.assertEqual(cycles(r, "issue", 1), [issue])
+
+        p = [I("alu", destination=x(1)), I("alu", destination=x(2)),
+             I("mul"), I("div"), I("alu", (x(2),))]
+        r = make(p, timings=[t] * len(p), simulation={"dispatch_width": 2, "cdb_width": 1}).run()
+        self.assertEqual(cycles(r, "dispatch", 4), [3])
+        self.assertEqual(cycles(r, "wakeup", 4), [4])
+        self.assertEqual(cycles(r, "issue", 4), [5])
+
+    def test_faulted_arithmetic_result_does_not_forward_locally(self):
+        p = [I("alu", destination=x(1), pc=0x100), I("alu", (x(1),))]
+        s = make(p, architecture=IDEAL)
+        s.step()
+        s.rob.head.faulted = True
+        with self.assertRaisesRegex(RuntimeError, "precise exception at PC 0x100"):
+            s.run()
+        self.assertEqual(events(s.report(), "wakeup", 1), [])
+
     def test_zero_latency_lsu_keeps_memory_response_limit(self):
         p = [I("load", address=address, size=8) for address in (8, 16)]
         t = [Timing(0, "l1", 1, False, 0)] * len(p)
@@ -299,7 +369,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_hand_calculated_cdb_and_multi_dependency_timing(self):
         program = [I("alu", destination=x(1)), I("alu", destination=x(2)),
-                   I("alu", (x(1), x(2)), x(3)), I("alu", (x(1),), x(4))]
+                   I("mul", (x(1), x(2)), x(3)), I("div", (x(1),), x(4))]
         sim = make(program, simulation={"cdb_width": 1})
         for _ in range(4):
             sim.step()

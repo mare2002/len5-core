@@ -140,6 +140,29 @@ class SMTTests(unittest.TestCase):
                     if architecture == NORMAL:
                         self.assertEqual(indices, [0, 1, 2])
 
+    def test_local_forwarding_is_thread_local_and_squashed_with_its_consumer(self):
+        p = [I("branch"), I("alu", destination=x(1)), I("alu", (x(1),), x(2))]
+        t = ([timing(0, miss=True, redirect=3), timing(0), timing(6)],
+             [timing(0), timing(0), timing(6)])
+        for architecture in ARCHITECTURES:
+            with self.subTest(architecture=architecture):
+                r = core(p, architecture, t, simulation={"dispatch_width": 8, "cdb_width": 1}).run()
+                wrong_producer, replayed_producer = events(r, "dispatch", 0, 1)
+                other_producer, = events(r, "dispatch", 1, 1)
+                self.assertEqual(wrong_producer["slot"], other_producer["slot"])
+                wrong_wake, replayed_wake = events(r, "wakeup", 0, 2)
+                other_wake, = events(r, "wakeup", 1, 2)
+                for wake, producer in ((wrong_wake, wrong_producer), (replayed_wake, replayed_producer),
+                                       (other_wake, other_producer)):
+                    self.assertEqual((wake["source"], wake["producer"]), ("local", producer["uid"]))
+                self.assertEqual(other_wake["cycle"], 2)
+                self.assertEqual(cycles(r, "issue", 1, 2), [3])
+                self.assertGreater(cycles(r, "broadcast", 1, 1)[0], 3)
+                self.assertIn(wrong_wake["uid"], {e["uid"] for e in events(r, "squash", 0)})
+                for event in ("execution_complete", "broadcast", "commit", "local_retire"):
+                    self.assertNotIn(wrong_wake["uid"], {e["uid"] for e in events(r, event, 0)})
+                self.assertEqual(r["committed"], 6)
+
     def test_global_multi_commit_widths_in_both_execution_modes(self):
         p = [I("alu")] * 8
         t = [timing(0)] * len(p)

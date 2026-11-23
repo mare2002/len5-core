@@ -184,7 +184,7 @@ class BlockTests(unittest.TestCase):
                          events(r, "dispatch", 3)[-1]["uid"])
 
     def test_invalidates_same_cycle_broadcast_candidates_and_rs_waiters(self):
-        p = [I("branch"), I("alu", destination=x(1)), I("alu", (x(1),), x(2))]
+        p = [I("branch"), I("alu", destination=x(1)), I("mul", (x(1),), x(2))]
         t = [timing(1, True, 2), timing(), timing()]
         r = block_sim(p, t).run()
         self.assertEqual(cycles(r, "mispredict"), [4])

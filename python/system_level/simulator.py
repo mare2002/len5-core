@@ -13,6 +13,8 @@ from .rob import ROB
 from .state import Entry, Version
 from .workload import Timing
 
+LOCAL_FORWARDING_UNITS = frozenset(("alu", "mul", "div", "fp"))
+
 
 class Simulator:
     def __init__(self, architecture: str, config: dict, program: list[Instruction], timings: list[Timing],
@@ -152,9 +154,17 @@ class Simulator:
             self.memory.allocate(entry)
             self.rs[entry.uid] = entry
             self.rs_occupancy[station] += 1
-            for producer in waiting:
-                self.readers[producer][entry.uid] = entry
             self.log("dispatch", entry)
+            for producer_uid in tuple(waiting):
+                completion = self.cdb.get(producer_uid) if entry.kind in LOCAL_FORWARDING_UNITS else None
+                if completion is not None:
+                    finished, producer = completion
+                    # The RTL's allocation path sees EU completions from this cycle only.
+                    if (finished == self.cycle and producer.kind == entry.kind
+                            and producer.valid and not producer.faulted):
+                        self.latch_operand(producer, entry, local=True)
+                        continue
+                self.readers[producer_uid][entry.uid] = entry
             if self.redirect_started is not None:
                 self.stats.samples["recovery_to_first_dispatch"].add(self.cycle - self.redirect_started)
                 if self.blocks is None:
@@ -226,6 +236,32 @@ class Simulator:
                     entry.prepared = self.cycle
                     self.log("store_prepare", entry)
                 self.cdb[entry.uid] = (self.cycle, entry)
+                if entry.kind in LOCAL_FORWARDING_UNITS and not entry.faulted:
+                    self.forward_local(entry)
+
+    def latch_operand(self, producer: Entry, consumer: Entry, *, local: bool = False) -> None:
+        assert consumer.valid and consumer.thread_id == producer.thread_id
+        reg = consumer.waiting.pop(producer.uid)
+        consumer.operands[reg] = producer.uid
+        if not consumer.waiting:
+            consumer.ready_since = self.cycle + 1
+            if local:
+                self.log("wakeup", consumer, producer=producer.uid, source="local")
+            else:
+                self.log("wakeup", consumer, producer=producer.uid)
+
+    def forward_local(self, producer: Entry) -> None:
+        readers = self.owner(producer).readers
+        pending = readers.get(producer.uid)
+        if not pending:
+            return
+        for uid, consumer in tuple(pending.items()):
+            # A pooled RS configuration still has separate RTL forwarding domains.
+            if consumer.kind == producer.kind:
+                self.latch_operand(producer, consumer, local=True)
+                del pending[uid]
+        if not pending:
+            del readers[producer.uid]
 
     def finish_memory(self) -> None:
         for entry in self.memory.complete(self.cycle):
@@ -291,12 +327,7 @@ class Simulator:
                     else:
                         entry.checkpoint = None
                 for consumer in owner.readers.pop(entry.uid, {}).values():
-                    assert consumer.valid and consumer.thread_id == entry.thread_id
-                    reg = consumer.waiting.pop(entry.uid)
-                    consumer.operands[reg] = entry.uid
-                    if not consumer.waiting:
-                        consumer.ready_since = self.cycle + 1
-                        self.log("wakeup", consumer, producer=entry.uid)
+                    self.latch_operand(entry, consumer)
             if entry.kind == "load":
                 del self.memory.loads[entry.uid]
                 owner.stats.samples["load_result_latency"].add(self.cycle - entry.issued)
