@@ -3,3 +3,4 @@ __pycache__/
 !__main__.py
 .deps/
 .venv/
+!dashboard.html

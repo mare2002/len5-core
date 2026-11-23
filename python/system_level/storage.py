@@ -1,7 +1,8 @@
 """Count modeled state bits under an explicit register and checkpoint layout."""
 
 
-from .config import IDEAL_ARCHITECTURES
+from .config import IDEAL_ARCHITECTURES, INTEGER_UNITS, UNIFIED_ARCHITECTURES, UNIFIED_SUFFIX
+from .unified import result_slots, station_capacity
 
 
 def index_bits(entries: int) -> int:
@@ -15,6 +16,8 @@ def estimate(config: dict, architecture: str, threads: int | None = None) -> dic
         raise ValueError("storage estimate requires one or two hardware threads")
     if architecture in IDEAL_ARCHITECTURES:
         return {"rob_bits": None, "total_bits": None, "total_bytes": None}
+    unified = architecture in UNIFIED_ARCHITECTURES
+    architecture = architecture.removesuffix(UNIFIED_SUFFIX)
     tid = index_bits(threads)
     rob_entries = config["simulation"]["rob_size"]
     widths = config["storage"]
@@ -62,16 +65,20 @@ def estimate(config: dict, architecture: str, threads: int | None = None) -> dic
 
     execution = config["execution"]
     units = {name: unit for name, unit in execution["units"].items() if unit["count"]}
+    wrapped = {name: unit for name, unit in units.items() if unified and name in INTEGER_UNITS}
+    separate = {name: unit for name, unit in units.items() if name not in wrapped}
     shared = execution["shared_rs"]
-    stations = [(shared["size"], 3 if "fp" in units else 2)] if shared else [
-        (unit["rs_size"], 3 if name == "fp" else 2) for name, unit in units.items()]
+    stations = [(shared["size"], 3 if "fp" in separate else 2)] if shared and (separate or not unified) else [
+        (unit["rs_size"], 3 if name == "fp" else 2) for name, unit in separate.items()]
+    if wrapped:
+        stations.append((station_capacity(execution), 2))
     memory = config["memory"]
     load_entries = memory["load_buffer_capacity"]
     store_entries = memory["store_buffer_capacity"]
     # Pending operand slots hold either a value or a local ROB tag. An output latch per lane
     # represents buffered CDB results. Arbitration wires themselves have no storage.
     operand_bits = max(value_bits, rob_index) + 1
-    outputs = sum(unit["count"] for unit in units.values())
+    outputs = sum(unit["count"] for unit in separate.values())
     sizes.update(
         reservation_station_bits=sum(count * (operands * operand_bits + pc + rob_index + index_bits(count) + 12)
                                      for count, operands in stations),
@@ -83,6 +90,12 @@ def estimate(config: dict, architecture: str, threads: int | None = None) -> dic
     if tid:
         sizes.update(rs_thread_tag_bits=tid * sum(count for count, _ in stations),
                      load_thread_tag_bits=tid * load_entries, cdb_thread_tag_bits=tid * outputs)
+    if wrapped:
+        slots = sum(unit["count"] * result_slots(unit) for unit in wrapped.values())
+        # Age ranks cover the integer RS and reserved results. Each slot tracks both grants.
+        age_bits = index_bits(station_capacity(execution) + slots)
+        sizes["unified_completion_buffer_bits"] = slots * (
+            widths["integer_width"] + rob_index + tid + age_bits + 5)
         sizes["additional_control_bits"] += 5 if architecture == "basic_block_ooo_commit" else 3
     sizes["total_bits"] = sum(value for key, value in sizes.items() if not key.endswith("_per_block"))
     sizes["total_bytes"] = (sizes["total_bits"] + 7) // 8

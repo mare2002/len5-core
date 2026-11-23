@@ -5,6 +5,11 @@ architectures:
   - basic_block_ooo_commit
   - ideal_commit
   - ideal_commit_ooo
+  - normal_ooo_unified_rs
+  - len5_ooo_commit_unified_rs
+  - basic_block_ooo_commit_unified_rs
+  - ideal_commit_unified_rs
+  - ideal_commit_ooo_unified_rs
 simulation:
   mode: event_driven
   seed: 42
@@ -102,7 +107,7 @@ basic_block:
     incremental_resource_reclamation: true
     allow_unaffected_merges: true
 branch:
-  misprediction_probability: 0.0
+  misprediction_probability: 0.05
   recovery_latency:
     type: uniform
     min: 5

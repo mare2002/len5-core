@@ -4,7 +4,7 @@ from collections import defaultdict
 from math import isfinite
 
 from .analysis import BLOCKS, IDEAL, LEN5, NORMAL, PAIRS
-from .config import ARCHITECTURES
+from .config import ARCHITECTURES, UNIFIED_RS, UNIFIED_SUFFIX
 from .results import metric_summary
 
 # Labels include units and describe the denominator for every normalized metric.
@@ -17,6 +17,7 @@ LABELS = {
     "vs_len5": "IPC relative to LEN5 OoO (×)",
     "vs_blocks": "IPC relative to basic-block OoO (×)",
     "vs_ideal": "IPC relative to Ideal Commit (×)",
+    "vs_ideal_block": "IPC relative to Ideal Block Commit (×)",
     "rob_occupancy": "ROB occupancy (entries)",
     "cdb_utilization": "CDB bandwidth utilization (fraction)",
     "issue_utilization": "Execution issue utilization (fraction)",
@@ -30,12 +31,23 @@ LABELS = {
     "flush_utilization": "Block flush bandwidth utilization (fraction)",
     "cycles": "Completion time (core cycles)",
     "storage_bits": "Modeled hardware storage (bits)",
+    "unified_rs_occupancy": "Unified integer RS occupancy (entries)",
+    "unified_forwarding_backlog": "Results waiting for local forwarding (entries)",
+    "unified_forwarding_delay": "Local forwarding arbitration delay (cycles/result)",
+    "unified_buffer_stalls": "Cycles with wrapper completion buffer stalls (fraction)",
+    "unified_rs_full": "Cycles with unified RS full stalls (fraction)",
+    "wrapper_port_utilization": "Mean wrapper issue-port utilization (fraction)",
 }
 
 
 PERCENT_METRICS = {"cdb_utilization", "issue_utilization", "cdb_contention", "retire_blocked",
                    "merge_utilization", "flush_utilization"}
-RATIO_METRICS = {NORMAL: "vs_normal", LEN5: "vs_len5", BLOCKS: "vs_blocks", IDEAL: "vs_ideal"}
+PERCENT_METRICS.update(("unified_buffer_stalls", "unified_rs_full", "wrapper_port_utilization"))
+RATIO_METRICS = {NORMAL: "vs_normal", LEN5: "vs_len5", BLOCKS: "vs_blocks", IDEAL: "vs_ideal",
+                 "ideal_commit_ooo": "vs_ideal_block"}
+for architecture, metric in tuple(RATIO_METRICS.items()):
+    RATIO_METRICS[architecture + UNIFIED_SUFFIX] = metric + UNIFIED_SUFFIX
+    LABELS[metric + UNIFIED_SUFFIX] = LABELS[metric].replace(" (×)", " (unified RS) (×)")
 
 
 def heatmap_label(value: float | None, metric: str) -> str:
@@ -64,7 +76,10 @@ def measured(run: dict) -> dict:
               if run.get(key) is not None}
     for key, source in (("rob_occupancy", "rob_occupancy"), ("block_occupancy", "block_occupancy"),
                         ("merge_rate", "merge_operations_per_cycle"),
-                        ("recovery_wait", "recovery_detection_to_flush")):
+                        ("recovery_wait", "recovery_detection_to_flush"),
+                        ("unified_rs_occupancy", "rs_occupancy:" + UNIFIED_RS),
+                        ("unified_forwarding_delay", "unified_forwarding_delay"),
+                        ("unified_forwarding_backlog", "unified_forwarding_backlog")):
         sample = run.get("samples", {}).get(source, {})
         if sample.get("samples") and sample.get("mean") is not None:
             values[key] = sample["mean"]
@@ -72,6 +87,10 @@ def measured(run: dict) -> dict:
         for key, source in (("cdb_contention", "cdb_contention_cycles"),
                             ("retire_blocked", "retire_blocked_cycles")):
             values[key] = run["counts"].get(source, 0) / run["cycles"]
+    if wrappers := run.get("wrappers"):
+        values["wrapper_port_utilization"] = sum(w["issue_utilization"] for w in wrappers.values()) / len(wrappers)
+        values["unified_buffer_stalls"] = run["counts"].get("unified_completion_buffer_stall_cycles", 0) / run["cycles"]
+        values["unified_rs_full"] = run["counts"].get("unified_rs_full_cycles", 0) / run["cycles"]
         if run.get("committed"):
             values["squash_rate"] = 1000 * run["counts"].get("squashed_instructions", 0) / run["committed"]
     if run.get("storage", {}).get("total_bits") is not None:

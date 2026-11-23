@@ -154,13 +154,36 @@ The default configuration samples up to 3,000 instructions from the linked `main
 
 ## Timing and memory
 
+### Unified integer reservation station
+
+Append `_unified_rs` to any architecture name in `architectures.enabled` to compare the two reservation-station organizations under the same commit policy:
+
+```yaml
+architectures:
+  enabled: [normal_ooo, normal_ooo_unified_rs, len5_ooo_commit, len5_ooo_commit_unified_rs]
+execution:
+  unified_issue_width: null  # Defaults to one issue per wrapper per cycle.
+```
+
+The other three variants are `basic_block_ooo_commit_unified_rs`, `ideal_commit_unified_rs`, and `ideal_commit_ooo_unified_rs`. The unified integer station has the sum of the three configured ALU, MUL, and DIV `rs_size` values, shared by both SMT threads. A unit with count zero contributes its configured capacity but has no execution lane. The station creates `max(ALU_count, MUL_count, DIV_count)` wrappers. For counts 3, 2, and 1, wrapper 0 has all three unit types, wrapper 1 has ALU and MUL, and wrapper 2 has ALU. The optional `unified_issue_width` caps total integer starts across wrappers. The ALU, MUL, and DIV `rs_issue_width` settings govern their separate stations. With a unified variant and `shared_rs` configured, that pool applies to the remaining unit classes. Dispatch and CDB widths retain their existing meanings.
+
+Instructions enter the shared station without a wrapper assignment. In dispatch-age order, each ready instruction takes the available compatible wrapper with the fewest unit types, breaking ties by wrapper index. Each grant masks that wrapper for the rest of the cycle. A wrapper can start an ALU while its divider is still executing a previous instruction. The unified integer lanes honor their configured initiation intervals in both modes. Other statistical execution units retain the existing simplified lane model.
+
+Each wrapper arbitrates one local result per cycle, choosing the oldest instruction among completed results still waiting for that port. If MUL and ALU in one wrapper finish in cycle 5, the older result can forward in 5 and wake a unified-station dependent for cycle 6. The other result can forward in 6 and wake its dependent for cycle 7. The CDB arbitrates independently with the existing policy. It may wake a consumer first and still handles ROB writeback. FP, branch, and memory stations receive integer results over the CDB.
+
+At issue, each lane reserves a finite result slot until both the local port and CDB have served the result. The depth per functional unit is `ceil((max_execution_latency + 1) / initiation_interval) + 1` based on its configured latency distribution. The extra slot absorbs a queued completion. A full bank backpressures that lane and a squash releases only the affected thread's younger reservations. The simulator records unified RS occupancy and full-stall cycles, per-wrapper issue counts and utilization, local grants and delays, completion queue occupancy, and result-buffer stalls. These appear with existing execution-unit and CDB statistics in the CSV, JSON, and benchmark dashboard. Paired IPC ratios compare each unified variant with its separate counterpart.
+
+The unified integer station is a proposed organization. LEN5's integer RTL instantiates separate arithmetic stations, each with local forwarding among its own lanes. A unified implementation would need shared age selection, compatible-wrapper grant masking, and result/tag fanout across the full station. The storage estimate includes the reserved result slots, tags, and control fields. It excludes combinational arbitration, wiring, and the synthesis cost of the extra ports.
+
+### Pipeline and memory timing
+
 Event-driven mode runs deterministic cycle phases and schedules execution completions and memory responses on heaps. The conventional ROBs complete the previous commit-stage batch and accept new completed entries before CDB arbitration. The basic-block ROB locally retires previous CDB results and reclaims or merges blocks. The pipeline then services stores, arbitrates the CDB, processes due execution and memory events, selects ready RS entries, and dispatches. The oldest eligible RS entry wins subject to resource availability. The CDB holds completed requests when it runs out of lanes. Optional LEN5 priority serves stores first and walks batches of remaining source classes. Event logs can be enabled with `simulation.record_events`.
 
 The ALU, multiplier, divider, and FP stations forward a nonfaulting execution result to same-thread dependents in their own station, including entries dispatched in the completion cycle. With one cycle of execution latency and selection in cycle 2, the result forwards locally in cycle 3 and the dependent can issue in cycle 4. The producer still broadcasts in cycle 4 or later for ROB writeback and consumers in other stations, which can issue from cycle 5 onward. The optional pooled RS shares capacity while retaining separate forwarding domains. Wakeup events from local forwarding have `source: local`. [Integer RS](../../rtl/expipe/exec-units/arith_rs.sv) · [FP RS](../../rtl/expipe/exec-units/arith_rs_fpu.sv)
 
 Both execution modes support zero execution latency. Use `{type: fixed, value: 0}`, `{type: uniform, min: 0, max: 3}`, or `{type: weighted, values: [0, 1], weights: [0.8, 0.2]}` under `execution.units.<unit>.latency`. An instruction selected in cycle 2 with latency 0 finishes in cycle 2. A locally forwarded consumer can issue in cycle 3. The earliest broadcast is cycle 3, so a CDB-dependent consumer can issue in cycle 4 or later. Initiation intervals and separate memory service times still apply.
 
-Statistical mode keeps the same seeded execution/memory samples, finite RS and memory queues, dispatch and per-RS widths, CDB, retirement and recovery rules. It treats each unit class as offering its configured number of starts every cycle, omits per-instance initiation-interval reservations, and skips quiescent cycles to the next timed event. It is intended for exploratory Monte Carlo runs. Use event-driven mode for initiation-interval and lane-utilization comparisons.
+Statistical mode keeps the same seeded execution/memory samples, finite RS and memory queues, dispatch and per-RS widths, CDB, retirement and recovery rules. For units outside the unified integer wrappers, it models the configured number of starts each cycle and omits per-instance initiation-interval reservations. Quiescent single-thread runs can skip to the next timed event. Use event-driven mode when the other units' initiation intervals or lane utilization matter.
 
 Loads independently sample the configured conditional L1, L2 and LLC miss rates. Latencies add for levels visited, including DRAM on an LLC miss, plus a sampled queue delay. They reserve a load-buffer entry at dispatch and an outstanding slot and, on an L1 miss, an MSHR at issue. The shared response bandwidth can add queueing beyond the sampled delay. The load buffer releases after its result broadcasts. A younger overlapping load waits for an older store's memory response. Unknown addresses conservatively alias. There is no store-to-load forwarding. Stores prepare their address/data, broadcast readiness, receive architectural authorization, and launch in program order through a bounded store queue. Responses preserve store visibility order. Simulation includes draining the final authorized stores.
 

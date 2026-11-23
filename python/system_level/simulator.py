@@ -1,16 +1,18 @@
-"""Deterministic simulation pipeline shared by all three commit architectures."""
+"""Deterministic execution pipeline shared by the commit architectures."""
 
 from collections import Counter, defaultdict
 from heapq import heappop, heappush
 from itertools import islice
 
 from .blocks import Blocks, Group
-from .config import ARCHITECTURES, BLOCK_ARCHITECTURES, IDEAL, IDEAL_OOO, UNIT_FOR
+from .config import (ARCHITECTURES, BLOCK_ARCHITECTURES, IDEAL, IDEAL_OOO, INTEGER_UNITS,
+                     UNIFIED_ARCHITECTURES, UNIFIED_RS, UNIFIED_SUFFIX, UNIT_FOR)
 from .instruction import Instruction, Register
 from .memory import Memory
 from .metrics import Metrics
 from .rob import ROB
 from .state import Entry, Version
+from .unified import UnifiedRS
 from .workload import Timing
 
 LOCAL_FORWARDING_UNITS = frozenset(("alu", "mul", "div", "fp"))
@@ -23,8 +25,9 @@ class Simulator:
         if architecture not in ARCHITECTURES or not program or len(program) != len(timings):
             raise ValueError("simulation requires a known architecture and matching nonempty program and timings")
         self.architecture = architecture
-        self.ideal_commit = architecture == IDEAL
-        self.ideal_blocks = architecture == IDEAL_OOO
+        base = architecture.removesuffix(UNIFIED_SUFFIX)
+        self.ideal_commit = base == IDEAL
+        self.ideal_blocks = base == IDEAL_OOO
         self.config = config
         self.program = program
         self.timings = timings
@@ -44,10 +47,18 @@ class Simulator:
         self.enabled = {name: unit for name, unit in config["execution"]["units"].items() if unit["count"]}
         self.lanes = ({name: [(0, 0, 0)] * unit["count"] for name, unit in self.enabled.items()}
                       if core is None else core.lanes)
+        self.unified = core.unified if core is not None else None
+        if core is None and architecture in UNIFIED_ARCHITECTURES:
+            self.unified = UnifiedRS(config["execution"])
         shared = config["execution"]["shared_rs"]
-        self.rs_for = {name: "shared" if shared else name for name in self.enabled}
-        self.rs_limits = ({"shared": (shared["size"], shared["issue_width"])} if shared else
-                          {name: (unit["rs_size"], unit["rs_issue_width"]) for name, unit in self.enabled.items()})
+        self.rs_for = {name: (UNIFIED_RS if self.unified and name in INTEGER_UNITS else
+                              "shared" if shared else name) for name in self.enabled}
+        self.rs_limits = {name: (unit["rs_size"], unit["rs_issue_width"])
+                          for name, unit in self.enabled.items() if self.rs_for[name] == name}
+        if shared and (self.unified is None or "shared" in self.rs_for.values()):
+            self.rs_limits["shared"] = (shared["size"], shared["issue_width"])
+        if self.unified and self.unified.wrappers:
+            self.rs_limits[UNIFIED_RS] = (self.unified.capacity, self.unified.issue_width)
         self.rs: dict[int, Entry] = {} if core is None else core.rs
         self.rs_occupancy = dict.fromkeys(self.rs_limits, 0) if core is None else core.rs_occupancy
         self.executing: list[tuple[int, int, Entry]] = [] if core is None else core.executing
@@ -126,6 +137,8 @@ class Simulator:
             if stall:
                 self.dispatch_stall = stall
                 self.stats.counts["dispatch_stall:" + stall] += 1
+                if stall == "rs_full:" + UNIFIED_RS:
+                    self.stats.counts["unified_rs_full_cycles"] += 1
                 if (self.blocks and self.blocks.reclaim and
                         stall in ("block_capacity", "integer_prf", "fp_prf", "store_buffer_full")):
                     self.stats.counts["dispatch_stall_with_reclaim_backlog"] += 1
@@ -156,8 +169,12 @@ class Simulator:
             self.rs_occupancy[station] += 1
             self.log("dispatch", entry)
             for producer_uid in tuple(waiting):
-                completion = self.cdb.get(producer_uid) if entry.kind in LOCAL_FORWARDING_UNITS else None
-                if completion is not None:
+                if station == UNIFIED_RS:
+                    producer = self.unified.forwarded.get(producer_uid)
+                    if producer is not None:
+                        self.latch_operand(producer, entry, local=True)
+                        continue
+                elif entry.kind in LOCAL_FORWARDING_UNITS and (completion := self.cdb.get(producer_uid)):
                     finished, producer = completion
                     # The RTL's allocation path sees EU completions from this cycle only.
                     if (finished == self.cycle and producer.kind == entry.kind
@@ -183,6 +200,9 @@ class Simulator:
         issued: list[Entry] = []
         local: Counter[str] = Counter()
         units: Counter[str] = Counter()
+        used_wrappers: set[int] = set()
+        if self.unified:
+            self.unified.buffer_stalled = False
         for entry in self.rs.values():
             if entry.waiting or entry.ready_since > self.cycle:
                 continue
@@ -193,7 +213,18 @@ class Simulator:
                 stats.counts["issue_blocked:rs_width:" + station] += 1
                 continue
             lanes = self.lanes[name]
-            if self.statistical:
+            if station == UNIFIED_RS:
+                lane, reason = self.unified.choose(name, used_wrappers, lanes, self.cycle)
+                if lane is None:
+                    stats.counts["issue_blocked:" + reason] += 1
+                    if reason.startswith("completion_buffer:"):
+                        self.unified.buffer_stalled = True
+                    continue
+                self.unified.issue(entry, lane)
+                used_wrappers.add(lane)
+                stats.counts[f"wrapper_issues:{lane}"] += 1
+                available = True
+            elif self.statistical:
                 available = units[name] < len(lanes)
                 lane = 0
             else:
@@ -207,7 +238,7 @@ class Simulator:
                     stats.counts["issue_blocked:" + reason] += 1
                     continue
                 self.memory.start_load(entry)
-            if not self.statistical:
+            if not self.statistical or station == UNIFIED_RS:
                 lanes[lane] = (self.cycle + self.enabled[name]["initiation_interval"], entry.uid, entry.thread_id)
             entry.issued = self.cycle
             due = self.cycle + entry.timing.execution
@@ -215,7 +246,10 @@ class Simulator:
             stats.samples["rs_wait:" + station].add(self.cycle - entry.dispatched)
             stats.samples["dependency_wait"].add(entry.ready_since - entry.dispatched - 1)
             stats.counts["issues:" + name] += 1
-            self.log("issue", entry)
+            if station == UNIFIED_RS:
+                self.log("issue", entry, wrapper=lane)
+            else:
+                self.log("issue", entry)
             local[station] += 1
             units[name] += 1
             issued.append(entry)
@@ -229,6 +263,8 @@ class Simulator:
             if not entry.valid:
                 continue
             self.log("execution_complete", entry)
+            if self.unified and entry.kind in INTEGER_UNITS:
+                self.unified.complete(entry, self.cycle)
             if entry.kind == "load":
                 self.memory.request_load(entry, self.cycle)
             else:
@@ -236,8 +272,20 @@ class Simulator:
                     entry.prepared = self.cycle
                     self.log("store_prepare", entry)
                 self.cdb[entry.uid] = (self.cycle, entry)
-                if entry.kind in LOCAL_FORWARDING_UNITS and not entry.faulted:
+                if (entry.kind in LOCAL_FORWARDING_UNITS and not entry.faulted
+                        and self.rs_for[entry.kind] != UNIFIED_RS):
                     self.forward_local(entry)
+
+    def forward_unified(self) -> None:
+        if self.unified is None:
+            return
+        for wrapper, entry, delay in self.unified.grants(self.cycle):
+            stats = self.owner(entry).stats
+            stats.counts["unified_local_forwards"] += 1
+            stats.counts["unified_local_forwards_delayed"] += delay > 0
+            stats.samples["unified_forwarding_delay"].add(delay)
+            self.log("local_forward", entry, wrapper=wrapper, delay=delay)
+            self.forward_local(entry)
 
     def latch_operand(self, producer: Entry, consumer: Entry, *, local: bool = False) -> None:
         assert consumer.valid and consumer.thread_id == producer.thread_id
@@ -256,8 +304,9 @@ class Simulator:
         if not pending:
             return
         for uid, consumer in tuple(pending.items()):
-            # A pooled RS configuration still has separate RTL forwarding domains.
-            if consumer.kind == producer.kind:
+            # Only the unified station forwards between different unit classes.
+            if (consumer.kind == producer.kind or
+                    (self.unified and producer.kind in INTEGER_UNITS and consumer.kind in INTEGER_UNITS)):
                 self.latch_operand(producer, consumer, local=True)
                 del pending[uid]
         if not pending:
@@ -310,6 +359,8 @@ class Simulator:
             owner = self.owner(entry)
             assert owner.rob.slots[entry.slot] is entry
             del self.cdb[entry.uid]
+            if self.unified and entry.kind in INTEGER_UNITS:
+                self.unified.accept_cdb(entry)
             entry.done = True
             entry.completed = self.cycle
             if not ((owner.blocks or owner.ideal_commit) and entry.faulted):
@@ -380,6 +431,8 @@ class Simulator:
                 self.blocks.squash(entry)
             self.log("squash", entry)
         self.rob.squash(removed)
+        if self.unified:
+            self.unified.squash(self.thread_id, branch.uid)
         if self.blocks:
             self.blocks.invalidate(branch, self.cycle)
         for name, lanes in self.lanes.items():
@@ -505,6 +558,8 @@ class Simulator:
         for name, lanes in self.lanes.items():
             # Statistical mode omits lane reservation. Issue utilization remains available.
             sample["execution_lane_busy:" + name].add(sum(due > self.cycle for due, _, _ in lanes), cycles)
+        if self.unified:
+            self.unified.observe(self.stats, cycles)
         self.memory.observe(cycles)
         self.observe_blocks(merged, flushed, cycles)
 
@@ -558,6 +613,7 @@ class Simulator:
         issued = self.select()
         # Zero-cycle starts finish now, after this cycle's CDB arbitration.
         self.finish_execution()
+        self.forward_unified()
         dispatched = self.dispatch(backend_flushing)
         self.observe(issued, broadcasts, merged, flushed)
         self.rob.released.clear()
@@ -578,6 +634,9 @@ class Simulator:
 
     def skip_idle(self) -> None:
         # A quiescent statistical core can advance directly to the next timed event.
+        if self.unified and (self.unified.results or any(
+                due > self.cycle for name in INTEGER_UNITS for due, _, _ in self.lanes.get(name, ()))):
+            return
         if (self.cdb or self.commit_stage or self.rob.clear_entry is not None or
                 any(not entry.waiting for entry in self.rs.values())
                 or (self.blocks and self.blocks.reclaim)):
@@ -596,6 +655,8 @@ class Simulator:
             return
         if self.dispatch_stall:
             self.stats.counts["dispatch_stall:" + self.dispatch_stall] += cycles
+            if self.dispatch_stall == "rs_full:" + UNIFIED_RS:
+                self.stats.counts["unified_rs_full_cycles"] += cycles
         if self.rob.entries:
             self.stats.counts["retire_blocked_cycles"] += cycles
         if self.blocks is None and not self.ideal_commit:
@@ -623,6 +684,9 @@ class Simulator:
         assert not self.rob.entries and not self.readers
         assert not self.memory.loads and not self.cdb
         assert not self.memory.store_buffers[self.thread_id]
+        if self.unified:
+            assert all(result.broadcast for result in self.unified.results.values())
+            self.unified.discard()
         assert self.pending_recovery is None and not self.commit_stage
         assert self.stats.counts["dispatched"] == self.committed + self.stats.counts["squashed_instructions"]
         self.verify_registers()
@@ -692,8 +756,14 @@ class Simulator:
                           "issues": counts["issues:" + eu],
                           "issue_utilization": counts["issues:" + eu] / (elapsed * unit["count"]),
                           "lane_utilization": (stats.samples["execution_lane_busy:" + eu].total /
-                                               (elapsed * unit["count"]) if not self.statistical else None),
+                                           (elapsed * unit["count"]) if not self.statistical or
+                                           self.rs_for[eu] == UNIFIED_RS else None),
                       } for eu, unit in self.enabled.items()})
+        if self.unified:
+            report["wrappers"] = {str(index): {
+                "issues": counts.get(f"wrapper_issues:{index}", 0),
+                "issue_utilization": counts.get(f"wrapper_issues:{index}", 0) / elapsed,
+            } for index in range(len(self.unified.wrappers))}
         if self.blocks:
             for name, section, metric in (("merge", "merging", "merges"),
                                           ("flush", "flushing", "flush_operations")):

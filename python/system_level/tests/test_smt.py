@@ -5,7 +5,8 @@ from unittest.mock import Mock, patch
 
 from system_level.analysis import experiment, flatten
 from system_level.analysis import program_for
-from system_level.config import ARCHITECTURES, BLOCK_ARCHITECTURES, DEFAULT_ARCHITECTURES, IDEAL, configure, unit
+from system_level.config import (ARCHITECTURES, BLOCK_ARCHITECTURES, DEFAULT_ARCHITECTURES, IDEAL,
+                                 UNIFIED_SUFFIX, configure, unit)
 from system_level.instruction import Instruction as I
 from system_level.plots import COLOR, group_bars, plot_category
 from system_level.results import benchmark_summary, metric_rows
@@ -226,7 +227,7 @@ class SMTTests(unittest.TestCase):
                 if architecture in BLOCK_ARCHITECTURES:
                     self.assertEqual(cycles(result, "squash", 0, 2), [miss])
                     self.assertEqual(events(result, "backend_flush", 0), [])
-                elif architecture == IDEAL:
+                elif architecture.removesuffix(UNIFIED_SUFFIX) == IDEAL:
                     self.assertEqual(cycles(result, "backend_flush", 0, 1), [miss + 1])
                     self.assertLess(miss + 1, cycles(result, "commit", 0, 0)[0])
                 else:

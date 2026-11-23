@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LEN5 workload-pair matrix</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color:#182d3f;background:#f4f7f8;font-size:15px}
+*{box-sizing:border-box}body{margin:0}main{max-width:1580px;margin:auto;padding:24px 3vw}
+header,.actions,.metrics,.panel-title{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+header{border-bottom:1px solid #c5d4db;padding-bottom:16px}h1,h2,h3,p{margin:0}
+h1{font-size:clamp(1.4rem,3vw,2.15rem);font-weight:630;letter-spacing:-.04em}
+h2{font-size:1.2rem}h3{font-size:1rem}.subtitle,.muted,small{color:#455e6c}.subtitle{margin-top:5px}
+a{color:#05637d;text-underline-offset:3px}nav{display:flex;gap:1rem}
+.controls,.card{background:#fff;border:1px solid #cdd9de;border-radius:8px}
+.controls{margin:18px 0;display:flex;flex-wrap:wrap;align-items:end;gap:13px;padding:16px}
+label{display:flex;flex-direction:column;gap:5px;font-size:.85rem;font-weight:600}
+button,select,input{font:inherit}select,input,.actions button{border:1px solid #a4b9c3;padding:.48rem .55rem;border-radius:4px;color:inherit;background:#fff}
+button{cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #d36914;outline-offset:2px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,345px);gap:16px;align-items:start}.card{padding:16px;min-width:0}
+.scroller{max-height:70vh;overflow:auto;margin:12px 0;border-bottom:1px solid #d4dfe4}
+.matrix,.detail{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
+.matrix th{position:sticky;background:white;font-size:.78rem;color:#334b58}
+.matrix thead th{top:0;z-index:2;vertical-align:bottom;border-bottom:1px solid #ccd8dd}
+.matrix thead th:not(:first-child){writing-mode:vertical-rl;transform:rotate(180deg);padding:8px 2px;text-align:left;max-width:48px}
+.matrix tbody th{text-align:right;left:0;z-index:1;padding-right:7px;white-space:nowrap}
+.matrix thead th:first-child{left:0;z-index:3;text-align:left;white-space:nowrap;padding-right:10px}
+.matrix td{padding:1px}.cell{display:block;width:56px;height:34px;padding:0 3px;border:0;border-radius:2px;color:#142733;font-size:.78rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cell.diag{box-shadow:inset 0 0 0 1.6px #304653}
+.cell.selected{outline:3px solid #171b1d;outline-offset:-3px}.cell.missing,.swatch{background:repeating-linear-gradient(135deg,#f1f3f3 0px,#f1f3f3 3px,#d4dadb 3px,#d4dadb 4px)}
+.legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;font-variant-numeric:tabular-nums}
+.gradient{width:145px;height:10px;border-radius:2px}.swatch{width:14px;height:14px;border:1px solid #9baab1}
+.panel-title{align-items:baseline}.actions{justify-content:start;margin-top:14px}.actions button{font-size:.84rem}.actions button:disabled{opacity:.5;cursor:default}
+.detail{width:100%;font-size:.82rem;margin:12px 0}.detail th,.detail td{text-align:right;border-bottom:1px solid #e2e8ea;padding:7px 3px}.detail th:first-child{text-align:left;font-weight:500}.detail th{vertical-align:bottom}
+.detail thead th{font-size:.75rem}.tip{position:fixed;z-index:5;pointer-events:none;white-space:pre-line;max-width:min(350px,90vw);padding:10px 13px;border:1px solid #8fa6b0;background:#fff;border-radius:5px;box-shadow:0 3px 12px #23313e27;font-size:.82rem;line-height:1.45}
+[hidden]{display:none!important}#detailNote,#scaleNote,#failure{font-size:.85rem;line-height:1.45;margin-top:8px}
+#failure{color:#8a3f20}.pairname{overflow-wrap:anywhere}.links{margin-top:12px;display:flex;gap:12px;font-size:.85rem}
+.controls label,.controls select,.controls input{max-width:100%;min-width:0}
+@media(max-width:920px){.layout{grid-template-columns:minmax(0,1fr)}.scroller{max-height:58vh}}
+</style>
+<main>
+<header><div><h1 id="suite">Workload-pair matrix</h1><p class="subtitle" id="scope"></p></div>
+<nav aria-label="Saved results"><a href="summary.md">Suite summary</a><a href="raw/per_seed_results.csv">Per-seed CSV</a><a href="raw/summary.json">Full JSON</a></nav></header>
+<section class="controls" aria-label="Matrix controls">
+<label>Architecture<select id="arch"></select></label>
+<label>Execution<select id="view"></select></label>
+<label>Metric<select id="metric"></select></label>
+<label>Benchmark filter<input id="filter" type="search" placeholder="Name or comma-separated names"></label>
+<label>Benchmark order<select id="sort"><option value="name">Alphabetical</option><option value="ipc">Normal OoO isolated IPC ↓</option></select></label>
+</section>
+<div class="layout">
+<section class="card"><div class="panel-title"><h2 id="metricTitle">Benchmark pairs</h2><small id="shown"></small></div>
+<div class="scroller" id="scroller"><table class="matrix" id="matrix" aria-label="Rows are thread 0, columns are thread 1"></table></div>
+<div class="legend" id="legend"></div><p id="scaleNote" class="muted"></p>
+<div class="actions"><button id="lowest">Inspect lowest</button><button id="highest">Inspect highest</button></div></section>
+<section class="card" aria-live="polite"><h2 class="pairname" id="pairTitle">Pair detail</h2><p class="muted" id="detailNote"></p>
+<table class="detail" id="detail"></table><p id="failure"></p><div class="links"><a href="raw/individual_benchmarks/">Individual runs</a><a href="raw/summary.csv">All metrics CSV</a></div></section>
+</div><div class="tip" id="tip" role="tooltip" hidden></div>
+</main>
+<script id="payload" type="application/json">/* MATRIX_DATA */</script>
+<script>
+"use strict";
+const data = JSON.parse(document.getElementById("payload").textContent);
+const $ = id => document.getElementById(id);
+const names = {normal_ooo:"Normal OoO",len5_ooo_commit:"LEN5 OoO commit",basic_block_ooo_commit:"Basic-block OoO commit",ideal_commit:"Ideal Commit",ideal_commit_ooo:"Ideal Block Commit"};
+const short = {normal_ooo:"Normal",len5_ooo_commit:"LEN5",basic_block_ooo_commit:"Block",ideal_commit:"Ideal",ideal_commit_ooo:"Ideal Block"};
+for(const arch of Object.keys(names)){
+ names[arch+"_unified_rs"]=names[arch]+" (unified RS)";
+ short[arch+"_unified_rs"]=short[arch]+" Unified";
+}
+const views = {smt:"SMT",isolated:"Isolated baseline",relative:"SMT relative to isolated"};
+const pairKey = (a,b) => JSON.stringify([a,b]);
+const pairs = new Map(data.pairs.map(cell => [pairKey(...cell.names),cell]));
+const labels = data.labels;
+const fmt = n => n == null ? "—" : n.toLocaleString(undefined,{maximumFractionDigits:3});
+const value = (cell,arch,view,metric) => cell?.architectures[arch]?.[view]?.[metric];
+const selectedStat = cell => value(cell,$("arch").value,$("view").value,$("metric").value);
+const expectedSeeds = data.seeds.length;
+let selected, displayed = [], ranked = [];
+function element(tag,text){const el=document.createElement(tag); if(text!=null)el.textContent=text; return el}
+function options(select,items){
+    const current=select.value;
+    select.replaceChildren(...items.map(([key,name])=>new Option(name,key)));
+    if(items.some(([key])=>key===current))select.value=current;
+}
+function label(view,metric){
+    if(view==="isolated"&&metric==="ipc")return data.paired?"Serial pair IPC (instructions/cycle)":"Single-thread IPC (instructions/cycle)";
+    if(view==="isolated"&&metric.match(/^thread_[01]_ipc$/))return "Thread "+metric[7]+" isolated IPC (instructions/cycle)";
+    if(view==="relative"&&metric.includes("_ipc"))return "Thread "+metric[7]+" IPC / isolated IPC (×)";
+    return labels[metric];
+}
+function chooseMetrics(){
+    const arch=$("arch").value;
+    const available=new Map;
+    for(const cell of pairs.values()){
+        for(const [v,stats] of Object.entries(cell.architectures[arch]||{})){
+            if(!available.has(v))available.set(v,new Set);
+            for(const m of Object.keys(stats))available.get(v).add(m);
+        }
+    }
+    options($("view"),Object.entries(views).filter(([key])=>available.has(key)));
+    const view=$("view").value;
+    options($("metric"),Object.keys(labels).filter(key=>available.get(view)?.has(key)).map(key=>[key,label(view,key)]));
+}
+function visibleNames(){
+    const filters=$("filter").value.toLowerCase().split(",").map(s=>s.trim()).filter(Boolean);
+    const list=data.names.filter(name=>!filters.length||filters.some(f=>name.toLowerCase().includes(f)));
+    if($("sort").value==="ipc")list.sort((a,b)=>(data.sort_ipc[b]??-1)-(data.sort_ipc[a]??-1)||a.localeCompare(b));
+    return list;
+}
+function rgb(x,low,high,centered){
+    const position=centered?(x<=1?.5*(x-low)/(1-low):.5+.5*(x-1)/(high-1)):(x-low)/(high-low);
+    const t=Math.min(1,Math.max(0,position));
+    const stops=centered?[[172,64,29],[250,248,241],[14,114,125]]:[[237,247,248],[87,159,173],[13,68,101]];
+    const left=t<=.5?0:1, f=Math.min(1,(t-left/2)*2);
+    return stops[left].map((v,i)=>Math.round(v+(stops[left+1][i]-v)*f));
+}
+function statText(stat){
+    if(!stat)return "Missing";
+    const ci=stat.low!=null&&stat.n>1?" · "+fmt(data.confidence*100)+"% CI ["+fmt(stat.low)+", "+fmt(stat.high)+"]":"";
+    return String(stat.mean)+ci+" · "+stat.n+" seed"+(stat.n===1?"":"s");
+}
+function textColor(color){
+    const [r,g,b]=color.map(channel=>{
+        const s=channel/255;
+        return s<=.04045?s/12.92:((s+.055)/1.055)**2.4;
+    });
+    return .2126*r+.7152*g+.0722*b>.179?"#000":"#fff";
+}
+function failures(cell,arch,view){
+    return data.failures.filter(f=>f.benchmark===cell?.label&&(!arch||f.architecture===arch)&&
+        (!view||view==="relative"||f.smt_mode===(view==="smt"?"enabled":"disabled")));
+}
+function tooltip(a,b){
+    const cell=pairs.get(pairKey(a,b)), arch=$("arch").value, view=$("view").value, metric=$("metric").value;
+    const smt=cell?.architectures[arch]?.smt;
+    const lines=["T0  "+a+"    ·    T1  "+b,names[arch]+"  ·  "+(views[view]||"No measurements"),
+        (label(view,metric)||"Result")+"   "+statText(selectedStat(cell))];
+    if(cell?.reference_thread!=null)lines.push("Reference  T"+cell.reference_thread+" · "+cell.reference_benchmark);
+    if(smt){
+        if(cell.reference_thread==null)lines.push("Reference  varied or unavailable");
+        lines.push("SMT elapsed cycles  "+fmt(smt.cycles?.mean),"Aggregate IPC  "+fmt(smt.ipc?.mean)+
+            "   ·   T0  "+fmt(smt.thread_0_ipc?.mean)+"   T1  "+fmt(smt.thread_1_ipc?.mean));
+        if(smt.weighted_speedup)lines.push("Weighted speedup  "+fmt(smt.weighted_speedup.mean));
+    }
+    const failed=failures(cell,arch,view).length;
+    if(failed)lines.push("Failed work items  "+failed);
+    return lines.join("\n");
+}
+function setTip(btn,x,y){
+    const tip=$("tip"); tip.textContent=tooltip(btn.dataset.a,btn.dataset.b); tip.hidden=false;
+    const bounds=tip.getBoundingClientRect();
+    tip.style.left=Math.max(4,Math.min(x+12,innerWidth-bounds.width-5))+"px";
+    tip.style.top=Math.max(4,Math.min(y+12,innerHeight-bounds.height-5))+"px";
+}
+function detail(){
+    const table=$("detail");table.replaceChildren();
+    if(!selected){$("pairTitle").textContent="Pair detail";$("detailNote").textContent="No matching benchmarks."; $("failure").textContent="";return}
+    const [a,b]=selected, cell=pairs.get(pairKey(a,b)), view=$("view").value;
+    $("pairTitle").textContent=a+" + "+b;
+    $("detailNote").textContent="T0 runs "+a+". T1 runs "+b+"."+
+        (cell?.reference_thread!=null?" Reference T"+cell.reference_thread+" runs "+cell.reference_benchmark+" once.":"");
+    const failed=failures(cell,null,null);
+    $("failure").textContent=failed.length?"Failed work items: "+failed.map(f=>(names[f.architecture]||f.architecture)+", seed "+f.seed+" ("+f.phase+")").join("; "):"";
+    const fields=[...new Set([$("metric").value,"ipc","thread_0_ipc","thread_1_ipc","weighted_speedup",
+        "rob_occupancy","block_occupancy","issue_utilization","cdb_contention","squash_rate","recovery_wait","merge_rate","merge_utilization","flush_utilization","storage_bits"])];
+    const head=table.createTHead().insertRow();head.append(element("th",views[view]||"Metric"));
+    for(const arch of data.architectures)head.append(element("th",short[arch]));
+    let count=0;
+    for(const m of fields){
+        if(!data.architectures.some(arch=>value(cell,arch,view,m)))continue;
+        const row=table.insertRow();row.append(element("th",label(view,m)));
+        for(const arch of data.architectures){const v=value(cell,arch,view,m);const td=row.insertCell();td.textContent=v?.label??"—";td.title=statText(v)}
+        count++;
+    }
+    if(!count)$("detailNote").textContent+=" No measured result in this view.";
+}
+function selectPair(a,b){
+    selected=[a,b]; detail();
+    for(const btn of $("matrix").querySelectorAll(".cell")){
+        const active=btn.dataset.a===a&&btn.dataset.b===b;
+        btn.classList.toggle("selected",active);btn.setAttribute("aria-pressed",active);
+    }
+}
+function render(){
+    $("tip").hidden=true;
+    const arch=$("arch").value, view=$("view").value, metric=$("metric").value, table=$("matrix");
+    displayed=visibleNames(); ranked=[];
+    const centered=view==="relative"||metric.startsWith("vs_"), [low,high]=data.limits[view+"/"+metric]||[0,1];
+    $("metricTitle").textContent=label(view,metric)||"Benchmark pairs";
+    table.replaceChildren();
+    const header=table.createTHead().insertRow();header.append(element("th","T0 ↓   T1 →"));
+    for(const b of displayed)header.append(element("th",b));
+    const body=table.createTBody();
+    for(const a of displayed){
+        const row=body.insertRow();row.append(element("th",a));
+        for(const b of displayed){
+            const cell=pairs.get(pairKey(a,b)), stat=value(cell,arch,view,metric);
+            const btn=element("button");btn.type="button";btn.className="cell";btn.dataset.a=a;btn.dataset.b=b;
+            btn.classList.toggle("diag",a===b);
+            btn.setAttribute("aria-label","T0 "+a+", T1 "+b+", "+statText(stat));
+            if(stat){
+                ranked.push({a,b,val:stat.mean});const color=rgb(stat.mean,low,high,centered);
+                btn.style.backgroundColor="rgb("+color.join(",")+")";
+                btn.textContent=stat.label;
+                btn.style.color=textColor(color);
+            } else {btn.classList.add("missing");btn.textContent="—"}
+            row.insertCell().append(btn);
+        }
+    }
+    ranked.sort((a,b)=>a.val-b.val);
+    $("shown").textContent=ranked.length+" of "+(displayed.length**2)+" visible cells measured";
+    const gradient=element("span");gradient.className="gradient";
+    gradient.style.background=centered?"linear-gradient(90deg,#ac401d,#faf8f1,#0e727d)":"linear-gradient(90deg,#edf7f8,#579fad,#0d4465)";
+    const swatch=element("span");swatch.className="swatch";
+    const [lowLabel,highLabel]=data.limit_labels[view+"/"+metric]||[fmt(low),fmt(high)];
+    $("legend").replaceChildren(element("span",lowLabel),gradient,element("span",highLabel),swatch,element("span","Missing"));
+    let note=centered?"Center = 1× (parity). Orange is lower, teal is higher. ":"Darker cells have higher values. ";
+    if(data.paired&&view==="isolated"&&metric==="ipc")note+="Serial IPC is the instructions in both full iterations divided by their summed isolated cycles. ";
+    if(metric==="weighted_speedup")note+="Weighted speedup sums each thread’s IPC divided by its isolated IPC. ";
+    $("scaleNote").textContent=note+"All architectures share this scale. Outlined diagonal cells run identical workloads.";
+    $("lowest").disabled=$("highest").disabled=!ranked.length;
+    if(!selected||!selected.every(n=>displayed.includes(n)))selected=ranked.length?[ranked[0].a,ranked[0].b]:displayed.length?[displayed[0],displayed[0]]:null;
+    if(selected)selectPair(...selected);else detail();
+}
+$("suite").textContent=data.suite+" · Workload-pair matrix";
+$("scope").textContent=data.names.length+" benchmarks · "+data.pairs.length+" workload entries · "+expectedSeeds+" configured seeds";
+options($("arch"),data.architectures.map(a=>[a,names[a]]));
+for(const id of ["arch","view"])$(id).addEventListener("change",()=>{chooseMetrics();render()});
+for(const id of ["metric","sort"])$(id).addEventListener("change",render);
+$("filter").addEventListener("input",render);
+for(const id of ["lowest","highest"])$(id).addEventListener("click",()=>{const row=id==="lowest"?ranked[0]:ranked.at(-1);if(row)selectPair(row.a,row.b)});
+$("matrix").addEventListener("click",e=>{const btn=e.target.closest(".cell");if(btn)selectPair(btn.dataset.a,btn.dataset.b)});
+$("matrix").addEventListener("pointerover",e=>{if(e.target.matches(".cell"))setTip(e.target,e.clientX,e.clientY)});
+$("matrix").addEventListener("pointerout",()=>$("tip").hidden=true);
+$("matrix").addEventListener("focusin",e=>{if(e.target.matches(".cell")){const r=e.target.getBoundingClientRect();setTip(e.target,r.x,r.bottom)}});
+$("matrix").addEventListener("focusout",()=>$("tip").hidden=true);
+window.addEventListener("scroll",()=>$("tip").hidden=true,true);
+window.addEventListener("keydown",e=>{if(e.key==="Escape")$("tip").hidden=true});
+chooseMetrics();render();
+</script>
+</html>

@@ -8,13 +8,17 @@ from tempfile import TemporaryDirectory
 import re
 
 from .analysis import BLOCKS, IDEAL, IDEAL_OOO, LEN5, NORMAL, PAIRS
-from .config import BLOCK_ARCHITECTURES
+from .config import BLOCK_ARCHITECTURES, UNIFIED_SUFFIX
 from .results import metric_rows
 
 LABEL = {NORMAL: "Normal OoO", LEN5: "LEN5 OoO commit", BLOCKS: "Basic-block OoO commit",
          IDEAL: "Ideal Commit", IDEAL_OOO: "Ideal Block Commit"}
 COLOR = {NORMAL: "#51687c", LEN5: "#148274", BLOCKS: "#b44e2b", IDEAL: "#714aa5", IDEAL_OOO: "#2265ad"}
 SHORT = {NORMAL: "Normal", LEN5: "LEN5", BLOCKS: "Basic-block", IDEAL: "Ideal", IDEAL_OOO: "Ideal Block"}
+LABEL.update({key + UNIFIED_SUFFIX: value + " (unified RS)" for key, value in LABEL.items()})
+SHORT.update({key + UNIFIED_SUFFIX: value + " Unified" for key, value in SHORT.items()})
+COLOR.update(dict(zip((key + UNIFIED_SUFFIX for key in COLOR),
+                      ("#304c67", "#005448", "#783a14", "#482477", "#103f79"))))
 METRIC_LABELS = {"ipc": "Instructions per cycle", "cycles": "Cycles", "committed": "Committed instructions",
                  "rob_occupancy": "Mean occupied ROB entries", "cdb_utilization": "CDB utilization (fraction)",
                  "smt_throughput_improvement": "SMT throughput improvement (%)",
@@ -22,9 +26,10 @@ METRIC_LABELS = {"ipc": "Instructions per cycle", "cycles": "Cycles", "committed
 PLOT_CATEGORIES = {
     "rob": ("rob_", "retire_", "retirement_", "out_of_order_commits", "speculative_window",
             "dispatch_stall:rob_"),
-    "reservation_stations": ("rs_", "dependency_", "dispatch_stall:rs_", "issue_blocked:rs_"),
+    "reservation_stations": ("rs_", "dependency_", "dispatch_stall:rs_", "issue_blocked:rs_", "unified_"),
     "execution_units": ("execution_lane_", "lane_utilization:", "issue_utilization:", "issues:",
-                        "issue_blocked:execution_unit:"),
+                        "issue_blocked:execution_unit:", "wrapper_", "issue_blocked:wrapper_",
+                        "issue_blocked:completion_buffer:"),
     "cdb": ("cdb_", "broadcasts"),
     "memory": ("load_", "store_", "stores_", "cache_", "memory_", "mshr_", "outstanding_loads",
                "dispatch_stall:load_", "dispatch_stall:store_", "issue_blocked:store_",

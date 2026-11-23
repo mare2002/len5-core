@@ -4,7 +4,8 @@ from pathlib import Path
 import unittest
 
 from system_level.analysis import experiment, write_tables
-from system_level.config import ARCHITECTURES, configure, distribution, fixed, load_config
+from system_level.config import (ARCHITECTURES, DEFAULT_ARCHITECTURES, IDEAL_ARCHITECTURES,
+                                 configure, distribution, fixed, load_config)
 from system_level.instruction import Instruction
 from system_level.spike import decode, read_spike
 from system_level.storage import estimate
@@ -101,8 +102,9 @@ class AnalysisTests(unittest.TestCase):
     def test_storage_breakdown_and_independent_banks(self):
         c = configure({"basic_block": {"max_active_blocks": 4, "registers": {
             "integer_physical": 48, "fp_physical": 128}}})
-        a, b, block, *ideals = [estimate(c, name) for name in ARCHITECTURES]
-        for ideal in ideals:
+        a, b, block = [estimate(c, name) for name in DEFAULT_ARCHITECTURES]
+        for name in IDEAL_ARCHITECTURES:
+            ideal = estimate(c, name)
             self.assertIsNone(ideal["rob_bits"])
             self.assertIsNone(ideal["total_bits"])
         self.assertEqual(a["register_file_bits"], (31 + 32) * 64)

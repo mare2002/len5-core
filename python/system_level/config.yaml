@@ -5,6 +5,11 @@ architectures:
   - basic_block_ooo_commit
   # - ideal_commit
   # - ideal_commit_ooo
+  # - normal_ooo_unified_rs
+  # - len5_ooo_commit_unified_rs
+  # - basic_block_ooo_commit_unified_rs
+  # - ideal_commit_unified_rs
+  # - ideal_commit_ooo_unified_rs
 simulation:
   mode: event_driven
   seed: 42
@@ -81,6 +86,8 @@ execution:
       rs_size: 8
       rs_issue_width: 1
   shared_rs: null
+  # Optional ALU/MUL/DIV issue budget across wrappers for *_unified_rs variants.
+  unified_issue_width: null
 basic_block:
   max_active_blocks: 16
   max_stores_per_new_block: 1

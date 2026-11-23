@@ -12,11 +12,18 @@ import yaml
 DEFAULT_ARCHITECTURES = ("normal_ooo", "len5_ooo_commit", "basic_block_ooo_commit")
 IDEAL = "ideal_commit"
 IDEAL_OOO = "ideal_commit_ooo"
-IDEAL_ARCHITECTURES = (IDEAL, IDEAL_OOO)
-BLOCK_ARCHITECTURES = (DEFAULT_ARCHITECTURES[2], IDEAL_OOO)
-ARCHITECTURES = (*DEFAULT_ARCHITECTURES, *IDEAL_ARCHITECTURES)
+UNIFIED_SUFFIX = "_unified_rs"
+SEPARATE_ARCHITECTURES = (*DEFAULT_ARCHITECTURES, IDEAL, IDEAL_OOO)
+UNIFIED_ARCHITECTURES = tuple(name + UNIFIED_SUFFIX for name in SEPARATE_ARCHITECTURES)
+ARCHITECTURES = (*SEPARATE_ARCHITECTURES, *UNIFIED_ARCHITECTURES)
+IDEAL_ARCHITECTURES = tuple(name for name in ARCHITECTURES
+                            if name.removesuffix(UNIFIED_SUFFIX) in (IDEAL, IDEAL_OOO))
+BLOCK_ARCHITECTURES = tuple(name for name in ARCHITECTURES
+                            if name.removesuffix(UNIFIED_SUFFIX) in (DEFAULT_ARCHITECTURES[2], IDEAL_OOO))
 SMT_MODES = ("disabled", "enabled", "both")
 KINDS = ("alu", "mul", "div", "branch", "jump", "load", "store", "fp")
+INTEGER_UNITS = ("alu", "mul", "div")
+UNIFIED_RS = "unified_int"
 UNIT_FOR = {**{kind: kind for kind in KINDS[:3]}, "branch": "branch", "jump": "branch",
             "load": "lsu", "store": "lsu", "fp": "fp"}
 
@@ -45,7 +52,7 @@ DEFAULTS = {
                                     "latency": {"type": "uniform", "min": 6, "max": 14}},
                             "branch": unit(1, 1, 1, 8, 1), "lsu": unit(2, 1, 1, 12, 2),
                             "fp": unit(1, 4, 1, 8, 1)},
-                  "shared_rs": None},
+                  "shared_rs": None, "unified_issue_width": None},
     "basic_block": {
         "max_active_blocks": 16, "max_stores_per_new_block": 1, "max_instructions": 32,
         "registers": {"integer_physical": 64, "fp_physical": 64,
@@ -198,6 +205,8 @@ def configure(changes: dict | None = None) -> dict:
             workload_name(name, "smt.benchmark_pairs")
 
     execution = c["execution"]
+    if execution["unified_issue_width"] is not None:
+        integer(execution["unified_issue_width"], "execution.unified_issue_width")
     if execution["shared_rs"] is not None:
         shared = execution["shared_rs"]
         if not isinstance(shared, dict) or set(shared) != {"size", "issue_width"}:

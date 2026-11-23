@@ -3,14 +3,14 @@
 from heapq import heappop, heappush
 from itertools import chain
 
-from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES
+from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, UNIFIED_SUFFIX
 from .state import Entry
 
 
 class ROB:
     def __init__(self, size: int, architecture: str, *, protect_unresolved_head: bool = False):
         self.size = size
-        self.len5 = architecture == "len5_ooo_commit"
+        self.len5 = architecture.removesuffix(UNIFIED_SUFFIX) == "len5_ooo_commit"
         self.protect_unresolved_head = protect_unresolved_head
         self.unbounded = architecture in IDEAL_ARCHITECTURES
         self.individual = self.unbounded or architecture in BLOCK_ARCHITECTURES

@@ -2,8 +2,8 @@
 from pathlib import Path
 from statistics import fmean, geometric_mean
 
-from .analysis import IDEAL, IDEAL_OOO, PAIRS, atomic_output
-from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES
+from .analysis import IDEAL, IDEAL_OOO, PAIRS, UNIFIED_PAIRS, atomic_output
+from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, UNIFIED_ARCHITECTURES, UNIFIED_SUFFIX
 from .matrix import PERCENT_METRICS, RATIO_METRICS, color_limits, heatmap_label
 from .plots import COLOR, LABEL, SHORT
 
@@ -17,6 +17,7 @@ STORAGE_FIELDS = {
     "Load / store buffers": ("load_buffer_bits", "load_thread_tag_bits", "store_buffer_bits"),
     "Block maps / checkpoints": ("mapping_bits", "ownership_bits", "block_thread_tag_bits", "checkpoint_bits"),
     "CDB / control": ("cdb_result_buffer_bits", "cdb_thread_tag_bits", "additional_control_bits"),
+    "Wrapper result buffers": ("unified_completion_buffer_bits",),
 }
 
 
@@ -145,11 +146,17 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
         finally:
             plt.close(fig)
 
-    def heatmap(series, title, label, relative, *, metric, ratio=False, vector=False):
+    def heatmap(series, title, label, relative, *, metric, ratio=False, vector=False, limits=None):
         series = [(label, vals) for label, vals in series if vals]
         if not series:
             return
-        limits = color_limits([v for _, vals in series for v in vals.values()], centered=ratio)
+        if limits is None:
+            limits = color_limits([v for _, vals in series for v in vals.values()], centered=ratio)
+        if len(series) > 5:
+            for start in range(0, len(series), 5):
+                heatmap(series[start:start + 5], title, label, f"{relative}_{start // 5 + 1}",
+                        metric=metric, ratio=ratio, vector=vector, limits=limits)
+            return
         norm = TwoSlopeNorm(1., *limits) if ratio else Normalize(*limits)
         cmap = matplotlib.colormaps["RdBu" if ratio else "viridis"].with_extremes(bad="#dddede")
         side = max(3.6, .44 * len(names))
@@ -181,12 +188,18 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
 
     ratios = _comparisons(matrix, view)
     if ratios and view == "smt":
-        bounded = [arch for arch in LABEL if arch not in IDEAL_ARCHITECTURES]
+        bounded = [arch for arch in LABEL if arch not in (*IDEAL_ARCHITECTURES, *UNIFIED_ARCHITECTURES)]
         heatmap(_comparisons(matrix, view, architectures=bounded), "Throughput by ordered workload pair", "Paired IPC ratio",
                 "speedup/architecture_ratios", metric="vs_normal", ratio=True, vector=True)
         for arch in (IDEAL, IDEAL_OOO):
             heatmap(_comparisons(matrix, view, architectures=(arch,)), f"{LABEL[arch]} throughput by workload pair",
                     "Paired IPC ratio", f"speedup/{arch}_ratios", metric="vs_normal", ratio=True, vector=True)
+    heatmap([(f"{SHORT[a]} / {SHORT[b]}", pair_values(matrix, a, view, RATIO_METRICS[b]))
+             for a, b in UNIFIED_PAIRS], f"{view_label} unified versus separate integer RS",
+            "Paired IPC ratio", "speedup/unified_vs_separate", metric="vs_normal", ratio=True)
+    heatmap([(title, pair_values(matrix, arch, view, metric)) for arch, metric, title in COMPARISONS
+             if metric.endswith(UNIFIED_SUFFIX)], f"{view_label} commit policies with unified integer RS",
+            "Paired IPC ratio", "speedup/unified_commit_ratios", metric="vs_normal", ratio=True)
     if view == "smt":
         heatmap([(SHORT[a], pair_values(matrix, a, view, "weighted_speedup")) for a in archs],
                 "SMT weighted speedup", "Sum of thread IPC / isolated IPC", "performance/weighted_speedup",
@@ -210,10 +223,14 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
         ax.yaxis.set_major_formatter(PercentFormatter(1))
         ax.set(xlabel="Paired IPC ratio  (below 1 = regression)", ylabel="Cumulative share of pairs",
                title=f"{view_label} architectural improvements")
-        ax.legend()
+        if len(ratios) > 10:
+            ax.legend(fontsize=7, ncols=3, loc="upper center", bbox_to_anchor=(.5, -.22))
+        else:
+            ax.legend()
         save(fig, "speedup/improvement_distribution")
 
-        fig, ax = plt.subplots(figsize=(7, 4.6 if IDEAL_OOO in archs else 3.5), layout="constrained")
+        fig, ax = plt.subplots(figsize=(7, max(4.6 if IDEAL_OOO in archs else 3.5,
+                                               len(ratios) * .24 + 1)), layout="constrained")
         for offset, mode, marker in [(-.10, "isolated", "o"), (.10, "smt", "s")]:
             comps = dict(_comparisons(matrix, mode))
             indices = [i for i, (_, _, label) in enumerate(COMPARISONS) if label in comps]
@@ -254,9 +271,11 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
     storage = _storage(report)
     variants = [(a, mode) for a in archs for mode in ("disabled", "enabled") if (a, mode) in storage]
     if variants:
-        fig, ax = plt.subplots(figsize=(8, 4.4), layout="constrained")
+        fig, ax = plt.subplots(figsize=(8, max(4.4, len(variants) * .27 + 1.4)), layout="constrained")
         left = [0.] * len(variants)
         for label, keys in STORAGE_FIELDS.items():
+            if label == "Wrapper result buffers" and not any(keys[0] in storage[v] for v in variants):
+                continue
             bits = [sum(storage[v].get(key, 0) for key in keys) / 1024 for v in variants]
             ax.barh(range(len(variants)), bits, left=left, label=label)
             left = [x+y for x,y in zip(left,bits)]

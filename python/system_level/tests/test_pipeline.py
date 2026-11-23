@@ -1,6 +1,7 @@
 import unittest
 
-from system_level.config import ARCHITECTURES, BLOCK_ARCHITECTURES, IDEAL, configure, fixed, unit
+from system_level.config import (ARCHITECTURES, BLOCK_ARCHITECTURES, IDEAL, SEPARATE_ARCHITECTURES,
+                                 configure, fixed, unit)
 from system_level.instruction import Instruction as I
 from system_level.simulator import Simulator
 from system_level.workload import Timing, sample_timing
@@ -277,7 +278,7 @@ class PipelineTests(unittest.TestCase):
     def test_zero_latency_cdb_contention_and_wakeup(self):
         p = [I("alu", destination=x(1)), I("alu", destination=x(2)), I("mul", (x(1), x(2)))]
         t = [Timing(0, "", 0, False, 0)] * len(p)
-        for architecture in ARCHITECTURES:
+        for architecture in SEPARATE_ARCHITECTURES:
             for mode in ("event_driven", "statistical"):
                 with self.subTest(architecture=architecture, mode=mode):
                     r = make(p, architecture, t, simulation={"mode": mode, "cdb_width": 1}).run()
@@ -293,7 +294,7 @@ class PipelineTests(unittest.TestCase):
         p = [I("alu", destination=x(1)), I("alu", destination=x(2)),
              I("alu", (x(2),)), I("alu", (x(1), x(2))), I("mul", (x(2),))]
         t = [Timing(0, "", 0, False, 0)] * len(p)
-        for architecture in ARCHITECTURES:
+        for architecture in SEPARATE_ARCHITECTURES:
             for mode in ("event_driven", "statistical"):
                 with self.subTest(architecture=architecture, mode=mode):
                     r = make(p, architecture, t, simulation={"mode": mode, "cdb_width": 1}).run()
@@ -419,7 +420,7 @@ class PipelineTests(unittest.TestCase):
         p = [I("div", destination=x(1)), I("alu", (x(1),)), I("mul", (x(1),)), I("fp", (x(1),)),
              I("load", (x(1),), address=8), I("branch", (x(1),))]
         t = [Timing(6, "", 0, False, 0)] + [Timing(1, "l1", 3, False, 0)] * 5
-        for architecture in ARCHITECTURES:
+        for architecture in SEPARATE_ARCHITECTURES:
             for mode in ("event_driven", "statistical"):
                 with self.subTest(architecture=architecture, mode=mode):
                     r = make(p, architecture, t, simulation={"dispatch_width": 1, "mode": mode}).run()

@@ -2,7 +2,7 @@
 
 from collections import Counter
 
-from .config import BLOCK_ARCHITECTURES, IDEAL_OOO, UNIT_FOR
+from .config import BLOCK_ARCHITECTURES, IDEAL_OOO, UNIFIED_RS, UNIFIED_SUFFIX, UNIT_FOR
 from .instruction import Instruction
 from .memory import Memory
 from .metrics import Metrics
@@ -42,7 +42,7 @@ class SMT:
         self.memory = Memory(config["memory"], self.stats, per_thread)
         self.pool = None
         if architecture in BLOCK_ARCHITECTURES:
-            slots = 0 if architecture == IDEAL_OOO else config["basic_block"]["max_active_blocks"]
+            slots = 0 if architecture.removesuffix(UNIFIED_SUFFIX) == IDEAL_OOO else config["basic_block"]["max_active_blocks"]
             self.pool = [None] * slots
         self.core = Simulator(architecture, config, program, timings[0], stats=per_thread[0],
                               memory=self.memory, block_pool=self.pool)
@@ -197,6 +197,10 @@ class SMT:
             shared[name].add(count)
         for name, count in core.rs_occupancy.items():
             shared["rs_occupancy:" + name].add(count)
+        if core.unified:
+            core.unified.observe(self.stats)
+            self.stats.counts["unified_rs_full_cycles"] += any(
+                t.dispatch_stall == "rs_full:" + UNIFIED_RS for t in self.threads)
         for name, lanes in core.lanes.items():
             busy = [0, 0]
             for due, _, owner in lanes:
@@ -237,6 +241,7 @@ class SMT:
         issued = [sum(t.stats.counts["issues:" + unit] for unit in core.enabled) - n
                   for t, n in zip(self.threads, prior)]
         core.finish_execution()
+        core.forward_unified()
         self.dispatch(flushing)
         self.observe(retired, broadcasts, issued)
         for tid, thread in enumerate(self.threads):
@@ -270,6 +275,8 @@ class SMT:
         self.core.rs.clear()
         self.core.rs_occupancy.update(dict.fromkeys(self.core.rs_limits, 0))
         self.core.cdb.clear()
+        if self.core.unified:
+            self.core.unified.discard()
         self.core.executing.clear()
         self.memory.responses.clear()
         self.memory.loads.clear()
