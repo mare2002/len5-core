@@ -3,15 +3,14 @@
 from heapq import heappop, heappush
 from itertools import chain
 
-from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, UNIFIED_SUFFIX
+from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, commit_architecture
 from .state import Entry
 
 
 class ROB:
-    def __init__(self, size: int, architecture: str, *, protect_unresolved_head: bool = False):
+    def __init__(self, size: int, architecture: str):
         self.size = size
-        self.len5 = architecture.removesuffix(UNIFIED_SUFFIX) == "len5_ooo_commit"
-        self.protect_unresolved_head = protect_unresolved_head
+        self.len5 = commit_architecture(architecture) == "len5_ooo_commit"
         self.unbounded = architecture in IDEAL_ARCHITECTURES
         self.individual = self.unbounded or architecture in BLOCK_ARCHITECTURES
         self.entries: dict[int, Entry] = {}
@@ -93,7 +92,7 @@ class ROB:
             return head
         if self.len5 and (work := next(entries, None)) is not None:
             # Guard against a stale memory-clear bit after the cursor wraps.
-            if self.protect_unresolved_head and head.instruction.control:
+            if head.instruction.control:
                 return None
             # The RTL compares the raw destination index, even if the work entry has no write.
             head_rd = head.instruction.destination

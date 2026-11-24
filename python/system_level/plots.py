@@ -8,17 +8,23 @@ from tempfile import TemporaryDirectory
 import re
 
 from .analysis import BLOCKS, IDEAL, IDEAL_OOO, LEN5, NORMAL, PAIRS
-from .config import BLOCK_ARCHITECTURES, UNIFIED_SUFFIX
+from .config import BLOCK_ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, SEPARATE_ARCHITECTURES, UNIFIED_SUFFIX
 from .results import metric_rows
 
 LABEL = {NORMAL: "Normal OoO", LEN5: "LEN5 OoO commit", BLOCKS: "Basic-block OoO commit",
          IDEAL: "Ideal Commit", IDEAL_OOO: "Ideal Block Commit"}
 COLOR = {NORMAL: "#51687c", LEN5: "#148274", BLOCKS: "#b44e2b", IDEAL: "#714aa5", IDEAL_OOO: "#2265ad"}
 SHORT = {NORMAL: "Normal", LEN5: "LEN5", BLOCKS: "Basic-block", IDEAL: "Ideal", IDEAL_OOO: "Ideal Block"}
-LABEL.update({key + UNIFIED_SUFFIX: value + " (unified RS)" for key, value in LABEL.items()})
-SHORT.update({key + UNIFIED_SUFFIX: value + " Unified" for key, value in SHORT.items()})
-COLOR.update(dict(zip((key + UNIFIED_SUFFIX for key in COLOR),
-                      ("#304c67", "#005448", "#783a14", "#482477", "#103f79"))))
+for suffix, title, short_title, colors in (
+    (UNIFIED_SUFFIX, "unified RS", "Unified", ("#304c67", "#005448", "#783a14", "#482477", "#103f79")),
+    (BRANCH_FORWARDING_SUFFIX, "unified RS + branch forwarding", "Unified+Branch",
+     ("#6f849b", "#3b9685", "#cf6c44", "#9a74c1", "#4a89c4")),
+):
+    for architecture, color in zip(SEPARATE_ARCHITECTURES, colors):
+        variant = architecture + suffix
+        LABEL[variant] = f"{LABEL[architecture]} ({title})"
+        SHORT[variant] = f"{SHORT[architecture]} {short_title}"
+        COLOR[variant] = color
 METRIC_LABELS = {"ipc": "Instructions per cycle", "cycles": "Cycles", "committed": "Committed instructions",
                  "rob_occupancy": "Mean occupied ROB entries", "cdb_utilization": "CDB utilization (fraction)",
                  "smt_throughput_improvement": "SMT throughput improvement (%)",
@@ -26,7 +32,8 @@ METRIC_LABELS = {"ipc": "Instructions per cycle", "cycles": "Cycles", "committed
 PLOT_CATEGORIES = {
     "rob": ("rob_", "retire_", "retirement_", "out_of_order_commits", "speculative_window",
             "dispatch_stall:rob_"),
-    "reservation_stations": ("rs_", "dependency_", "dispatch_stall:rs_", "issue_blocked:rs_", "unified_"),
+    "reservation_stations": ("rs_", "dependency_", "dispatch_stall:rs_", "issue_blocked:rs_", "unified_",
+                             "branch_direct_", "branch_cdb_"),
     "execution_units": ("execution_lane_", "lane_utilization:", "issue_utilization:", "issues:",
                         "issue_blocked:execution_unit:", "wrapper_", "issue_blocked:wrapper_",
                         "issue_blocked:completion_buffer:"),

@@ -26,6 +26,8 @@ class Result:
     finished: int | None = None
     local_done: bool = False
     broadcast: bool = False
+    forwarded_cycle: int = 0
+    branch_wakeups: int = 0
 
 
 class UnifiedRS:
@@ -93,6 +95,7 @@ class UnifiedRS:
                 entry = oldest.entry
                 self.forwarded[entry.uid] = entry
                 oldest.local_done = True
+                oldest.forwarded_cycle = cycle
                 if oldest.broadcast:
                     self.release(oldest)
                 yield index, entry, cycle - oldest.finished

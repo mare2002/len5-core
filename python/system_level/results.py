@@ -12,7 +12,8 @@ from statistics import geometric_mean
 import yaml
 
 from .analysis import IDEAL, LEN5, PAIRS, summarize, write_csv, write_json
-from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, UNIFIED_ARCHITECTURES, UNIFIED_RS, UNIFIED_SUFFIX
+from .config import (BLOCK_ARCHITECTURES, BRANCH_FORWARDING_ARCHITECTURES, IDEAL_ARCHITECTURES,
+                     UNIFIED_RS, WRAPPER_ARCHITECTURES, commit_architecture)
 from .benchmarks import name_component
 
 BLOCK_COUNTERS = ("block_", "blocks_", "flush", "merge", "physical_", "register_pressure",
@@ -111,13 +112,15 @@ def applicable_count(metric: str, run: dict) -> bool:
     if field in ("cdb_contention_cycles", "cdb_deferred_requests") and "thread_id" in run:
         return False
     arch = run["architecture"]
+    if field.startswith(("branch_direct_", "branch_cdb_")):
+        return arch in BRANCH_FORWARDING_ARCHITECTURES
     if (field.startswith(("unified_", "wrapper_", "issue_blocked:wrapper_", "issue_blocked:completion_buffer:"))
             or field.endswith(":" + UNIFIED_RS)):
-        return arch in UNIFIED_ARCHITECTURES
+        return arch in WRAPPER_ARCHITECTURES
     if field.startswith(BLOCK_COUNTERS):
         return arch in BLOCK_ARCHITECTURES
     if field == "out_of_order_commits":
-        return arch.removesuffix(UNIFIED_SUFFIX) in (LEN5, IDEAL)
+        return commit_architecture(arch) in (LEN5, IDEAL)
     if field in ("retirement_width_saturated_cycles", "recovery_wait_for_rob_head_cycles"):
         return arch not in IDEAL_ARCHITECTURES
     if field == "statistical_cycles_skipped":

@@ -66,6 +66,8 @@ const short = {normal_ooo:"Normal",len5_ooo_commit:"LEN5",basic_block_ooo_commit
 for(const arch of Object.keys(names)){
  names[arch+"_unified_rs"]=names[arch]+" (unified RS)";
  short[arch+"_unified_rs"]=short[arch]+" Unified";
+ names[arch+"_unified_rs_branch_forwarding"]=names[arch]+" (unified RS + branch forwarding)";
+ short[arch+"_unified_rs_branch_forwarding"]=short[arch]+" Unified+Branch";
 }
 const views = {smt:"SMT",isolated:"Isolated baseline",relative:"SMT relative to isolated"};
 const pairKey = (a,b) => JSON.stringify([a,b]);

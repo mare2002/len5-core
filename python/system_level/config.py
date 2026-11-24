@@ -13,13 +13,22 @@ DEFAULT_ARCHITECTURES = ("normal_ooo", "len5_ooo_commit", "basic_block_ooo_commi
 IDEAL = "ideal_commit"
 IDEAL_OOO = "ideal_commit_ooo"
 UNIFIED_SUFFIX = "_unified_rs"
+BRANCH_FORWARDING_SUFFIX = "_unified_rs_branch_forwarding"
 SEPARATE_ARCHITECTURES = (*DEFAULT_ARCHITECTURES, IDEAL, IDEAL_OOO)
 UNIFIED_ARCHITECTURES = tuple(name + UNIFIED_SUFFIX for name in SEPARATE_ARCHITECTURES)
-ARCHITECTURES = (*SEPARATE_ARCHITECTURES, *UNIFIED_ARCHITECTURES)
+BRANCH_FORWARDING_ARCHITECTURES = tuple(name + BRANCH_FORWARDING_SUFFIX for name in SEPARATE_ARCHITECTURES)
+WRAPPER_ARCHITECTURES = (*UNIFIED_ARCHITECTURES, *BRANCH_FORWARDING_ARCHITECTURES)
+ARCHITECTURES = (*SEPARATE_ARCHITECTURES, *WRAPPER_ARCHITECTURES)
+
+
+def commit_architecture(name: str) -> str:
+    return name.removesuffix(BRANCH_FORWARDING_SUFFIX).removesuffix(UNIFIED_SUFFIX)
+
+
 IDEAL_ARCHITECTURES = tuple(name for name in ARCHITECTURES
-                            if name.removesuffix(UNIFIED_SUFFIX) in (IDEAL, IDEAL_OOO))
+                            if commit_architecture(name) in (IDEAL, IDEAL_OOO))
 BLOCK_ARCHITECTURES = tuple(name for name in ARCHITECTURES
-                            if name.removesuffix(UNIFIED_SUFFIX) in (DEFAULT_ARCHITECTURES[2], IDEAL_OOO))
+                            if commit_architecture(name) in (DEFAULT_ARCHITECTURES[2], IDEAL_OOO))
 SMT_MODES = ("disabled", "enabled", "both")
 KINDS = ("alu", "mul", "div", "branch", "jump", "load", "store", "fp")
 INTEGER_UNITS = ("alu", "mul", "div")

@@ -1,7 +1,7 @@
 """Count modeled state bits under an explicit register and checkpoint layout."""
 
 
-from .config import IDEAL_ARCHITECTURES, INTEGER_UNITS, UNIFIED_ARCHITECTURES, UNIFIED_SUFFIX
+from .config import IDEAL_ARCHITECTURES, INTEGER_UNITS, WRAPPER_ARCHITECTURES, commit_architecture
 from .unified import result_slots, station_capacity
 
 
@@ -16,8 +16,8 @@ def estimate(config: dict, architecture: str, threads: int | None = None) -> dic
         raise ValueError("storage estimate requires one or two hardware threads")
     if architecture in IDEAL_ARCHITECTURES:
         return {"rob_bits": None, "total_bits": None, "total_bytes": None}
-    unified = architecture in UNIFIED_ARCHITECTURES
-    architecture = architecture.removesuffix(UNIFIED_SUFFIX)
+    unified = architecture in WRAPPER_ARCHITECTURES
+    architecture = commit_architecture(architecture)
     tid = index_bits(threads)
     rob_entries = config["simulation"]["rob_size"]
     widths = config["storage"]

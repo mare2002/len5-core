@@ -10,6 +10,11 @@ architectures:
   # - basic_block_ooo_commit_unified_rs
   # - ideal_commit_unified_rs
   # - ideal_commit_ooo_unified_rs
+  # - normal_ooo_unified_rs_branch_forwarding
+  # - len5_ooo_commit_unified_rs_branch_forwarding
+  # - basic_block_ooo_commit_unified_rs_branch_forwarding
+  # - ideal_commit_unified_rs_branch_forwarding
+  # - ideal_commit_ooo_unified_rs_branch_forwarding
 simulation:
   mode: event_driven
   seed: 42

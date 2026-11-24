@@ -2,7 +2,7 @@
 
 from collections import Counter
 
-from .config import BLOCK_ARCHITECTURES, IDEAL_OOO, UNIFIED_RS, UNIFIED_SUFFIX, UNIT_FOR
+from .config import BLOCK_ARCHITECTURES, IDEAL_OOO, UNIFIED_RS, UNIT_FOR, commit_architecture
 from .instruction import Instruction
 from .memory import Memory
 from .metrics import Metrics
@@ -42,7 +42,7 @@ class SMT:
         self.memory = Memory(config["memory"], self.stats, per_thread)
         self.pool = None
         if architecture in BLOCK_ARCHITECTURES:
-            slots = 0 if architecture.removesuffix(UNIFIED_SUFFIX) == IDEAL_OOO else config["basic_block"]["max_active_blocks"]
+            slots = 0 if commit_architecture(architecture) == IDEAL_OOO else config["basic_block"]["max_active_blocks"]
             self.pool = [None] * slots
         self.core = Simulator(architecture, config, program, timings[0], stats=per_thread[0],
                               memory=self.memory, block_pool=self.pool)

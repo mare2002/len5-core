@@ -5,8 +5,9 @@ from heapq import heappop, heappush
 from itertools import islice
 
 from .blocks import Blocks, Group
-from .config import (ARCHITECTURES, BLOCK_ARCHITECTURES, IDEAL, IDEAL_OOO, INTEGER_UNITS,
-                     UNIFIED_ARCHITECTURES, UNIFIED_RS, UNIFIED_SUFFIX, UNIT_FOR)
+from .config import (ARCHITECTURES, BLOCK_ARCHITECTURES, BRANCH_FORWARDING_ARCHITECTURES, IDEAL,
+                     IDEAL_OOO, INTEGER_UNITS, UNIFIED_RS, UNIT_FOR, WRAPPER_ARCHITECTURES,
+                     commit_architecture)
 from .instruction import Instruction, Register
 from .memory import Memory
 from .metrics import Metrics
@@ -25,7 +26,7 @@ class Simulator:
         if architecture not in ARCHITECTURES or not program or len(program) != len(timings):
             raise ValueError("simulation requires a known architecture and matching nonempty program and timings")
         self.architecture = architecture
-        base = architecture.removesuffix(UNIFIED_SUFFIX)
+        base = commit_architecture(architecture)
         self.ideal_commit = base == IDEAL
         self.ideal_blocks = base == IDEAL_OOO
         self.config = config
@@ -40,16 +41,16 @@ class Simulator:
         self.stats = stats if stats is not None else Metrics(self.options["record_events"])
         self.thread_id = self.stats.thread_id or 0
         self.memory = memory if memory is not None else Memory(config["memory"], self.stats)
-        self.rob = ROB(self.options["rob_size"], architecture,
-                       protect_unresolved_head=config.get("smt", {}).get("mode", "disabled") != "disabled")
+        self.rob = ROB(self.options["rob_size"], architecture)
         self.blocks = (Blocks(config["basic_block"], self.memory, self.stats, block_pool, self.thread_id,
                               unbounded=self.ideal_blocks) if architecture in BLOCK_ARCHITECTURES else None)
         self.enabled = {name: unit for name, unit in config["execution"]["units"].items() if unit["count"]}
         self.lanes = ({name: [(0, 0, 0)] * unit["count"] for name, unit in self.enabled.items()}
                       if core is None else core.lanes)
         self.unified = core.unified if core is not None else None
-        if core is None and architecture in UNIFIED_ARCHITECTURES:
+        if core is None and architecture in WRAPPER_ARCHITECTURES:
             self.unified = UnifiedRS(config["execution"])
+        self.branch_forwarding = architecture in BRANCH_FORWARDING_ARCHITECTURES
         shared = config["execution"]["shared_rs"]
         self.rs_for = {name: (UNIFIED_RS if self.unified and name in INTEGER_UNITS else
                               "shared" if shared else name) for name in self.enabled}
@@ -168,8 +169,9 @@ class Simulator:
             self.rs[entry.uid] = entry
             self.rs_occupancy[station] += 1
             self.log("dispatch", entry)
+            wrapper_input = station == UNIFIED_RS or (self.branch_forwarding and UNIT_FOR[entry.kind] == "branch")
             for producer_uid in tuple(waiting):
-                if station == UNIFIED_RS:
+                if wrapper_input:
                     producer = self.unified.forwarded.get(producer_uid)
                     if producer is not None:
                         self.latch_operand(producer, entry, local=True)
@@ -291,6 +293,14 @@ class Simulator:
         assert consumer.valid and consumer.thread_id == producer.thread_id
         reg = consumer.waiting.pop(producer.uid)
         consumer.operands[reg] = producer.uid
+        if self.branch_forwarding and UNIT_FOR[consumer.kind] == "branch":
+            path = "branch_direct" if local else "branch_cdb"
+            stats = self.owner(consumer).stats
+            stats.counts[path + "_operands"] += 1
+            if not consumer.waiting:
+                stats.counts[path + "_wakeups"] += 1
+                if local:
+                    self.unified.results[producer.uid].branch_wakeups += 1
         if not consumer.waiting:
             consumer.ready_since = self.cycle + 1
             if local:
@@ -304,9 +314,11 @@ class Simulator:
         if not pending:
             return
         for uid, consumer in tuple(pending.items()):
-            # Only the unified station forwards between different unit classes.
+            # Only wrapper grants extend to other unit classes.
             if (consumer.kind == producer.kind or
-                    (self.unified and producer.kind in INTEGER_UNITS and consumer.kind in INTEGER_UNITS)):
+                    (self.unified and producer.kind in INTEGER_UNITS
+                     and (consumer.kind in INTEGER_UNITS or
+                          (self.branch_forwarding and UNIT_FOR[consumer.kind] == "branch")))):
                 self.latch_operand(producer, consumer, local=True)
                 del pending[uid]
         if not pending:
@@ -360,6 +372,11 @@ class Simulator:
             assert owner.rob.slots[entry.slot] is entry
             del self.cdb[entry.uid]
             if self.unified and entry.kind in INTEGER_UNITS:
+                if self.branch_forwarding:
+                    result = self.unified.results[entry.uid]
+                    if result.branch_wakeups:
+                        owner.stats.samples["branch_direct_wakeup_lead"].add(
+                            self.cycle - result.forwarded_cycle, result.branch_wakeups)
                 self.unified.accept_cdb(entry)
             entry.done = True
             entry.completed = self.cycle
@@ -718,7 +735,7 @@ class Simulator:
         for entry in (*self.rob.entries.values(), *self.commit_stage):
             entry.valid = False
             entry.checkpoint = None
-        self.rob = ROB(self.rob.size, self.architecture, protect_unresolved_head=self.rob.protect_unresolved_head)
+        self.rob = ROB(self.rob.size, self.architecture)
         self.commit_stage.clear()
         self.readers.clear()
         self.latest.clear()
@@ -734,6 +751,9 @@ class Simulator:
         for name in ("mispredictions", "squashed_instructions", "load_requests", "stores_authorized",
                      "stores_serviced", "store_load_conflicts", "cdb_contention_cycles"):
             counts.setdefault(name, 0)
+        if self.branch_forwarding:
+            for name in ("branch_direct_operands", "branch_direct_wakeups", "branch_cdb_operands", "branch_cdb_wakeups"):
+                counts.setdefault(name, 0)
         if self.blocks:
             for name in ("merges", "merges_delayed_by_bandwidth", "flush_operations",
                          "merged_groups_restored", "dispatch_stall_reclamation",

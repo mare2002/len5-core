@@ -14,7 +14,8 @@ from random import Random
 from statistics import fmean, stdev
 from tempfile import NamedTemporaryFile
 
-from .config import (DEFAULT_ARCHITECTURES, IDEAL, IDEAL_OOO, SEPARATE_ARCHITECTURES,
+from .config import (BRANCH_FORWARDING_ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, DEFAULT_ARCHITECTURES,
+                     IDEAL, IDEAL_OOO, SEPARATE_ARCHITECTURES, UNIFIED_ARCHITECTURES,
                      UNIFIED_SUFFIX, configure, fixed, overlay)
 from .instruction import Instruction
 from .parallel import Progress, process_pool, run_jobs, worker_count
@@ -28,9 +29,13 @@ SEPARATE_PAIRS = ((LEN5, NORMAL), (BLOCKS, LEN5), (BLOCKS, NORMAL),
          (IDEAL, NORMAL), (IDEAL, LEN5), (IDEAL, BLOCKS),
          (IDEAL_OOO, NORMAL), (IDEAL_OOO, LEN5), (IDEAL_OOO, BLOCKS), (IDEAL_OOO, IDEAL))
 UNIFIED_PAIRS = tuple((name + UNIFIED_SUFFIX, name) for name in SEPARATE_ARCHITECTURES)
+BRANCH_FORWARDING_PAIRS = tuple(zip(BRANCH_FORWARDING_ARCHITECTURES, UNIFIED_ARCHITECTURES))
 PAIRS = (*SEPARATE_PAIRS,
          *((arch + UNIFIED_SUFFIX, baseline + UNIFIED_SUFFIX) for arch, baseline in SEPARATE_PAIRS),
-         *UNIFIED_PAIRS)
+         *UNIFIED_PAIRS,
+         *((arch + BRANCH_FORWARDING_SUFFIX, baseline + BRANCH_FORWARDING_SUFFIX)
+           for arch, baseline in SEPARATE_PAIRS),
+         *BRANCH_FORWARDING_PAIRS)
 PRESETS = {
     "merge-width": {"basic_block.merging.width": [1, 2, 4, 8]},
     "flush-width": {"basic_block.flushing.width": [1, 2, 4, 8]},

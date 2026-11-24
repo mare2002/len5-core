@@ -184,6 +184,26 @@ class PipelineTests(unittest.TestCase):
                     self.assertEqual(r["counts"]["squashed_instructions"], 2)
                     self.assertEqual(s.rf[x(2)], events(r, "dispatch", 1)[0]["uid"])
 
+    def test_len5_unresolved_head_blocks_younger_register_write(self):
+        program = [I("alu", destination=x(15)), I("branch"), I("alu", (x(15),), x(15))]
+        timings = [Timing(1, "", 0, False, 0), Timing(9, "", 0, True, 0), Timing(1, "", 0, False, 0)]
+        sim = make(program, ARCHITECTURES[1], timings)
+        for _ in range(7):
+            sim.step()
+        branch, younger = sim.rob.entries.values()
+        self.assertFalse(branch.done)
+        self.assertTrue(younger.done)
+        # A stale clear bit must never let a speculative write reach the register file.
+        younger.mem_clear = True
+        self.assertIsNone(sim.rob.retirement_candidate())
+
+        report = sim.run()
+        replayed = events(report, "dispatch", 2)[-1]["uid"]
+        self.assertNotEqual(younger.uid, replayed)
+        self.assertEqual([e["uid"] for e in events(report, "squash", 2)], [younger.uid])
+        self.assertEqual([e["uid"] for e in events(report, "commit", 2)], [replayed])
+        self.assertEqual(sim.rf[x(15)], replayed)
+
     def test_head_misprediction_flushes_at_first_commit_opportunity(self):
         p = [I("jump", destination=x(1)), I("alu", (x(1),))]
         for architecture in ARCHITECTURES[:2]:

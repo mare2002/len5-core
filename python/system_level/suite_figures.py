@@ -2,8 +2,8 @@
 from pathlib import Path
 from statistics import fmean, geometric_mean
 
-from .analysis import IDEAL, IDEAL_OOO, PAIRS, UNIFIED_PAIRS, atomic_output
-from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, UNIFIED_ARCHITECTURES, UNIFIED_SUFFIX
+from .analysis import BRANCH_FORWARDING_PAIRS, IDEAL, IDEAL_OOO, PAIRS, UNIFIED_PAIRS, atomic_output
+from .config import BLOCK_ARCHITECTURES, DEFAULT_ARCHITECTURES, IDEAL_ARCHITECTURES, UNIFIED_ARCHITECTURES, UNIFIED_SUFFIX
 from .matrix import PERCENT_METRICS, RATIO_METRICS, color_limits, heatmap_label
 from .plots import COLOR, LABEL, SHORT
 
@@ -188,8 +188,8 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
 
     ratios = _comparisons(matrix, view)
     if ratios and view == "smt":
-        bounded = [arch for arch in LABEL if arch not in (*IDEAL_ARCHITECTURES, *UNIFIED_ARCHITECTURES)]
-        heatmap(_comparisons(matrix, view, architectures=bounded), "Throughput by ordered workload pair", "Paired IPC ratio",
+        heatmap(_comparisons(matrix, view, architectures=DEFAULT_ARCHITECTURES),
+                "Throughput by ordered workload pair", "Paired IPC ratio",
                 "speedup/architecture_ratios", metric="vs_normal", ratio=True, vector=True)
         for arch in (IDEAL, IDEAL_OOO):
             heatmap(_comparisons(matrix, view, architectures=(arch,)), f"{LABEL[arch]} throughput by workload pair",
@@ -197,8 +197,12 @@ def plot_suite_overview(report: dict, matrix: dict, plot_dir: Path, *, detailed:
     heatmap([(f"{SHORT[a]} / {SHORT[b]}", pair_values(matrix, a, view, RATIO_METRICS[b]))
              for a, b in UNIFIED_PAIRS], f"{view_label} unified versus separate integer RS",
             "Paired IPC ratio", "speedup/unified_vs_separate", metric="vs_normal", ratio=True)
+    heatmap([(SHORT[b], pair_values(matrix, a, view, RATIO_METRICS[b]))
+             for a, b in BRANCH_FORWARDING_PAIRS], f"{view_label} unified RS with versus without branch forwarding",
+            "Paired IPC ratio", "speedup/branch_forwarding", metric="vs_normal", ratio=True)
     heatmap([(title, pair_values(matrix, arch, view, metric)) for arch, metric, title in COMPARISONS
-             if metric.endswith(UNIFIED_SUFFIX)], f"{view_label} commit policies with unified integer RS",
+             if arch in UNIFIED_ARCHITECTURES and metric.endswith(UNIFIED_SUFFIX)],
+            f"{view_label} commit policies with unified integer RS",
             "Paired IPC ratio", "speedup/unified_commit_ratios", metric="vs_normal", ratio=True)
     if view == "smt":
         heatmap([(SHORT[a], pair_values(matrix, a, view, "weighted_speedup")) for a in archs],

@@ -4,7 +4,7 @@ from collections import defaultdict
 from math import isfinite
 
 from .analysis import BLOCKS, IDEAL, LEN5, NORMAL, PAIRS
-from .config import ARCHITECTURES, UNIFIED_RS, UNIFIED_SUFFIX
+from .config import ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, UNIFIED_RS, UNIFIED_SUFFIX
 from .results import metric_summary
 
 # Labels include units and describe the denominator for every normalized metric.
@@ -37,6 +37,9 @@ LABELS = {
     "unified_buffer_stalls": "Cycles with wrapper completion buffer stalls (fraction)",
     "unified_rs_full": "Cycles with unified RS full stalls (fraction)",
     "wrapper_port_utilization": "Mean wrapper issue-port utilization (fraction)",
+    "branch_direct_wakeups": "Branch RS wakeups through the wrapper",
+    "branch_cdb_wakeups": "Branch RS wakeups through the CDB",
+    "branch_direct_wakeup_lead": "Branch wakeup lead over producer CDB broadcast (cycles)",
 }
 
 
@@ -46,8 +49,10 @@ PERCENT_METRICS.update(("unified_buffer_stalls", "unified_rs_full", "wrapper_por
 RATIO_METRICS = {NORMAL: "vs_normal", LEN5: "vs_len5", BLOCKS: "vs_blocks", IDEAL: "vs_ideal",
                  "ideal_commit_ooo": "vs_ideal_block"}
 for architecture, metric in tuple(RATIO_METRICS.items()):
-    RATIO_METRICS[architecture + UNIFIED_SUFFIX] = metric + UNIFIED_SUFFIX
-    LABELS[metric + UNIFIED_SUFFIX] = LABELS[metric].replace(" (×)", " (unified RS) (×)")
+    for suffix, label in ((UNIFIED_SUFFIX, "unified RS"),
+                          (BRANCH_FORWARDING_SUFFIX, "unified RS + branch forwarding")):
+        RATIO_METRICS[architecture + suffix] = metric + suffix
+        LABELS[metric + suffix] = LABELS[metric].replace(" (×)", f" ({label}) (×)")
 
 
 def heatmap_label(value: float | None, metric: str) -> str:
@@ -79,7 +84,8 @@ def measured(run: dict) -> dict:
                         ("recovery_wait", "recovery_detection_to_flush"),
                         ("unified_rs_occupancy", "rs_occupancy:" + UNIFIED_RS),
                         ("unified_forwarding_delay", "unified_forwarding_delay"),
-                        ("unified_forwarding_backlog", "unified_forwarding_backlog")):
+                        ("unified_forwarding_backlog", "unified_forwarding_backlog"),
+                        ("branch_direct_wakeup_lead", "branch_direct_wakeup_lead")):
         sample = run.get("samples", {}).get(source, {})
         if sample.get("samples") and sample.get("mean") is not None:
             values[key] = sample["mean"]
@@ -87,12 +93,15 @@ def measured(run: dict) -> dict:
         for key, source in (("cdb_contention", "cdb_contention_cycles"),
                             ("retire_blocked", "retire_blocked_cycles")):
             values[key] = run["counts"].get(source, 0) / run["cycles"]
+        if run.get("committed"):
+            values["squash_rate"] = 1000 * run["counts"].get("squashed_instructions", 0) / run["committed"]
     if wrappers := run.get("wrappers"):
         values["wrapper_port_utilization"] = sum(w["issue_utilization"] for w in wrappers.values()) / len(wrappers)
         values["unified_buffer_stalls"] = run["counts"].get("unified_completion_buffer_stall_cycles", 0) / run["cycles"]
         values["unified_rs_full"] = run["counts"].get("unified_rs_full_cycles", 0) / run["cycles"]
-        if run.get("committed"):
-            values["squash_rate"] = 1000 * run["counts"].get("squashed_instructions", 0) / run["committed"]
+    for key in ("branch_direct_wakeups", "branch_cdb_wakeups"):
+        if key in run.get("counts", {}):
+            values[key] = run["counts"][key]
     if run.get("storage", {}).get("total_bits") is not None:
         values["storage_bits"] = run["storage"]["total_bits"]
     return values
