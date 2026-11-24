@@ -47,7 +47,9 @@ module issue_decoder #(
   import instr_pkg::*;
 
   // Parameters
-  localparam logic [ILEN-1:0] RET = {12'b0, 5'b00001, 3'b000, 5'b00000, JALR[OPCODE_LEN-1:0]};
+  localparam logic [4:0] LINK_REG = 5'd1;
+  localparam logic [ILEN-1:0] RET = {12'b0, LINK_REG, 3'b000, 5'b00000, JALR[OPCODE_LEN-1:0]};
+  localparam logic [1:0] CSR_READ_ONLY = 2'b11;
 
   // INTERNAL SIGNALS
   // ----------------
@@ -63,10 +65,35 @@ module issue_decoder #(
   rs1_sel_t     rs1_sel;
   rs2_sel_t     rs2_sel;
   rs3_sel_t     rs3_sel;
-  logic         rd_upd;
+  logic         int_rd_upd;
+  logic         fp_rd_upd;
   imm_format_t  imm_format;
   logic         skip_eu;
+  // Retain the decoded exception flag for debug visibility.
+  /* verilator lint_off UNUSEDSIGNAL */
   logic         opcode_except;
+  /* verilator lint_on UNUSEDSIGNAL */
+  csr_priv_t    required_priv;
+  logic         requires_fp;
+
+  // CSR controls selected by the CSR instruction cases.
+  logic         fp_csr_addr;
+  logic         fp_csr_unavailable;
+  logic         csr_read_only;
+  logic         csr_write_except;
+  logic         csr_set_clear_except;
+  issue_type_t  csr_write_issue_type;
+  issue_type_t  csr_set_clear_issue_type;
+
+  assign fp_csr_addr = instruction_i.i.imm11 inside {CSR_FFLAGS, CSR_FRM, CSR_FCSR};
+  assign fp_csr_unavailable = fp_csr_addr && !Len5Cfg.LEN5_F_EN && !Len5Cfg.LEN5_D_EN;
+  assign csr_read_only = instruction_i.i.imm11[31:30] == CSR_READ_ONLY;
+
+  // CSRRW[I] always writes. CSRRS[I] and CSRRC[I] write with a nonzero source field.
+  assign csr_write_except = fp_csr_unavailable || csr_read_only;
+  assign csr_set_clear_except = fp_csr_unavailable || (csr_read_only && (|instruction_i.i.rs1));
+  assign csr_write_issue_type = csr_write_except ? ISSUE_TYPE_EXCEPT : ISSUE_TYPE_CSR;
+  assign csr_set_clear_issue_type = csr_set_clear_except ? ISSUE_TYPE_EXCEPT : ISSUE_TYPE_CSR;
 
   // -------------------
   // INSTRUCTION DECODER
@@ -83,15 +110,20 @@ module issue_decoder #(
     skip_eu       = 1'b0;
     assigned_eu   = EU_INT_ALU;
     eu_ctl.raw    = '0;
-    mem_crit      = 1'b1;  // opt-out policy is safer
+    // An unfinished load or store can still fault and must block younger retirement.
+    mem_crit      = 1'b1;
     order_crit    = 1'b0;
     rs1_sel       = RS1_SEL_NONE;
     rs2_sel       = RS2_SEL_NONE;
     rs3_sel       = RS3_SEL_NONE;
-    rd_upd        = 1'b1;  // true by default
+    int_rd_upd    = 1'b1;
+    fp_rd_upd     = 1'b0;
     imm_format    = IMM_TYPE_I;
     opcode_except = 1'b0;
     except_code   = E_ILLEGAL_INSTRUCTION;
+    required_priv = PRIV_MODE_U;
+    requires_fp   = 1'b0;
+    ecall_o       = 1'b0;
 
     // Main decoding logic
     unique casez (instruction_i.raw)
@@ -338,7 +370,7 @@ module issue_decoder #(
       JAL: begin
         issue_type  = ISSUE_TYPE_JUMP;
         assigned_eu = EU_BRANCH_UNIT;
-        eu_ctl.bu   = (instruction_i.j.rd == 5'b00001) ? BU_CALL : BU_JAL;
+        eu_ctl.bu   = (instruction_i.j.rd == LINK_REG) ? BU_CALL : BU_JAL;
         imm_format  = IMM_TYPE_J;
       end
       JALR: begin
@@ -354,7 +386,7 @@ module issue_decoder #(
         eu_ctl.bu   = BU_BEQ;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_B;
       end
       BNE: begin
@@ -363,7 +395,7 @@ module issue_decoder #(
         eu_ctl.bu   = BU_BNE;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_B;
       end
       BLT: begin
@@ -372,7 +404,7 @@ module issue_decoder #(
         eu_ctl.bu   = BU_BLT;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_B;
       end
       BLTU: begin
@@ -381,7 +413,7 @@ module issue_decoder #(
         eu_ctl.bu   = BU_BLTU;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_B;
       end
       BGE: begin
@@ -390,7 +422,7 @@ module issue_decoder #(
         eu_ctl.bu   = BU_BGE;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_B;
       end
       BGEU: begin
@@ -399,14 +431,13 @@ module issue_decoder #(
         eu_ctl.bu   = BU_BGEU;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_B;
       end
       LB: begin
         issue_type  = ISSUE_TYPE_INT;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = L_BYTE;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
@@ -414,7 +445,6 @@ module issue_decoder #(
         issue_type  = ISSUE_TYPE_INT;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = L_BYTE_U;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
@@ -422,7 +452,6 @@ module issue_decoder #(
         issue_type  = ISSUE_TYPE_INT;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = L_HALFWORD;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
@@ -430,7 +459,6 @@ module issue_decoder #(
         issue_type  = ISSUE_TYPE_INT;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = L_HALFWORD_U;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
@@ -438,7 +466,6 @@ module issue_decoder #(
         issue_type  = ISSUE_TYPE_INT;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = L_WORD;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
@@ -446,7 +473,6 @@ module issue_decoder #(
         issue_type  = ISSUE_TYPE_INT;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = L_WORD_U;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
@@ -454,7 +480,6 @@ module issue_decoder #(
         issue_type  = ISSUE_TYPE_INT;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = L_DOUBLEWORD;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         imm_format  = IMM_TYPE_I;
       end
@@ -462,59 +487,59 @@ module issue_decoder #(
         issue_type  = ISSUE_TYPE_STORE;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = S_BYTE;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_S;
       end
       SH: begin
         issue_type  = ISSUE_TYPE_STORE;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = S_HALFWORD;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_S;
       end
       SW: begin
         issue_type  = ISSUE_TYPE_STORE;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = S_WORD;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_S;
       end
       SD: begin
         issue_type  = ISSUE_TYPE_STORE;
         assigned_eu = EU_LSU;
         eu_ctl.lsu  = S_DOUBLEWORD;
-        mem_crit    = 1'b0;
         rs1_sel     = RS1_SEL_INT;
         rs2_sel     = RS2_SEL_INT;
-        rd_upd      = 1'b0;
+        int_rd_upd  = 1'b0;
         imm_format  = IMM_TYPE_S;
       end
       FENCE: begin
         issue_type = ISSUE_TYPE_STALL;
         skip_eu    = 1'b1;
         order_crit = 1'b1;
+        int_rd_upd = 1'b0;
       end
       ECALL: begin  // TODO: add ECALL support
         issue_type    = ISSUE_TYPE_EXCEPT;
         skip_eu       = 1'b1;
         order_crit    = 1'b1;
         opcode_except = 1'b1;
+        int_rd_upd    = 1'b0;
         except_code   = E_ENV_CALL_UMODE;  // selected from the current mode at issue
+        ecall_o       = 1'b1;
       end
       EBREAK: begin  // TODO: add EBREAK support
         issue_type    = ISSUE_TYPE_EXCEPT;
         skip_eu       = 1'b1;
         order_crit    = 1'b1;
         opcode_except = 1'b1;
+        int_rd_upd    = 1'b0;
         except_code   = E_BREAKPOINT;
       end
 
@@ -531,6 +556,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       MULH: begin
@@ -545,6 +571,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       MULHU: begin
@@ -559,6 +586,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       MULHSU: begin
@@ -573,6 +601,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       MULW: begin
@@ -587,6 +616,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       DIV: begin
@@ -601,6 +631,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       DIVU: begin
@@ -615,6 +646,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       DIVW: begin
@@ -629,6 +661,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       DIVUW: begin
@@ -643,6 +676,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       REM: begin
@@ -657,6 +691,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       REMU: begin
@@ -671,6 +706,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       REMW: begin
@@ -685,6 +721,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       REMUW: begin
@@ -699,97 +736,124 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
 
       // RV32ZICSR
-      // TODO: check CSR instructions
       CSRRW: begin
-        issue_type = ISSUE_TYPE_CSR;
-        skip_eu    = 1'b1;
-        order_crit = 1'b1;
-        rs1_sel    = RS1_SEL_INT;
+        opcode_except = csr_write_except;
+        issue_type    = csr_write_issue_type;
+        skip_eu       = 1'b1;
+        order_crit    = 1'b1;
+        rs1_sel       = RS1_SEL_INT;
+        required_priv = csr_priv_t'(instruction_i.i.imm11[29:28]);
+        requires_fp   = fp_csr_addr;
       end
       CSRRWI: begin
-        issue_type = ISSUE_TYPE_CSR;
-        skip_eu    = 1'b1;
-        order_crit = 1'b1;
-        rs2_sel    = RS2_SEL_IMM;
+        opcode_except = csr_write_except;
+        issue_type    = csr_write_issue_type;
+        skip_eu       = 1'b1;
+        order_crit    = 1'b1;
+        rs2_sel       = RS2_SEL_IMM;
+        required_priv = csr_priv_t'(instruction_i.i.imm11[29:28]);
+        requires_fp   = fp_csr_addr;
       end
       CSRRS: begin
-        issue_type = ISSUE_TYPE_CSR;
-        skip_eu    = 1'b1;
-        order_crit = 1'b1;
-        rs1_sel    = RS1_SEL_INT;
+        opcode_except = csr_set_clear_except;
+        issue_type    = csr_set_clear_issue_type;
+        skip_eu       = 1'b1;
+        order_crit    = 1'b1;
+        rs1_sel       = RS1_SEL_INT;
+        required_priv = csr_priv_t'(instruction_i.i.imm11[29:28]);
+        requires_fp   = fp_csr_addr;
       end
       CSRRSI: begin
-        issue_type = ISSUE_TYPE_CSR;
-        skip_eu    = 1'b1;
-        order_crit = 1'b1;
-        rs2_sel    = RS2_SEL_IMM;
+        opcode_except = csr_set_clear_except;
+        issue_type    = csr_set_clear_issue_type;
+        skip_eu       = 1'b1;
+        order_crit    = 1'b1;
+        rs2_sel       = RS2_SEL_IMM;
+        required_priv = csr_priv_t'(instruction_i.i.imm11[29:28]);
+        requires_fp   = fp_csr_addr;
       end
       CSRRC: begin
-        issue_type = ISSUE_TYPE_CSR;
-        skip_eu    = 1'b1;
-        order_crit = 1'b1;
-        rs1_sel    = RS1_SEL_INT;
+        opcode_except = csr_set_clear_except;
+        issue_type    = csr_set_clear_issue_type;
+        skip_eu       = 1'b1;
+        order_crit    = 1'b1;
+        rs1_sel       = RS1_SEL_INT;
+        required_priv = csr_priv_t'(instruction_i.i.imm11[29:28]);
+        requires_fp   = fp_csr_addr;
       end
       CSRRCI: begin
-        issue_type = ISSUE_TYPE_CSR;
-        skip_eu    = 1'b1;
-        order_crit = 1'b1;
-        rs2_sel    = RS2_SEL_IMM;
+        opcode_except = csr_set_clear_except;
+        issue_type    = csr_set_clear_issue_type;
+        skip_eu       = 1'b1;
+        order_crit    = 1'b1;
+        rs2_sel       = RS2_SEL_IMM;
+        required_priv = csr_priv_t'(instruction_i.i.imm11[29:28]);
+        requires_fp   = fp_csr_addr;
       end
 
       // RV32SYSTEM
       // TODO: add support for SYSTEM instructions
       MRET: begin
         // Reuse the serialized issue path; commit decodes the MRET operation.
-        issue_type = ISSUE_TYPE_CSR;
-        skip_eu    = 1'b1;
-        order_crit = 1'b1;
-        rd_upd     = 1'b0;
+        issue_type    = ISSUE_TYPE_CSR;
+        skip_eu       = 1'b1;
+        order_crit    = 1'b1;
+        int_rd_upd    = 1'b0;
+        required_priv = PRIV_MODE_M;
       end
       WFI: begin
         issue_type = ISSUE_TYPE_STALL;
         skip_eu    = 1'b1;
         order_crit = 1'b1;
+        int_rd_upd = 1'b0;
       end
 
       // RV64F
       FLW: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_LSU;
           eu_ctl.lsu  = L_WORD;
-          mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           imm_format  = IMM_TYPE_I;
         end else begin
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSW: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_STORE;
           assigned_eu = EU_LSU;
           eu_ctl.lsu  = S_WORD;
-          mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           rs2_sel     = RS2_SEL_FP;
-          rd_upd      = 1'b0;
+          int_rd_upd  = 1'b0;
           imm_format  = IMM_TYPE_S;
         end else begin
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMADD_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MADD_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -800,11 +864,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMSUB_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MSUB_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -815,11 +883,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FNMSUB_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMSUB_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -830,11 +902,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FNMADD_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMADD_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -845,11 +921,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FADD_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_ADD_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -859,11 +939,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSUB_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SUB_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -873,11 +957,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMUL_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MUL_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -887,11 +975,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FDIV_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_DIV_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -901,11 +993,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSQRT_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SQRT_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -914,11 +1010,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSGNJ_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_S;  // TODO: check, the actual op is distinguished through rm
           mem_crit    = 1'b0;
@@ -928,11 +1028,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSGNJN_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -942,11 +1046,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSGNJX_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -956,11 +1064,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMIN_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -970,11 +1082,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMAX_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_S;  // TODO: check
           mem_crit    = 1'b0;
@@ -984,10 +1100,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_W_S: begin  // single to int
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2I;  // TODO: check
@@ -997,10 +1115,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_WU_S: begin  // single to unsigned int
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2I_U;  // TODO: check
@@ -1010,11 +1130,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_S_W: begin  // int to single
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2S;  // TODO: check
           mem_crit    = 1'b0;
@@ -1023,11 +1147,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_S_WU: begin  // unsigned int to single
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2S_U;  // TODO: check
           mem_crit    = 1'b0;
@@ -1036,10 +1164,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_L_S: begin  // single to long int
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2L;  // TODO: check
@@ -1049,10 +1179,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_LU_S: begin  // single to unsigned int
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2L_U;  // TODO: check
@@ -1062,11 +1194,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_S_L: begin  // long to single
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2S;  // TODO: check
           mem_crit    = 1'b0;
@@ -1075,11 +1211,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_S_LU: begin  // unsigned long to single
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2S_U;  // TODO: check
           mem_crit    = 1'b0;
@@ -1088,10 +1228,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMV_X_W: begin  // single to int
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_X_W;
@@ -1101,11 +1243,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMV_W_X: begin  // int to single
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_W_X;
           mem_crit    = 1'b0;
@@ -1114,10 +1260,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FEQ_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_S;  // TODO: check, rm encodes comp type
@@ -1128,10 +1276,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FLT_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_S;  // TODO: check
@@ -1142,10 +1292,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FLE_S: begin
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_S;  // TODO: check
@@ -1156,10 +1308,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCLASS_S: begin  // write to int RF
         if (Len5Cfg.LEN5_F_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CLASS_S;  // TODO: check
@@ -1169,43 +1323,51 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
 
       // RV64D
       FLD: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_LSU;
           eu_ctl.lsu  = L_DOUBLEWORD;
-          mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           imm_format  = IMM_TYPE_I;
         end else begin
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSD: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_STORE;
           assigned_eu = EU_LSU;
           eu_ctl.lsu  = S_DOUBLEWORD;
-          mem_crit    = 1'b0;
           rs1_sel     = RS1_SEL_INT;
           rs2_sel     = RS2_SEL_FP;
-          rd_upd      = 1'b0;
+          int_rd_upd  = 1'b0;
           imm_format  = IMM_TYPE_S;
         end else begin
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMADD_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MADD_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1216,11 +1378,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMSUB_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MSUB_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1231,11 +1397,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FNMSUB_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMSUB_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1246,11 +1416,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FNMADD_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_NMADD_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1261,11 +1435,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FADD_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_ADD_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1275,11 +1453,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSUB_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SUB_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1289,11 +1471,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMUL_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MUL_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1303,11 +1489,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FDIV_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_DIV_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1317,11 +1507,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSQRT_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SQRT_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1330,11 +1524,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSGNJ_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1344,11 +1542,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSGNJN_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1358,11 +1560,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FSGNJX_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_SGNJ_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1372,11 +1578,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMIN_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1386,11 +1596,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMAX_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MINMAX_D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1400,11 +1614,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_S_D: begin  // double to single
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2S;  // TODO: check
           mem_crit    = 1'b0;
@@ -1413,11 +1631,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_D_S: begin  // single to double
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_S2D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1426,10 +1648,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_W_D: begin  // double to int
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2I;  // TODO: check
@@ -1439,10 +1663,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_WU_D: begin  // double to 32-bit int
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2I_U;  // TODO: check
@@ -1452,11 +1678,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_D_W: begin  //32-bit int to double
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1465,11 +1695,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_D_WU: begin  // unsigned 32-bit int to double
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_I2D_U;  // TODO: check
           mem_crit    = 1'b0;
@@ -1478,10 +1712,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_L_D: begin  // double to 64-bit int
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2L;  // TODO: check
@@ -1491,10 +1727,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_LU_D: begin  // double to 64-bit unsigned int
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_D2L_U;  // TODO: check
@@ -1504,11 +1742,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_D_L: begin  // long int to double
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2D;  // TODO: check
           mem_crit    = 1'b0;
@@ -1517,11 +1759,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCVT_D_LU: begin  // unsigned long int to double
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_L2D_U;  // TODO: check
           mem_crit    = 1'b0;
@@ -1530,10 +1776,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMV_X_D: begin  // double to 64-bit int
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_X_D;
@@ -1543,11 +1791,15 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FMV_D_X: begin  // int to fp reg
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_FP;  // FP RF destination
+          int_rd_upd  = 1'b0;
+          fp_rd_upd   = 1'b1;
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_MV_D_X;
           mem_crit    = 1'b0;
@@ -1556,10 +1808,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FEQ_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_D;  // TODO: check
@@ -1570,10 +1824,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FLT_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_D;  // TODO: check
@@ -1584,10 +1840,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FLE_D: begin
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CMP_D;  // TODO: check
@@ -1598,10 +1856,12 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
       FCLASS_D: begin  // write to int RF
         if (Len5Cfg.LEN5_D_EN != 1'b0) begin
+          requires_fp = 1'b1;
           issue_type  = ISSUE_TYPE_INT;  // int RF destination
           assigned_eu = EU_FPU;
           eu_ctl.fpu  = FPU_CLASS_D;  // TODO: check
@@ -1611,6 +1871,7 @@ module issue_decoder #(
           issue_type    = ISSUE_TYPE_EXCEPT;
           skip_eu       = 1'b1;
           opcode_except = 1'b1;
+          int_rd_upd    = 1'b0;
         end
       end
 
@@ -1619,61 +1880,31 @@ module issue_decoder #(
         issue_type    = ISSUE_TYPE_EXCEPT;
         skip_eu       = 1'b1;
         opcode_except = 1'b1;
+        int_rd_upd    = 1'b0;
       end
     endcase
-    // FP CSRs do not exist when both floating-point extensions are absent.
-    if (!Len5Cfg.LEN5_F_EN && !Len5Cfg.LEN5_D_EN && issue_type == ISSUE_TYPE_CSR &&
-        instruction_i.raw[14:12] != '0 &&
-        instruction_i.raw[31:20] inside {CSR_FFLAGS, CSR_FRM, CSR_FCSR}) begin
-      opcode_except = 1'b1;
-      rd_upd        = 1'b0;
-    end
-    // Read-only CSR encodings permit reads, but not writes.
-    if (issue_type == ISSUE_TYPE_CSR && instruction_i.raw[14:12] != '0 &&
-        instruction_i.raw[31:30] == 2'b11 &&
-        (instruction_i.raw[13:12] == 2'b01 || (|instruction_i.raw[19:15]))) begin
-      opcode_except = 1'b1;
-      rd_upd        = 1'b0;
-    end
-
   end
-
-  // Runtime FP and privilege state must not affect queued decode results.
-  assign requires_fp_o = assigned_eu == EU_FPU || rs1_sel == RS1_SEL_FP ||
-      rs2_sel == RS2_SEL_FP || rs3_sel == RS3_SEL_FP || issue_type == ISSUE_TYPE_FP ||
-      (issue_type == ISSUE_TYPE_CSR && instruction_i.raw[14:12] != '0 &&
-       instruction_i.raw[31:20] inside {CSR_FFLAGS, CSR_FRM, CSR_FCSR});
-  assign ecall_o = instruction_i.raw == 32'h00000073;
-
-  always_comb begin : privilege_requirement
-    required_priv_o = PRIV_MODE_U;
-    if (issue_type == ISSUE_TYPE_CSR) begin
-      if (instruction_i.raw[14:12] != '0) required_priv_o = csr_priv_t'(instruction_i.raw[29:28]);
-      else if (instruction_i.raw == 32'h30200073) required_priv_o = PRIV_MODE_M;
-    end
-  end
-
-  assign issue_type_o = (opcode_except) ? ISSUE_TYPE_EXCEPT : issue_type;
-  assign skip_eu_o = (opcode_except) ? 1'b1 : skip_eu;
 
   // -----------------
   // OUTPUT GENERATION
   // -----------------
-  assign dispatch_o.direct_result = issue_type_o inside {ISSUE_TYPE_NONE, ISSUE_TYPE_LUI};
-  assign dispatch_o.int_rd_write = rd_upd &&
-      (issue_type_o inside {ISSUE_TYPE_INT, ISSUE_TYPE_LUI, ISSUE_TYPE_JUMP, ISSUE_TYPE_CSR});
-  assign dispatch_o.fp_rd_write = rd_upd && (issue_type_o == ISSUE_TYPE_FP);
+  // Runtime FP and privilege state must not affect queued decode results.
+  assign requires_fp_o = requires_fp;
+  assign required_priv_o = required_priv;
+  assign issue_type_o = issue_type;
+  assign skip_eu_o = skip_eu;
+  assign rd_upd_o = int_rd_upd || fp_rd_upd;
+  assign dispatch_o.direct_result = issue_type == ISSUE_TYPE_LUI;
+  assign dispatch_o.fp_rd_write = fp_rd_upd;
+  assign dispatch_o.int_rd_write = int_rd_upd;
   assign except_code_o = except_code;
   assign assigned_eu_o = assigned_eu;
   assign eu_ctl_o = eu_ctl;
-  // Memory responses may fault: younger instructions cannot retire past an
-  // unfinished load or store, even when their own results are ready.
-  assign mem_crit_o = mem_crit || (assigned_eu == EU_LSU);
+  assign mem_crit_o = mem_crit;
   assign order_crit_o = order_crit;
   assign rs1_sel_o = rs1_sel;
   assign rs2_sel_o = rs2_sel;
   assign rs3_sel_o = rs3_sel;
-  assign rd_upd_o = rd_upd;
   assign imm_format_o = imm_format;
 
   // ----------
