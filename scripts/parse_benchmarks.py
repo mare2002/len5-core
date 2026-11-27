@@ -3,6 +3,7 @@ import multiprocessing
 import sys
 import getopt
 import os
+import re
 import subprocess
 import time
 from typing import List, Dict
@@ -225,14 +226,24 @@ def init_table() -> Dict[str, Dict]:
 
     return table
 
-def update_table(table, benchmark, output_log):
+def update_table(table, benchmark, output_log, *, use_timed_counts=False):
     """Updates the table with the results of a benchmark."""
     if benchmark not in table:
         table[benchmark] = {}
     
+    report_start = get_report_start(output_log)
+    serial_output = output_log[:report_start] if report_start else output_log
+    output_log = output_log[report_start:]
     table[benchmark]["status"] = (parse_status(output_log)==0)
     table[benchmark]["instructions"] = parse_retired_instructions(output_log)
     table[benchmark]["cycles"] = parse_cycles(output_log)
+    if use_timed_counts:
+        prefix = r'SERIAL MONITOR > received string:[^\n]*'
+        cycles = re.search(prefix + r'"Cycles: ([0-9]+)"', serial_output)
+        instructions = re.search(prefix + r'"Instructions: ([0-9]+)"', serial_output)
+        if cycles and instructions and int(cycles[1]) > 0:
+            table[benchmark]["cycles"] = int(cycles[1])
+            table[benchmark]["instructions"] = int(instructions[1])
     if table[benchmark]["cycles"]!=0:
         table[benchmark]["ipc"] = table[benchmark]["instructions"]/table[benchmark]["cycles"]
     else:
@@ -265,7 +276,7 @@ def print_table_to_file_csv(table, path):
             file.write(f"{results['status']},")
             file.write(f"{results['instructions']},")
             file.write(f"{results['cycles']},")
-            file.write(f"{results['ipc']:0.2f},")
+            file.write(f"{results['ipc']:.3f},")
             file.write(f"{results['jumps']},")
             file.write(f"{results['branches']},")
             file.write(f"{results['branch/jump']},")
@@ -313,14 +324,12 @@ if __name__ == "__main__":
     for i, b in enumerate(benchmarks):
         with open(os.path.join(benchmarks_dir, b)) as f:
             output_log = f.read()
-            start_report = get_report_start(output_log)
-            output_log = output_log[start_report:]
-            stats = update_table(stats, b, output_log)
+        stats = update_table(stats, b, output_log, use_timed_counts=SUITE == "embench")
         if stats[b]["status"]:
-            print(f"{i+1:4d}) {b[:-4]:15}: \033[92mSUCCESS\033[00m (IPC={stats[b]['ipc'] : .2f})")
+            print(f"{i+1:4d}) {b[:-4]:15}: \033[92mSUCCESS\033[00m (IPC={stats[b]['ipc'] : .3f})")
             correctly_ex += 1
         else:
-            print(f"{i+1:4d}) {b[:-4]:15}: \033[91mFAILURE\033[00m (IPC={stats[b]['ipc'] : .2f})")
+            print(f"{i+1:4d}) {b[:-4]:15}: \033[91mFAILURE\033[00m (IPC={stats[b]['ipc'] : .3f})")
 
     print(f"Correctly executed testbenches {correctly_ex} out of {len(stats)}.")
     
