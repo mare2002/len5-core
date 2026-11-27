@@ -64,7 +64,7 @@ module completion_fifo #(
   if (DRAIN_ON_FLUSH) begin : gen_drain_entries
     logic [DEPTH-1:0] live_q;
 
-    // Flush cancels publication, but each accepted request keeps its reservation.
+    // Flush cancels publication while outstanding requests retain their reservations.
     always_ff @(posedge clk_i or negedge rst_ni) begin : update_live
       if (!rst_ni) live_q <= '0;
       else if (flush_i) live_q <= '0;
@@ -74,7 +74,7 @@ module completion_fifo #(
     // An empty-queue allocation can complete before its live bit is registered.
     assign head_live      = reserved_empty ? allocate_entry : live_q[head_addr];
     assign result_ready_o = rst_ni && (pending_result || allocate_entry);
-    assign discard_head   = rst_ni && head_has_result && (flush_i || !head_live);
+    assign discard_head   = rst_ni && head_has_result && !head_live;
   end else begin : gen_cancel_entries
     assign head_live      = 1'b1;
     assign result_ready_o = active && (pending_result || allocate_i);
@@ -92,16 +92,13 @@ module completion_fifo #(
     if (store_result) data_q[fill_addr] <= result_i;
   end
 
-  modn_counter #(
-    .N(2 * DEPTH)
-  ) u_head_counter (
-    .clk_i,
-    .rst_ni,
-    .clr_i  (clear_pointers),
-    .en_i   (advance_head),
-    .count_o(head_q),
-    .tc_o   ()
-  );
+  always_ff @(posedge clk_i or negedge rst_ni) begin : update_head
+    if (!rst_ni) head_q <= '0;
+    else if (clear_pointers) head_q <= '0;
+    // Jump past completed entries and any old response accepted on the flush edge.
+    else if (flush_i) head_q <= fill_q + POINTER_WIDTH'(result_accepted);
+    else if (advance_head) head_q <= head_q + 1'b1;
+  end
   modn_counter #(
     .N(2 * DEPTH)
   ) u_fill_counter (

@@ -70,8 +70,9 @@ worker, so choose JOBS according to available memory/CPUs.
 | `check-fetch-mem-if-drain` | Separate directed SV checks for native-memory drain-on-flush at the source-selected width and `FETCH_MEMIF_FIFO_DEPTH`. |
 
 The `check-fetch-mem-if-cancel` C++ suite explicitly selects cancel-on-flush mode. The
-`check-fetch-mem-if-drain` target checks retained full-queue credits, stale returns
-under issue backpressure, repeated/returning-response flush collisions, exact
+`check-fetch-mem-if-drain` target checks retained credits for outstanding requests,
+immediate reuse of completed slots after a flush, and in-order discard of stale
+responses. It also checks repeated flushes, responses arriving on the flush edge,
 new-epoch metadata/payload/faults, current-answer consumption on an early flush,
 and reset with buffered/outstanding work. It requires drain-on-flush, depth at
 least four, request SKIP=1 and answer SKIP=0; incompatible source configurations

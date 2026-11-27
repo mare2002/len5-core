@@ -338,6 +338,22 @@ module fetch_mem_drain_tb #(
     end
     $fatal(1, "Response id=%0d stalled despite a reservation", id);
   endtask
+  task automatic request_with_response(int id);
+    set_request(id);
+    set_response(id);
+    expected_ids.push_back(id);
+    fetch_valid    = 1;
+    response_valid = 1;
+    @(posedge clk);
+    assert (request_valid && memory_ready && fetch_ready && response_ready)
+    else $fatal(1, "Request and response for id=%0d were not accepted together", id);
+    assert (request_address === (64'h10000 + 64'(id * N * 4)))
+    else $fatal(1, "Request address mismatch id=%0d", id);
+    @(negedge clk);
+    fetch_valid    = 0;
+    response_valid = 0;
+  endtask
+
   task automatic await_delivery(int count);
     issue_ready = 1;
     for (int wait_cycle = 0; wait_cycle < Limit; wait_cycle++) begin
@@ -438,12 +454,41 @@ module fetch_mem_drain_tb #(
     cycles();
     flush          = 0;
     response_valid = 0;
-    cycles(Depth + 2);
-    issue_ready = 1;
-    cycles(3);
-    request(400);
-    respond(400);
+    request_with_response(400);
+    #1;
+    assert (issue_valid)
+    else $fatal(1, "Completed stale entries delayed the first post-flush answer");
+    check_issue(400);
     await_delivery(2);
+
+    // Accept a stale response on the flush edge with another still outstanding.
+    issue_ready = 0;
+    for (int id = 410; id < 410 + Depth; id++) request(id);
+    for (int id = 410; id < 408 + Depth; id++) respond(id);
+    flush = 1;
+    expected_ids.delete();
+    set_response(408 + Depth);
+    response_valid = 1;
+    #1;
+    assert (response_ready)
+    else $fatal(1, "Flush refused a stale response with another still outstanding");
+    cycles();
+    flush          = 0;
+    response_valid = 0;
+    #1;
+    assert (response_ready && !issue_valid)
+    else $fatal(1, "Flush lost a pending reservation or published a stale response");
+    request(450);
+    respond(409 + Depth);
+    #1;
+    assert (!issue_valid)
+    else $fatal(1, "Old response published after skipping completed entries");
+    respond(450);
+    #1;
+    assert (issue_valid)
+    else $fatal(1, "Correct answer did not follow the last stale response");
+    check_issue(450);
+    await_delivery(3);
 
     // An early-flush consumer can take the current answer while canceling younger work.
     issue_ready = 0;
@@ -474,26 +519,14 @@ module fetch_mem_drain_tb #(
     cycles(3);
     request(700);
     respond(700);
-    await_delivery(3);
-    cycles(3);
-    // A response may accompany allocation of its own reservation on an empty interface.
-    set_request(800);
-    set_response(800);
-    expected_ids.push_back(800);
-    fetch_valid    = 1;
-    response_valid = 1;
-    @(posedge clk);
-    assert (request_valid && memory_ready && fetch_ready && response_ready)
-    else $fatal(1, "Zero-latency allocation/response was not accepted together");
-    assert (request_address === (64'h10000 + 64'(800 * N * 4)))
-    else $fatal(1, "Zero-latency request address mismatch");
-    @(negedge clk);
-    fetch_valid    = 0;
-    response_valid = 0;
     await_delivery(4);
     cycles(3);
-    assert (expected_ids.size() == 0 && delivered == 4 && early_consumed == 1 &&
-            accepted_requests == 3 * Depth + 6 && accepted_responses == 2 * Depth + 7)
+    // A response may accompany allocation of its own reservation on an empty interface.
+    request_with_response(800);
+    await_delivery(5);
+    cycles(3);
+    assert (expected_ids.size() == 0 && delivered == 5 && early_consumed == 1 &&
+            accepted_requests == 4 * Depth + 7 && accepted_responses == 3 * Depth + 8)
     else
       $fatal(
           1,
