@@ -1,7 +1,8 @@
 """Count modeled state bits under an explicit register and checkpoint layout."""
 
 
-from .config import IDEAL_ARCHITECTURES, INTEGER_UNITS, WRAPPER_ARCHITECTURES, commit_architecture
+from .config import (IDEAL_ARCHITECTURES, INTEGER_UNITS, UNLIMITED, WRAPPER_ARCHITECTURES, commit_architecture,
+                     variant_config)
 from .unified import result_slots, station_capacity
 
 
@@ -9,12 +10,21 @@ def index_bits(entries: int) -> int:
     return (entries - 1).bit_length()
 
 
+def unlimited(value) -> bool:
+    """Unlimited capacity or bandwidth has no finite storage estimate."""
+    if isinstance(value, dict):
+        return any(unlimited(item) for item in value.values())
+    return value == UNLIMITED
+
+
 def estimate(config: dict, architecture: str, threads: int | None = None) -> dict:
     if threads is None:
         threads = 2 if config.get("smt", {}).get("mode") == "enabled" else 1
     if threads not in (1, 2):
         raise ValueError("storage estimate requires one or two hardware threads")
-    if architecture in IDEAL_ARCHITECTURES:
+    config = variant_config(config, architecture)
+    if architecture in IDEAL_ARCHITECTURES or unlimited(
+            {key: config[key] for key in ("simulation", "execution", "basic_block", "memory")}):
         return {"rob_bits": None, "total_bits": None, "total_bytes": None}
     unified = architecture in WRAPPER_ARCHITECTURES
     architecture = commit_architecture(architecture)

@@ -8,7 +8,8 @@ from tempfile import TemporaryDirectory
 import re
 
 from .analysis import BLOCKS, IDEAL, IDEAL_OOO, LEN5, NORMAL, PAIRS
-from .config import BLOCK_ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, SEPARATE_ARCHITECTURES, UNIFIED_SUFFIX
+from .config import (BLOCK_ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, SEPARATE_ARCHITECTURES, UNIFIED_SUFFIX,
+                     backend_name, frontend_variant)
 from .results import metric_rows
 
 LABEL = {NORMAL: "Normal OoO", LEN5: "LEN5 OoO commit", BLOCKS: "Basic-block OoO commit",
@@ -29,6 +30,22 @@ METRIC_LABELS = {"ipc": "Instructions per cycle", "cycles": "Cycles", "committed
                  "rob_occupancy": "Mean occupied ROB entries", "cdb_utilization": "CDB utilization (fraction)",
                  "smt_throughput_improvement": "SMT throughput improvement (%)",
                  "weighted_speedup": "Weighted speedup (×)"}
+
+
+def register_architectures(names) -> None:
+    """Labels and colors for ``architecture@frontend_variant`` names, derived from the backend's."""
+    for index, name in enumerate(names):
+        if name in LABEL or backend_name(name) not in LABEL:
+            continue
+        base, variant = backend_name(name), frontend_variant(name)
+        LABEL[name] = f"{LABEL[base]} @ {variant}"
+        SHORT[name] = f"{SHORT[base]}@{variant}"
+        red, green, blue = (int(COLOR[base][i:i + 2], 16) for i in (1, 3, 5))
+        # Alternate darker and lighter shades so variants of one backend stay distinguishable.
+        factor = (.55, 1.35, .8, 1.15, .65, 1.5)[index % 6]
+        COLOR[name] = "#" + "".join(f"{min(255, int(c * factor)):02x}" for c in (red, green, blue))
+
+
 PLOT_CATEGORIES = {
     "rob": ("rob_", "retire_", "retirement_", "out_of_order_commits", "speculative_window",
             "dispatch_stall:rob_"),
@@ -71,8 +88,25 @@ def filename(metric: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", metric)
 
 
+FRONTEND_CATEGORIES = {
+    "memory": ("icache_", "frontend:icache_"),
+    "queue_occupancy": ("occupancy:",),
+    "ras": ("ras_", "frontend:ras_", "frontend:return_"),
+    "training": ("btq_", "frontend:btq_"),
+    "branch_prediction": ("bp_", "tage_", "gshare_", "l0_btb", "l1_btb", "mispredictions:", "frontend:l0_",
+                          "frontend:l1_", "frontend:final_", "frontend:mpki", "frontend:conditional_mpki",
+                          "frontend:target_mpki", "frontend:tage_", "frontend:predictor_"),
+    "frontend": ("fe_", "frontend:", "iq_", "fetch_", "issue_queue_", "dispatch_stall:frontend_empty",
+                 "dispatch_stall:wrong_path", "wrong_path"),
+}
+
+
 def plot_category(metric: str) -> str:
     name = re.sub(r"^thread_[01]:", "", metric).removeprefix("count:").removeprefix("peak:")
+    frontend = next((category for category, prefixes in FRONTEND_CATEGORIES.items()
+                     if name.startswith(prefixes)), None)
+    if frontend is not None:
+        return frontend
     return next((category for category, prefixes in PLOT_CATEGORIES.items()
                  if name.startswith(prefixes)), "performance")
 
@@ -142,7 +176,7 @@ def sweep_lines(ax, report: dict, rows: list[dict], *, label_values: bool = Fals
     for (architecture, mode, isolated, other), group in series.items():
         settings = [row["parameters"][axes[0]] for row in group]
         x = settings if all(type(value) in (int, float) for value in settings) else [
-            json.dumps(value) for value in settings]
+            value if isinstance(value, str) else json.dumps(value) for value in settings]
         name = label_for(architecture, mode, both)
         if isolated is not None:
             name += f" · T{isolated} alone"
@@ -162,7 +196,8 @@ def sweep_lines(ax, report: dict, rows: list[dict], *, label_values: bool = Fals
 
 
 ESSENTIAL = {"ipc", "cycles", "rob_occupancy", "cdb_utilization", "weighted_speedup",
-             "merge_utilization", "flush_utilization"}
+             "merge_utilization", "flush_utilization", "frontend:mpki", "frontend:fetch_ipc",
+             "frontend:final_accuracy", "frontend:return_mpki", "frontend:btq_drop_rate"}
 DIAGNOSTICS = {"speculative_window", "retirement_utilization", "issue_utilization", "block_occupancy",
                "load_buffer_occupancy", "store_buffer_occupancy", "cdb_wait", "thread_0:ipc", "thread_1:ipc"}
 
@@ -256,6 +291,7 @@ def plot(report: dict, output: Path, preset: str | None = None, *, raw_directory
     directory = output.parent
     directory.mkdir(parents=True, exist_ok=True)
     config = report if "suite" in report else report["points"][0]["config"]
+    register_architectures(report.get("architectures") or config.get("architectures", {}).get("enabled", ()))
     preset = preset or config.get("plotting", {}).get("preset", "essential")
     if preset not in ("essential", "detailed", "none"):
         raise ValueError(f"unknown plotting preset {preset!r}")
@@ -273,12 +309,16 @@ def plot(report: dict, output: Path, preset: str | None = None, *, raw_directory
             matrix = build_matrix(report)
             raw_prefix = os.path.relpath(raw_directory, directory) + "/" if raw_directory and raw_directory != directory else ""
             if preset != "none":
+                from .frontend_plots import plot_frontend_suite
                 write_dashboard(stage, matrix, raw_prefix=raw_prefix)
                 plot_suite_overview(report, matrix, figure_dir, detailed=preset == "detailed")
+                plot_frontend_suite(report, figure_dir, SHORT)
             write_suite_summary(report, matrix, stage, dashboard=preset != "none", raw_prefix=raw_prefix,
                                figure_dir=figure_dir)
         elif preset != "none":
+            from .frontend_plots import plot_frontend_workload
             plot_workload(report, figure_dir, preset == "detailed")
+            plot_frontend_workload(report, figure_dir, SHORT)
 
         files = {p.relative_to(stage) for p in stage.rglob("*") if p.is_file()}
         for name in files:

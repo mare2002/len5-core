@@ -2,7 +2,8 @@
 
 from collections import Counter
 
-from .config import BLOCK_ARCHITECTURES, IDEAL_OOO, UNIFIED_RS, UNIT_FOR, commit_architecture
+from .config import (BLOCK_ARCHITECTURES, IDEAL_OOO, UNIFIED_RS, UNIT_FOR, UNLIMITED, commit_architecture,
+                     limit, upto)
 from .instruction import Instruction
 from .memory import Memory
 from .metrics import Metrics
@@ -31,8 +32,11 @@ class SMT:
     def __init__(self, architecture: str, config: dict, program: list[Instruction],
                  timings: tuple[list[Timing], list[Timing]], *, other_program: list[Instruction] | None = None,
                  names: tuple[str, str] | None = None, sample_names: tuple[str | None, str | None] = (None, None),
-                 seed: int = 42, reference_thread: int | None = None):
+                 seed: int = 42, reference_thread: int | None = None, elfs: tuple = (None, None)):
         self.config = config
+        if config["simulation"]["warmup_instructions"]:
+            raise ValueError("simulation.warmup_instructions applies to single-thread runs; SMT measures "
+                             "until the reference workload completes")
         record = config["simulation"]["record_events"]
         self.stats = Metrics(record)
         per_thread = tuple(Metrics(False, tid) for tid in range(2))
@@ -42,13 +46,14 @@ class SMT:
         self.memory = Memory(config["memory"], self.stats, per_thread)
         self.pool = None
         if architecture in BLOCK_ARCHITECTURES:
-            slots = 0 if commit_architecture(architecture) == IDEAL_OOO else config["basic_block"]["max_active_blocks"]
+            slots = config["basic_block"]["max_active_blocks"]
+            slots = 0 if commit_architecture(architecture) == IDEAL_OOO or slots == UNLIMITED else slots
             self.pool = [None] * slots
         self.core = Simulator(architecture, config, program, timings[0], stats=per_thread[0],
-                              memory=self.memory, block_pool=self.pool)
+                              memory=self.memory, block_pool=self.pool, seed=seed, elf=elfs[0])
         other = Simulator(architecture, config, program if other_program is None else other_program,
                           timings[1], core=self.core, stats=per_thread[1],
-                          memory=self.memory, block_pool=self.pool)
+                          memory=self.memory, block_pool=self.pool, seed=seed, elf=elfs[1])
         self.threads = self.core.threads = (self.core, other)
         self.dispatch_priority = config["smt"]["initial_priority"]
         self.commit_priority = self.merge_priority = self.flush_priority = 0
@@ -63,7 +68,7 @@ class SMT:
         self.finished = False
 
     def dispatch(self, flushing: list[bool]) -> None:
-        width = self.config["simulation"]["dispatch_width"]
+        width = limit(self.config["simulation"]["dispatch_width"])
         priority = self.dispatch_priority
         other = 1 - priority
         counts = [0, 0]
@@ -109,7 +114,7 @@ class SMT:
             for thread, ready in zip(self.threads, eligible):
                 if ready:
                     thread.authorize_head_store()
-        for _ in range(self.core.commit_width):
+        for _ in upto(self.core.commit_width):
             for tid in (self.commit_priority, 1 - self.commit_priority):
                 if not eligible[tid]:
                     continue
@@ -148,13 +153,13 @@ class SMT:
         recovering = [bool(b.reclaim) or cycle < t.redirect_until for t, b in zip(self.threads, blocks)]
         flushed, merged = [0, 0], [0, 0]
         for tid in (self.flush_priority, 1 - self.flush_priority):
-            flushed[tid] = blocks[tid].flush(cycle, config["flushing"]["width"] - sum(flushed))
+            flushed[tid] = blocks[tid].flush(cycle, limit(config["flushing"]["width"]) - sum(flushed))
         if flushed[self.flush_priority]:
             self.flush_priority = 1 - self.flush_priority
         before = sum(t.stats.samples["merge_candidates"].total for t in self.threads)
         for tid in (self.merge_priority, 1 - self.merge_priority):
             if not recovering[tid] or config["flushing"]["allow_unaffected_merges"]:
-                width = None if self.core.ideal_blocks else config["merging"]["width"] - sum(merged)
+                width = None if self.core.ideal_blocks else limit(config["merging"]["width"]) - sum(merged)
                 merged[tid] = blocks[tid].merge(cycle, width)
             else:
                 blocks[tid].stats.samples["merge_candidates"].add(0)
@@ -210,6 +215,7 @@ class SMT:
             for thread, count in zip(self.threads, busy):
                 thread.stats.samples[key].add(count)
             shared[key].add(sum(busy))
+        core.observe_occupancy(self.stats, self.threads)
         if self.pool is not None:
             shared["block_occupancy"].add(sum(group is not None for group in self.pool))
             shared["flush_backlog"].add(sum(len(t.blocks.reclaim) for t in self.threads))
@@ -243,6 +249,14 @@ class SMT:
         core.finish_execution()
         core.forward_unified()
         self.dispatch(flushing)
+        if core.frontend is not None:
+            # Frontends share the instruction cache, predictor ports and training bandwidth; alternate priority.
+            order = (core.cycle % 2, 1 - core.cycle % 2)
+            for tid in order:
+                thread = self.threads[tid]
+                thread.stats.samples["fetch_throughput"].add(thread.frontend.step(core.cycle))
+            for tid in order:
+                self.threads[tid].frontend.train(core.cycle)
         self.observe(retired, broadcasts, issued)
         for tid, thread in enumerate(self.threads):
             if self.pool is not None:
@@ -295,6 +309,7 @@ class SMT:
         combined.counts.update(self.stats.counts)
         combined.samples.update(self.stats.samples)
         combined.histograms.update(self.stats.histograms)
+        combined.occupancy.update(self.stats.occupancy)
         shared_samples = set(self.stats.samples)
         shared_counts = set(self.stats.counts)
         shared_histograms = set(self.stats.histograms)

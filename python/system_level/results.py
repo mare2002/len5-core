@@ -11,9 +11,9 @@ from statistics import geometric_mean
 
 import yaml
 
-from .analysis import IDEAL, LEN5, PAIRS, summarize, write_csv, write_json
+from .analysis import IDEAL, LEN5, PAIRS, pairs_for, summarize, write_csv, write_json
 from .config import (BLOCK_ARCHITECTURES, BRANCH_FORWARDING_ARCHITECTURES, IDEAL_ARCHITECTURES,
-                     UNIFIED_RS, WRAPPER_ARCHITECTURES, commit_architecture)
+                     UNIFIED_RS, WRAPPER_ARCHITECTURES, commit_architecture, frontend_variant, variant_config)
 from .benchmarks import name_component
 
 BLOCK_COUNTERS = ("block_", "blocks_", "flush", "merge", "physical_", "register_pressure",
@@ -21,6 +21,11 @@ BLOCK_COUNTERS = ("block_", "blocks_", "flush", "merge", "physical_", "register_
                   "dispatch_stall:integer_prf", "dispatch_stall:fp_prf")
 BLOCK_STORAGE = ("mapping_bits", "ownership_bits", "mapping_bits_per_block", "ownership_bits_per_block",
                  "checkpoint_bits", "block_thread_tag_bits", "shared_block_mapping_ownership_bits")
+OCCUPANCY_FIELDS = ("mean", "mean_percent", "peak", "empty_percent", "full_percent", "allocation_failures",
+                    "stall_cycles")
+FRONTEND_COUNTERS = ("fe_", "bp_", "ras_", "btq_", "icache_", "tage_", "gshare_", "l0_btb", "l1_btb", "iq_",
+                     "fetch_fifo", "mispredictions:", "wrong_path", "dispatch_stall:frontend_empty",
+                     "dispatch_stall:wrong_path_hold")
 MEASURES = ("ipc", "cycles", "committed", "cdb_utilization", "issue_utilization", "retirement_utilization",
             "merge_utilization", "flush_utilization", "smt_throughput_improvement", "weighted_speedup",
             "sequential_cycles", "completion_cycle", "dispatch_share", "slowdown", "isolated_cycles", "isolated_ipc")
@@ -98,6 +103,13 @@ def metrics(run: dict) -> dict[str, float]:
     for key, value in run.get("storage", {}).items():
         if value is not None and (key not in BLOCK_STORAGE or run["architecture"] in BLOCK_ARCHITECTURES):
             values["storage:" + key] = value
+    for field, value in run.get("frontend", {}).items():
+        if type(value) in (int, float):
+            values["frontend:" + field] = value
+    for name, record in run.get("occupancy", {}).items():
+        for key in OCCUPANCY_FIELDS:
+            if record.get(key) is not None:
+                values[f"occupancy:{name}:{key}"] = record[key]
     for thread in run.get("threads", ()):
         for metric, value in metrics(thread).items():
             values[f"thread_{thread['thread_id']}:{metric}"] = value
@@ -112,6 +124,8 @@ def applicable_count(metric: str, run: dict) -> bool:
     if field in ("cdb_contention_cycles", "cdb_deferred_requests") and "thread_id" in run:
         return False
     arch = run["architecture"]
+    if field.startswith(FRONTEND_COUNTERS):
+        return "frontend" in run
     if field.startswith(("branch_direct_", "branch_cdb_")):
         return arch in BRANCH_FORWARDING_ARCHITECTURES
     if (field.startswith(("unified_", "wrapper_", "issue_blocked:wrapper_", "issue_blocked:completion_buffer:"))
@@ -167,6 +181,13 @@ def save_experiment(report: dict, output: Path, sweep: bool, *, comparison: list
     output.mkdir(parents=True, exist_ok=True)
     config = report["points"][0]["config"]
     (output / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    for point in report["points"]:
+        # Each architecture@variant runs with its own resolved configuration; keep it with the results.
+        for architecture in point["config"]["architectures"]["enabled"]:
+            if frontend_variant(architecture) is not None:
+                path = output / "configs" / f"point-{point['point']}" / (architecture + ".yaml")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(yaml.safe_dump(variant_config(point["config"], architecture), sort_keys=False))
     for run in report["runs"]:
         seed = f"seed-{run['seed']}"
         if "isolated_thread" in run:
@@ -180,6 +201,7 @@ def save_experiment(report: dict, output: Path, sweep: bool, *, comparison: list
     if not sweep:
         write_csv(output / "per_seed_results.csv", report["runs"])
     write_csv(output / "ipc_summary.csv", report["ipc_summary"])
+    write_csv(output / "occupancy.csv", occupancy_rows(comparison if comparison is not None else metric_rows(report)))
     write_csv(output / "paired_ipc_improvement.csv", report["paired_ipc_improvement"])
     write_json(output / "statistics.json", report)
 
@@ -199,7 +221,7 @@ def benchmark_summary(suite: str, experiments: dict[str, dict], *, comparisons: 
         archs = config["architectures"]["enabled"]
         for mode, isolated in dict.fromkeys(key[2:] for key in ipc):
             variant = {"isolated_thread": isolated} if isolated is not None else {}
-            for architecture, baseline in PAIRS:
+            for architecture, baseline in pairs_for(archs):
                 if architecture not in archs or baseline not in archs:
                     continue
                 gains = [(seed, ipc[seed, architecture, mode, isolated] / ipc[seed, baseline, mode, isolated])
@@ -233,8 +255,25 @@ def benchmark_summary(suite: str, experiments: dict[str, dict], *, comparisons: 
             "runs": per_seed, "ipc_speedup": speedups, "geomean_speedup": geomean}
 
 
+def occupancy_rows(rows: list[dict]) -> list[dict]:
+    """One row per (benchmark, point, architecture, mode, structure) with every occupancy statistic."""
+    table: dict[tuple, dict] = {}
+    for row in rows:
+        metric = row["metric"]
+        prefix, _, rest = metric.partition("occupancy:")
+        if prefix not in ("", "thread_0:", "thread_1:") or not rest:
+            continue
+        structure, _, field = rest.rpartition(":")
+        key = (row.get("benchmark"), row["point"], row["architecture"], row.get("smt_mode"), prefix + structure)
+        record = table.setdefault(key, {"benchmark": key[0], "point": key[1], "architecture": key[2],
+                                        "smt_mode": key[3], "structure": key[4]})
+        record[field] = row["mean"]
+    return [{k: v for k, v in record.items() if v is not None} for record in table.values()]
+
+
 def save_benchmarks(report: dict, output: Path) -> None:
     write_csv(output / "summary.csv", report["metrics"])
+    write_csv(output / "occupancy.csv", occupancy_rows(report["metrics"]))
     write_csv(output / "per_seed_results.csv", report["runs"])
     write_csv(output / "ipc_speedup.csv", report["ipc_speedup"])
     write_csv(output / "geomean_speedup.csv", report["geomean_speedup"])

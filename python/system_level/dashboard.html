@@ -35,6 +35,7 @@ button{cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,
 [hidden]{display:none!important}#detailNote,#scaleNote,#failure{font-size:.85rem;line-height:1.45;margin-top:8px}
 #failure{color:#8a3f20}.pairname{overflow-wrap:anywhere}.links{margin-top:12px;display:flex;gap:12px;font-size:.85rem}
 .controls label,.controls select,.controls input{max-width:100%;min-width:0}
+.single .layout{grid-template-columns:minmax(0,1fr)}.single .detail{width:auto;min-width:60%}
 @media(max-width:920px){.layout{grid-template-columns:minmax(0,1fr)}.scroller{max-height:58vh}}
 </style>
 <main>
@@ -69,14 +70,18 @@ for(const arch of Object.keys(names)){
  names[arch+"_unified_rs_branch_forwarding"]=names[arch]+" (unified RS + branch forwarding)";
  short[arch+"_unified_rs_branch_forwarding"]=short[arch]+" Unified+Branch";
 }
+// `backend@variant` names (frontend variants) reuse the backend's name.
+const archName = a => {const [base,variant]=a.split("@");return (names[base]||base)+(variant?" @ "+variant:"")};
+const archShort = a => {const [base,variant]=a.split("@");return (short[base]||base)+(variant?"@"+variant:"")};
 const views = {smt:"SMT",isolated:"Isolated baseline",relative:"SMT relative to isolated"};
 const pairKey = (a,b) => JSON.stringify([a,b]);
 const pairs = new Map(data.pairs.map(cell => [pairKey(...cell.names),cell]));
 const labels = data.labels;
 const fmt = n => n == null ? "—" : n.toLocaleString(undefined,{maximumFractionDigits:3});
 const value = (cell,arch,view,metric) => cell?.architectures[arch]?.[view]?.[metric];
-const selectedStat = cell => value(cell,$("arch").value,$("view").value,$("metric").value);
 const expectedSeeds = data.seeds.length;
+// Without SMT pairs only the diagonal exists: show benchmarks against architectures instead.
+const single = !data.paired;
 let selected, displayed = [], ranked = [];
 function element(tag,text){const el=document.createElement(tag); if(text!=null)el.textContent=text; return el}
 function options(select,items){
@@ -91,9 +96,9 @@ function label(view,metric){
     return labels[metric];
 }
 function chooseMetrics(){
-    const arch=$("arch").value;
+    const archs=single?data.architectures:[$("arch").value];
     const available=new Map;
-    for(const cell of pairs.values()){
+    for(const cell of pairs.values())for(const arch of archs){
         for(const [v,stats] of Object.entries(cell.architectures[arch]||{})){
             if(!available.has(v))available.set(v,new Set);
             for(const m of Object.keys(stats))available.get(v).add(m);
@@ -132,11 +137,11 @@ function failures(cell,arch,view){
     return data.failures.filter(f=>f.benchmark===cell?.label&&(!arch||f.architecture===arch)&&
         (!view||view==="relative"||f.smt_mode===(view==="smt"?"enabled":"disabled")));
 }
-function tooltip(a,b){
-    const cell=pairs.get(pairKey(a,b)), arch=$("arch").value, view=$("view").value, metric=$("metric").value;
+function tooltip(a,b,arch){
+    const cell=pairs.get(pairKey(a,b)), view=$("view").value, metric=$("metric").value;
     const smt=cell?.architectures[arch]?.smt;
-    const lines=["T0  "+a+"    ·    T1  "+b,names[arch]+"  ·  "+(views[view]||"No measurements"),
-        (label(view,metric)||"Result")+"   "+statText(selectedStat(cell))];
+    const lines=[single?a:"T0  "+a+"    ·    T1  "+b,archName(arch)+"  ·  "+(views[view]||"No measurements"),
+        (label(view,metric)||"Result")+"   "+statText(value(cell,arch,view,metric))];
     if(cell?.reference_thread!=null)lines.push("Reference  T"+cell.reference_thread+" · "+cell.reference_benchmark);
     if(smt){
         if(cell.reference_thread==null)lines.push("Reference  varied or unavailable");
@@ -149,7 +154,7 @@ function tooltip(a,b){
     return lines.join("\n");
 }
 function setTip(btn,x,y){
-    const tip=$("tip"); tip.textContent=tooltip(btn.dataset.a,btn.dataset.b); tip.hidden=false;
+    const tip=$("tip"); tip.textContent=tooltip(btn.dataset.a,btn.dataset.b,btn.dataset.arch); tip.hidden=false;
     const bounds=tip.getBoundingClientRect();
     tip.style.left=Math.max(4,Math.min(x+12,innerWidth-bounds.width-5))+"px";
     tip.style.top=Math.max(4,Math.min(y+12,innerHeight-bounds.height-5))+"px";
@@ -158,18 +163,17 @@ function detail(){
     const table=$("detail");table.replaceChildren();
     if(!selected){$("pairTitle").textContent="Pair detail";$("detailNote").textContent="No matching benchmarks."; $("failure").textContent="";return}
     const [a,b]=selected, cell=pairs.get(pairKey(a,b)), view=$("view").value;
-    $("pairTitle").textContent=a+" + "+b;
-    $("detailNote").textContent="T0 runs "+a+". T1 runs "+b+"."+
+    $("pairTitle").textContent=single?a:a+" + "+b;
+    $("detailNote").textContent=single?"All metrics measured for this benchmark. Hover a value for its confidence interval.":"T0 runs "+a+". T1 runs "+b+"."+
         (cell?.reference_thread!=null?" Reference T"+cell.reference_thread+" runs "+cell.reference_benchmark+" once.":"");
     const failed=failures(cell,null,null);
-    $("failure").textContent=failed.length?"Failed work items: "+failed.map(f=>(names[f.architecture]||f.architecture)+", seed "+f.seed+" ("+f.phase+")").join("; "):"";
-    const fields=[...new Set([$("metric").value,"ipc","thread_0_ipc","thread_1_ipc","weighted_speedup",
-        "rob_occupancy","block_occupancy","issue_utilization","cdb_contention","squash_rate","recovery_wait","merge_rate","merge_utilization","flush_utilization","storage_bits"])];
+    $("failure").textContent=failed.length?"Failed work items: "+failed.map(f=>archName(f.architecture)+", seed "+f.seed+" ("+f.phase+")").join("; "):"";
+    const fields=[...new Set([$("metric").value,...Object.keys(labels)])];
     const head=table.createTHead().insertRow();head.append(element("th",views[view]||"Metric"));
-    for(const arch of data.architectures)head.append(element("th",short[arch]));
+    for(const arch of data.architectures){const th=element("th",archShort(arch));th.title=archName(arch);head.append(th)}
     let count=0;
     for(const m of fields){
-        if(!data.architectures.some(arch=>value(cell,arch,view,m)))continue;
+        if(!data.architectures.some(arch=>value(cell,arch,view,m)))continue;  // Only metrics this run measured.
         const row=table.insertRow();row.append(element("th",label(view,m)));
         for(const arch of data.architectures){const v=value(cell,arch,view,m);const td=row.insertCell();td.textContent=v?.label??"—";td.title=statText(v)}
         count++;
@@ -185,21 +189,24 @@ function selectPair(a,b){
 }
 function render(){
     $("tip").hidden=true;
-    const arch=$("arch").value, view=$("view").value, metric=$("metric").value, table=$("matrix");
+    const view=$("view").value, metric=$("metric").value, table=$("matrix");
     displayed=visibleNames(); ranked=[];
     const centered=view==="relative"||metric.startsWith("vs_"), [low,high]=data.limits[view+"/"+metric]||[0,1];
     $("metricTitle").textContent=label(view,metric)||"Benchmark pairs";
     table.replaceChildren();
-    const header=table.createTHead().insertRow();header.append(element("th","T0 ↓   T1 →"));
-    for(const b of displayed)header.append(element("th",b));
+    // Columns: thread-1 benchmarks for SMT pairs, otherwise architectures.
+    const columns=single?data.architectures.map(arch=>({arch,title:archShort(arch)})):displayed.map(b=>({b,title:b}));
+    const header=table.createTHead().insertRow();header.append(element("th",single?"Benchmark ↓   Architecture →":"T0 ↓   T1 →"));
+    for(const c of columns){const th=element("th",c.title);if(c.arch)th.title=archName(c.arch);header.append(th)}
     const body=table.createTBody();
     for(const a of displayed){
         const row=body.insertRow();row.append(element("th",a));
-        for(const b of displayed){
+        for(const c of columns){
+            const b=c.b??a, arch=c.arch??$("arch").value;
             const cell=pairs.get(pairKey(a,b)), stat=value(cell,arch,view,metric);
-            const btn=element("button");btn.type="button";btn.className="cell";btn.dataset.a=a;btn.dataset.b=b;
-            btn.classList.toggle("diag",a===b);
-            btn.setAttribute("aria-label","T0 "+a+", T1 "+b+", "+statText(stat));
+            const btn=element("button");btn.type="button";btn.className="cell";btn.dataset.a=a;btn.dataset.b=b;btn.dataset.arch=arch;
+            btn.classList.toggle("diag",!single&&a===b);
+            btn.setAttribute("aria-label",(single?a+", "+archName(arch):"T0 "+a+", T1 "+b)+", "+statText(stat));
             if(stat){
                 ranked.push({a,b,val:stat.mean});const color=rgb(stat.mean,low,high,centered);
                 btn.style.backgroundColor="rgb("+color.join(",")+")";
@@ -210,7 +217,7 @@ function render(){
         }
     }
     ranked.sort((a,b)=>a.val-b.val);
-    $("shown").textContent=ranked.length+" of "+(displayed.length**2)+" visible cells measured";
+    $("shown").textContent=ranked.length+" of "+(displayed.length*columns.length)+" visible cells measured";
     const gradient=element("span");gradient.className="gradient";
     gradient.style.background=centered?"linear-gradient(90deg,#ac401d,#faf8f1,#0e727d)":"linear-gradient(90deg,#edf7f8,#579fad,#0d4465)";
     const swatch=element("span");swatch.className="swatch";
@@ -219,14 +226,19 @@ function render(){
     let note=centered?"Center = 1× (parity). Orange is lower, teal is higher. ":"Darker cells have higher values. ";
     if(data.paired&&view==="isolated"&&metric==="ipc")note+="Serial IPC is the instructions in both full iterations divided by their summed isolated cycles. ";
     if(metric==="weighted_speedup")note+="Weighted speedup sums each thread’s IPC divided by its isolated IPC. ";
-    $("scaleNote").textContent=note+"All architectures share this scale. Outlined diagonal cells run identical workloads.";
+    $("scaleNote").textContent=note+"All architectures share this scale."+(single?"":" Outlined diagonal cells run identical workloads.");
     $("lowest").disabled=$("highest").disabled=!ranked.length;
     if(!selected||!selected.every(n=>displayed.includes(n)))selected=ranked.length?[ranked[0].a,ranked[0].b]:displayed.length?[displayed[0],displayed[0]]:null;
     if(selected)selectPair(...selected);else detail();
 }
-$("suite").textContent=data.suite+" · Workload-pair matrix";
-$("scope").textContent=data.names.length+" benchmarks · "+data.pairs.length+" workload entries · "+expectedSeeds+" configured seeds";
-options($("arch"),data.architectures.map(a=>[a,names[a]]));
+document.body.classList.toggle("single",single);
+document.title=data.suite+(single?" · Benchmark results":" · Workload-pair matrix");
+$("suite").textContent=document.title;
+$("scope").textContent=data.names.length+" benchmarks · "+data.architectures.length+" architectures · "+
+    (single?"":data.pairs.length+" workload entries · ")+expectedSeeds+" configured seeds";
+$("arch").parentElement.hidden=single;
+$("matrix").setAttribute("aria-label",single?"Rows are benchmarks, columns are architectures":"Rows are thread 0, columns are thread 1");
+options($("arch"),data.architectures.map(a=>[a,archName(a)]));
 for(const id of ["arch","view"])$(id).addEventListener("change",()=>{chooseMetrics();render()});
 for(const id of ["metric","sort"])$(id).addEventListener("change",render);
 $("filter").addEventListener("input",render);

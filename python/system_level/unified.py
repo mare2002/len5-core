@@ -3,13 +3,13 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from .config import INTEGER_UNITS, distribution
+from .config import INTEGER_UNITS, UNLIMITED, distribution, limit
 from .metrics import Metrics
 from .state import Entry
 
 
 def station_capacity(execution: dict) -> int:
-    return sum(execution["units"][name]["rs_size"] for name in INTEGER_UNITS)
+    return sum(limit(execution["units"][name]["rs_size"]) for name in INTEGER_UNITS)
 
 
 def result_slots(unit: dict) -> int:
@@ -33,6 +33,8 @@ class Result:
 class UnifiedRS:
     def __init__(self, execution: dict):
         units = execution["units"]
+        if any(units[name]["count"] == UNLIMITED for name in INTEGER_UNITS):
+            raise ValueError("unified RS wrappers require finite ALU, MUL and DIV counts")
         self.wrappers = tuple(tuple(name for name in INTEGER_UNITS if index < units[name]["count"])
                               for index in range(max(units[name]["count"] for name in INTEGER_UNITS)))
         self.compatible = {
@@ -40,7 +42,7 @@ class UnifiedRS:
             for name in INTEGER_UNITS
         }
         self.capacity = station_capacity(execution)
-        self.issue_width = min(len(self.wrappers), execution["unified_issue_width"] or len(self.wrappers))
+        self.issue_width = min(len(self.wrappers), limit(execution["unified_issue_width"] or len(self.wrappers)))
         self.depth = {name: result_slots(units[name]) for name in INTEGER_UNITS}
         self.slots = [{name: {} for name in wrapper} for wrapper in self.wrappers]
         self.results: dict[int, Result] = {}

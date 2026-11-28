@@ -1,0 +1,39 @@
+# Frontend and branch-prediction comparison. Partial YAML: unspecified keys use config.yaml defaults.
+#
+#   make sim-run CONFIG=python/system_level/config/frontend.yaml PROJECT=hello_world
+#   make sim-run-benchmarks CONFIG=python/system_level/config/frontend.yaml SEEDS=3
+#
+# `<architecture>@<variant>` runs the backend with a configuration overlay. Built-in variants:
+# l0_only, l1_bim, gshare, tage, len5 (RTL geometry), ideal, ideal_frontend, ideal_backend, ideal_both,
+# unlimited_tage, unlimited_ras, perfect_ras, no_ras, ideal_icache, unlimited_btq.
+architectures:
+  enabled:
+  - basic_block_ooo_commit@l0_only
+  - basic_block_ooo_commit@len5
+  - basic_block_ooo_commit@l1_bim
+  - basic_block_ooo_commit@gshare
+  - basic_block_ooo_commit@tage
+  - basic_block_ooo_commit@unlimited_btq  # TAGE (default predictor) with unlimited BTQ capacity and training width
+  - basic_block_ooo_commit@ideal_frontend
+  - normal_ooo@l0_only
+  - normal_ooo@l1_bim
+  - normal_ooo@gshare
+  - normal_ooo@tage
+  - normal_ooo@ideal_frontend
+frontend:
+  wrong_path: full
+  variants:
+    # Example custom variant: TAGE with its direction lookup started in parallel with the I-cache,
+    # a shallow RAS that is accessed early from BTB call/return metadata and a small training queue.
+    tage_early:
+      frontend:
+        predictor: tage
+        tage: {start: pc, latency: 2}
+        ras: {depth: 8, access_stage: pcgen}
+        btq: {capacity: 8}
+simulation:
+  warmup_instructions: 0
+  parallel:
+    workers: auto
+plotting:
+  preset: essential

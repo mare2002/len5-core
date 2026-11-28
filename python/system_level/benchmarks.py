@@ -156,7 +156,8 @@ class SpikeTools:
                 script.write_text(f"until pc 0 {pc:x}\nrs {steps}\nq\n")
                 options += ["-d", f"--debug-cmd={script}"]
         self.run([*options, "--log-commits", f"--log={trace}", "-l", str(elf)], directory / "spike.log")
-        settings.update(type="spike", trace=str(trace), trace_start_pc=pc, trace_stop_at_self_jump=True)
+        settings.update(type="spike", trace=str(trace), trace_start_pc=pc, trace_stop_at_self_jump=True,
+                        elf=str(elf))
         window = csr_free_window(trace, pc, settings["trace_skip"], count) if automatic_window and count else None
         if window:
             for key in ("instructions", "trace_skip", "trace_start_pc"):

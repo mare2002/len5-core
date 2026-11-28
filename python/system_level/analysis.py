@@ -16,7 +16,8 @@ from tempfile import NamedTemporaryFile
 
 from .config import (BRANCH_FORWARDING_ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, DEFAULT_ARCHITECTURES,
                      IDEAL, IDEAL_OOO, SEPARATE_ARCHITECTURES, UNIFIED_ARCHITECTURES,
-                     UNIFIED_SUFFIX, configure, fixed, overlay)
+                     UNIFIED_SUFFIX, VARIANT_SEPARATOR, backend_name, configure, fixed, frontend_variant, overlay,
+                     variant_config)
 from .instruction import Instruction
 from .parallel import Progress, process_pool, run_jobs, worker_count
 from .simulator import Simulator
@@ -36,6 +37,26 @@ PAIRS = (*SEPARATE_PAIRS,
          *((arch + BRANCH_FORWARDING_SUFFIX, baseline + BRANCH_FORWARDING_SUFFIX)
            for arch, baseline in SEPARATE_PAIRS),
          *BRANCH_FORWARDING_PAIRS)
+
+
+def pairs_for(architectures: list[str]) -> list[tuple[str, str]]:
+    """Comparison pairs among enabled names: backend pairs within each frontend variant, plus each
+    variant against the first enabled variant (or the plain backend) of the same backend."""
+    enabled = set(architectures)
+    result = [pair for pair in PAIRS if set(pair) <= enabled]
+    variants = dict.fromkeys(frontend_variant(name) for name in architectures)
+    for variant in variants:
+        if variant is None:
+            continue
+        suffix = VARIANT_SEPARATOR + variant
+        result += [(a + suffix, b + suffix) for a, b in PAIRS if {a + suffix, b + suffix} <= enabled]
+    for name in architectures:
+        reference = next(other for other in architectures if backend_name(other) == backend_name(name))
+        if reference != name:
+            result.append((name, reference))
+    return result
+
+
 PRESETS = {
     "merge-width": {"basic_block.merging.width": [1, 2, 4, 8]},
     "flush-width": {"basic_block.flushing.width": [1, 2, 4, 8]},
@@ -45,6 +66,11 @@ PRESETS = {
     "physical-registers": {"basic_block.registers.integer_physical+basic_block.registers.fp_physical":
                            [40, 48, 64, 96, 128]},
     "rob-size": {"simulation.rob_size": [8, 16, 32, 64, 96]},
+    "frontend-predictor": {"frontend.predictor": ["l0_only", "l1_bim", "gshare", "tage", "len5", "ideal"]},
+    "fetch-fifo": {"frontend.memory_fifo.depth": [1, 2, 4, 8, 16, "unlimited"]},
+    "issue-queue": {"frontend.issue_queue.capacity": [8, 16, 32, 64, "unlimited"]},
+    "btq-capacity": {"frontend.btq.capacity": [0, 4, 8, 16, 32, "unlimited"]},
+    "ras-depth": {"frontend.ras.depth": [2, 4, 8, 16, 32, "unlimited"]},
 }
 BOOTSTRAP_DRAWS = 3000
 
@@ -148,17 +174,19 @@ def timings_for(program: Program, settings: str, seed: int, tid: int) -> list[Ti
 
 
 def execute(item: WorkItem) -> dict:
+    config = variant_config(item.config, item.architecture)
     programs = [program_for(program.settings, program.seed) for program in item.programs]
     for program in programs:
-        validate_program(program, item.config["execution"])
-    settings = json.dumps({key: item.config[key] for key in ("execution", "memory", "branch")}, sort_keys=True)
+        validate_program(program, config["execution"])
+    settings = json.dumps({key: config[key] for key in ("execution", "memory", "branch")}, sort_keys=True)
     timings = [timings_for(program, settings, item.seed, tid)
                for tid, program in enumerate(item.programs, item.thread)]
+    elfs = tuple(json.loads(program.settings).get("elf") for program in item.programs)
     if item.reference is not None:
-        return SMT(item.architecture, item.config, programs[0], tuple(timings), other_program=programs[1],
+        return SMT(item.architecture, config, programs[0], tuple(timings), other_program=programs[1],
                    names=item.names, sample_names=tuple(program.sample_name for program in item.programs),
-                   seed=item.seed, reference_thread=item.reference).run()
-    run = Simulator(item.architecture, item.config, programs[0], timings[0]).run()
+                   seed=item.seed, reference_thread=item.reference, elfs=elfs).run()
+    run = Simulator(item.architecture, config, programs[0], timings[0], seed=item.seed, elf=elfs[0]).run()
     return {"cycles": run["cycles"]} if item.calibration else run
 
 
@@ -213,6 +241,8 @@ def grid_points(config: dict, grid: dict[str, list]):
         for axis, value in parameters.items():
             for path in axis.split("+"):
                 setting(trial, path, value)
+        if any(path.startswith("frontend.") for path in paths):
+            trial["frontend"]["enabled"] = True  # Sweeping frontend parameters implies modeling the frontend.
         yield {"point": point, "parameters": parameters, "config": configure(trial)}
 
 
@@ -242,7 +272,8 @@ def plan(requests: dict, seeds: list[int]):
                     jobs.setdefault(key, WorkItem(f"{label} [{names[tid]}]", point["point"], 42, NORMAL,
                                                   baseline, (key[1],), calibration=True))
             # Isolated runs share a cache only when the workload, sampling, and timing configuration match.
-            effective = {k: v for k, v in cfg.items() if k in ("simulation", "execution", "basic_block", "branch", "memory")}
+            effective = {k: v for k, v in cfg.items()
+                         if k in ("simulation", "execution", "basic_block", "branch", "memory", "frontend")}
             effective["simulation"] = {k: v for k, v in cfg["simulation"].items() if k != "parallel"}
             fingerprint = json.dumps(effective, sort_keys=True)
             for seed in seeds:
@@ -276,7 +307,7 @@ def summarize_runs(report: dict) -> None:
                         report["ipc_summary"].append(dict(metadata, architecture=arch,
                             storage_bits=runs[0]["storage"]["total_bits"],
                             **summarize([r["ipc"] for r in runs], confidence)))
-                for faster, baseline in PAIRS:
+                for faster, baseline in pairs_for(archs):
                     a = grouped.get((index, faster, mode, tid))
                     b = grouped.get((index, baseline, mode, tid))
                     if a and b:

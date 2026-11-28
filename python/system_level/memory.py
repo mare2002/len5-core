@@ -2,6 +2,8 @@
 
 from heapq import heappop, heappush
 
+from .config import limit, upto
+
 from .instruction import Instruction
 from .metrics import Metrics
 from .state import Entry
@@ -31,9 +33,9 @@ class Memory:
         return self.store_buffers[0]
 
     def dispatch_stall(self, kind: str, thread_id: int = 0) -> str:
-        if kind == "load" and len(self.loads) >= self.config["load_buffer_capacity"]:
+        if kind == "load" and len(self.loads) >= limit(self.config["load_buffer_capacity"]):
             return "load_buffer_full"
-        if kind == "store" and len(self.store_buffers[thread_id]) >= self.config["store_buffer_capacity"]:
+        if kind == "store" and len(self.store_buffers[thread_id]) >= limit(self.config["store_buffer_capacity"]):
             return "store_buffer_full"
         return ""
 
@@ -50,9 +52,9 @@ class Memory:
                     self.thread_stats[entry.thread_id].counts["store_load_conflicts"] += 1
                     entry.conflict_seen = True
                 return "store_conflict"
-        if len(self.outstanding) >= self.config["max_outstanding_loads"]:
+        if len(self.outstanding) >= limit(self.config["max_outstanding_loads"]):
             return "outstanding_loads_full"
-        if entry.timing.cache != "l1" and self.misses >= self.config["mshr_capacity"]:
+        if entry.timing.cache != "l1" and self.misses >= limit(self.config["mshr_capacity"]):
             return "mshr_full"
         return ""
 
@@ -61,6 +63,8 @@ class Memory:
         self.misses += entry.timing.cache != "l1"
         stats = self.thread_stats[entry.thread_id]
         stats.counts["load_requests"] += 1
+        if entry.wrong_path:
+            stats.counts["wrong_path_load_requests"] += 1
         stats.histograms["cache_outcomes"][entry.timing.cache] += 1
 
     def request_load(self, entry: Entry, cycle: int) -> None:
@@ -86,7 +90,7 @@ class Memory:
                   for buffer in self.store_buffers]
         heads = [next(queue, None) for queue in queues]
         drained = 0
-        for _ in range(self.config["store_drain_width"]):
+        for _ in upto(limit(self.config["store_drain_width"])):
             for offset in range(len(heads)):
                 thread = (self.drain_priority + offset) % len(heads)
                 entry = heads[thread]
@@ -107,7 +111,8 @@ class Memory:
 
     def complete(self, cycle: int) -> list[Entry]:
         loads = []
-        remaining = self.config["response_width"]
+        remaining = limit(self.config["response_width"])
+        served = 0
         while self.responses and self.responses[0][0] <= cycle:
             due, _, entry = self.responses[0]
             if not entry.valid:
@@ -118,6 +123,7 @@ class Memory:
                 break
             heappop(self.responses)
             remaining -= 1
+            served += 1
             stats = self.thread_stats[entry.thread_id]
             stats.samples["memory_response_queue_wait"].add(cycle - due)
             if entry.kind == "load":
@@ -130,7 +136,7 @@ class Memory:
                 stats.samples["store_latency"].add(cycle - entry.authorized)
                 stats.event(cycle, "store_complete", index=entry.index, uid=entry.uid)
         if len(self.thread_stats) > 1:
-            self.stats.samples["memory_response_throughput"].add(self.config["response_width"] - remaining)
+            self.stats.samples["memory_response_throughput"].add(served)
         return loads
 
     def squash(self, entry: Entry, defer_store: bool = False) -> None:

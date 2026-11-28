@@ -41,6 +41,8 @@ class Entry:
     thread_id: int = 0
     thread_sequence: int = 0
     iteration: int | None = None
+    fetch: object = None          # Frontend record (prediction, history and RAS checkpoints)
+    wrong_path: bool = False
 
     @property
     def kind(self) -> str:

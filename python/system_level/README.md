@@ -41,8 +41,11 @@ Paths passed to Make are relative to the checkout root unless absolute. `BUILD_D
 | `instruction.py`, `workload.py`, `spike.py` | Instruction metadata, synthetic dependencies, Spike decoding and paired timing samples |
 | `simulator.py`, `rob.py`, `state.py` | Cycle scheduling, forwarding and retirement policies |
 | `memory.py`, `blocks.py` | Memory service, physical registers, adjacent merges and selective recovery |
-| `analysis.py`, `metrics.py`, `storage.py` | Paired experiments, measurements and bit estimates |
+| `analysis.py`, `metrics.py`, `storage.py` | Paired experiments, measurements, occupancy and bit estimates |
 | `benchmarks.py`, `results.py`, `plots.py` | Firmware and Spike orchestration, result layout and figures |
+| `frontend.py`, `image.py` | Frontend pipeline, I-cache, completion FIFO, issue queue and static instruction image |
+| `predictors.py`, `ras.py`, `btq.py` | BTBs, bimodal, GShare, TAGE, SRAM ports and bypass; RAS; branch training queue |
+| `frontend_plots.py` | Frontend, prediction, RAS, training and occupancy figures |
 
 ### Configuration
 
@@ -214,13 +217,132 @@ Speculative local retirement can release a ROB slot while the group is still awa
 
 Both conventional ROBs transfer results at handoff in cycle N and commit them in cycle N+1. An ordinary commit can complete while the next batch is accepted. Sequential allocation can first reuse a handed-off slot in cycle N+1, and the tail cannot skip an occupied slot. A prepared store can receive authorization when it is already at the head and the commit stage is ready. Its retirement still waits for the modeled memory response and CDB completion. The store-preparation broadcast remains part of the Python execution model. [RTL commit stage](../../rtl/expipe/commit-unit/commit_stage.sv)
 
-Branch resolution occurs at CDB broadcast. The model uses the younger part of the correct-path dynamic trace as a speculative work proxy and replays it after recovery. Program order and the branch snapshot restore the dependency map.
+Branch resolution occurs at CDB broadcast. Without the frontend, the model uses the younger part of the correct-path dynamic trace as a speculative work proxy and replays it after recovery. With the frontend, mispredictions come from the modeled predictors and the wrong path is fetched as described under [Frontend and branch prediction](#frontend-and-branch-prediction). Program order and the branch snapshot restore the dependency map.
 
 Normal OoO and LEN5 OoO commit start frontend redirection at detection and stop dispatch. Younger instructions can still occupy queues and execute speculatively. A completed mispredicted branch enters the commit stage from the ROB head in cycle N. It commits, flushes the younger instructions, and blocks new commit acceptance and store authorization in cycle N+1. Correct-path dispatch can resume in cycle N+2 if the frontend timer has expired and resources are available. An older detected misprediction can supersede a younger redirect, and its flush discards the younger recovery record. LEN5's memory-clear walk prevents irreversible lookahead commits past an unresolved or mispredicted branch. [RTL backend flush](../../rtl/expipe/commit-unit/commit_cu.sv)
 
 Basic-block OoO commit invalidates younger work at detection before any of that cycle's younger results can broadcast. Recovery detaches any invalid suffix of the branch's merged group, preserves its older span and starts frontend redirection immediately. The flush resource reclaims younger resident groups in reverse age order and charges one operation for a detached suffix that preserves its group's slot. PRF, store and block allocations from invalid groups remain reserved until the relevant flush operation. Correct-path dispatch can use already available resources as soon as redirection finishes. Merging and flushing use separate widths, and unaffected groups may merge during recovery when enabled.
 
 With event logging enabled, `commit_accept` records conventional ROB handoff, `commit` records architectural retirement, and `mispredict` and `backend_flush` record branch detection and flush. `commit_stage_occupancy` samples accepted entries awaiting retirement. `rob_reuse_delayed_cycles` counts dispatch stalls on slots handed off in the same cycle. LEN5 reports `rob_clear_wait_cycles` for a blocked clear cursor and `rob_clear_cdb_bypasses` for advances enabled by the current broadcast. `recovery_pending_cycles` counts cycles awaiting a backend flush. `recovery_wait_for_rob_head_cycles` counts only those cycles with older instructions still in the ROB. `recovery_detection_to_flush` gives the delay for each branch that reaches the head, and `recovery_pending_rob_occupancy` samples outstanding entries during the wait. `recovery_dispatch_extra_delay` measures how long dispatch takes to resume after the frontend timer expires.
+
+## Frontend and branch prediction
+
+The optional cycle-level frontend replaces the abstract `branch.misprediction_probability` and `branch.recovery_latency` model with real fetch, prediction and refill timing. It is off by default, so existing configurations and results are unchanged. Enable it for every architecture with `frontend.enabled: true`, or per architecture with a variant name such as `basic_block_ooo_commit@tage` in `architectures.enabled`. A variant is a configuration overlay of the `frontend`, `simulation`, `execution`, `basic_block`, `memory` and `branch` sections and always enables the frontend. Define your own under `frontend.variants`, or use a built-in one:
+
+| Built-in variant | Overlay |
+| --- | --- |
+| `l0_only`, `l1_bim`, `gshare`, `tage`, `ideal` | `frontend.predictor` |
+| `len5` | LEN5 RTL predictor: 16-entry direct-mapped full-tag BTB, HLEN=4 gshare and a 4-entry RAS |
+| `ideal_frontend` | Ideal predictor, perfect I-cache, perfect RAS, unlimited fetch FIFO, IQ, BTQ and fetch bandwidth |
+| `ideal_backend` | TAGE frontend with unlimited ROB, RS, execution lanes, CDB, commit, blocks, PRFs, merge/flush and memory queues |
+| `ideal_both` | Both of the above |
+| `unlimited_tage`, `unlimited_ras`, `unlimited_btq` | Unlimited storage only; predictors still learn and can mispredict |
+| `perfect_ras`, `no_ras`, `ideal_icache` | Oracle return targets, RAS disabled, always-hit I-cache |
+
+```sh
+make sim-run CONFIG=python/system_level/config/frontend.yaml PROJECT=hello_world
+make sim-run-benchmarks CONFIG=python/system_level/config/frontend.yaml SEEDS=3 BENCHMARKS="wikisort slre"
+make sim-sweep PRESET=ras-depth CONFIG=python/system_level/config/frontend.yaml
+```
+
+The [frontend example](config/frontend.yaml) compares the LEN5, bimodal, gshare, TAGE and ideal frontends. Sweep presets `frontend-predictor`, `fetch-fifo`, `issue-queue`, `btq-capacity` and `ras-depth` plot IPC and the frontend metrics against the swept setting. Sweeping any `frontend.*` path enables the frontend for that sweep. Each result directory stores the resolved configuration of every variant under `configs/point-N/<architecture>@<variant>.yaml`. The value `unlimited` removes one capacity or bandwidth limit and never stands for a large finite number. Storage capacity, bandwidth, latency and prediction quality are separate keys: an `unlimited` TAGE or RAS still learns and mispredicts; `predictor: ideal` and `ras.perfect` are oracles.
+
+### Pipeline
+
+The model follows [fetch_stage.sv](../../rtl/frontend/fetch_stage.sv). Each row is one RTL element and its modeled timing.
+
+| RTL element | Model |
+| --- | --- |
+| `pc_gen` + `bpu` | One aligned block of `fetch_width` slots per cycle. A zero-latency L0 prediction steers the next PC in the same cycle. A cycle with any redirect issues no fetch, as `valid_o` does. |
+| `fetch_mem_if` request spill cell | Skipped, as with `FETCH_REQ_SPILL_SKIP`. A request leaves when the completion FIFO has a reservation credit and the I-cache accepts it. |
+| `completion_fifo` | `memory_fifo.depth` reservations hold metadata until the ordered response leaves. Credit and the IQ's free entries come from registered state, so a slot freed in cycle N is reusable in N+1. With `drain_on_flush`, a flushed reservation stays occupied until its obsolete response returns and is discarded. In cancel mode the slot frees at once, but the memory transaction still occupies I-cache outstanding and response bandwidth. |
+| Answer spill cell → `early_jump_unit` | `predecode_latency` cycles. The final prediction is applied here in fetch order, one bundle per cycle, when predecode, direction and BTB data have all arrived. |
+| `instr_mixer` + output spill cell | `output_latency` cycles. Two bundles per spill cell (`stage_capacity`). |
+| `issue_queue` | `issue_queue.capacity` entries. A bundle enters only when all its instructions fit; the backend dispatch stage reads it in the next cycle at `simulation.dispatch_width`. |
+
+With a 1-cycle I-cache, an instruction fetched in cycle 1 dispatches in cycle 5, matching the RTL register stages. Instruction memory reuses the data cache's L1/L2/LLC/DRAM sampling with its own `frontend.icache` parameters, request and response bandwidth and in-order responses. The I-cache is shared by SMT threads.
+
+Backend recovery follows the existing commit policies. The conventional ROBs detect a misprediction at CDB broadcast. Issue stops immediately, the frontend flushes and redirects `redirect_delay` cycles later (`branch_cu` MIS → MIS_LOAD_PC and `issue_cu` S_FLUSH), and the backend flush still happens at commit. Basic-block commit invalidates younger blocks at detection and redirects after the same delay. The frontend refetches from the correct target instead of waiting for a sampled recovery timer.
+
+### Predictors and timing
+
+| `frontend.predictor` | Stage 0 (PC cycle) | L1 stage | Final stage (predecode) |
+| --- | --- | --- | --- |
+| `l0_only` | L0 BTB | | L0 counters, decoded direct targets |
+| `l1_bim` | L0 BTB | L1 BTB + bimodal | Bimodal, decoded targets |
+| `gshare` | L0 BTB | L1 BTB + bimodal | GShare |
+| `tage` | L0 BTB | L1 BTB + bimodal | TAGE with the bimodal base |
+| `len5` | BTB hit × gshare (committed history) | | Only JAL and canonical `ret` corrected, as in the early-jump unit |
+| `ideal` | Correct-path oracle | | Oracle |
+
+The L0 is a register-based, set-associative BTB with direction counters and the configured replacement. The L1 BTB is a set-associative SRAM with short target offsets plus a direct-mapped extended-target table, so partial tags and extended-target overwrites can produce wrong targets. Both can be keyed per slot or per fetch block. Each stage's prediction arrives at its own latency. A later stage that changes the followed exit or target redirects fetch and kills all younger bundles. GShare and TAGE lookups start when the instruction response arrives (`start: response`) or in parallel with the I-cache (`start: pc`). The final prediction waits for both the lookup and predecode. Predecode identifies conditional branches, JAL/JALR, calls, returns and coroutine swaps; computes direct targets; removes predictions on non-control slots; and selects the oldest reachable taken control-flow instruction. A JALR without a target falls through.
+
+The speculative global history is updated in fetch order at the final stage, one bit per conditional branch or one per bundle (`history.update`). A lookup that started before older bundles finalized used stale history. `history.stale_policy: relookup` re-reads the tables with the repaired history (a history-only correction); `use_stale` keeps the prediction and counts it. Backend recovery restores the branch's own history plus its actual outcome.
+
+TAGE uses folded-history index and tag hashes, parallel lookups of all tables, provider and alternate selection, a USE_ALT_ON_NA counter for weak new entries, 3-bit counters, usefulness counters, allocation into a longer table with a free useful bit, usefulness decay on failed allocation and periodic alternate-bit aging. Training uses the metadata saved at prediction time, so it needs no extra SRAM read port. A write-bypass buffer supplies values written since then. Without a bypass hit, a stale saved value overwrites the newer update; the model counts that as a lost update. GShare follows the same rule. Each SRAM has read and write ports per cycle, optionally as one shared port. A prediction read has priority over a training write. A training write blocked by a port conflict stalls the queue head.
+
+### Return address stack
+
+The RAS is a circular buffer of full return addresses with valid bits and write generations, a stack pointer, a live-entry count and a logical depth. Calls push the return address, which is PC plus the instruction length. Returns read the valid top and pop. `jalr` with `rd` and `rs1` both link registers but different (x1/x5) pops, then pushes. A pop moves the pointer without destroying data. With predecode access, each dynamic call or return updates the RAS once, in fetch order, at the final stage. With `access_stage: pcgen`, the update uses L0/L1 call/return metadata. When predecode disagrees, that update is undone and reapplied, and younger bundles refetch, which the model counts as a RAS repair.
+
+For a recognized return the target priority is a valid RAS top, then the L1 BTB, then the L0 BTB, then none. Only BTB data that has already arrived for that bundle counts, and a later L1 response never replaces a valid early RAS target. An invalid top, caused by underflow, overflow loss or corruption, falls back to the BTBs, and the reason is recorded. The BTBs keep learning actual return targets through normal training for that fallback. A RAS prediction never overrides an older taken branch in the same bundle.
+
+Each control instruction carries only the stack pointer, live count, logical depth, the push generation and the saved top entry. Recovery restores the pointer and the top address. It then invalidates live entries below the top whose generation shows that a squashed younger push overwrote them, and finally applies the recovering instruction's own RAS action once. Unaffected older entries are kept. The same checkpoints serve frontend redirects, conventional ROB recovery and basic-block flushes. They live on the backend entry, by stable allocation id, so block merges, selective flushes, slot reuse and BTQ drops cannot change them. An `unlimited` depth never overwrites; `perfect: true` is a separate oracle.
+
+### Branch training queue
+
+Successfully dispatched control instructions (RTL issue) allocate BTQ entries, oldest first, while capacity lasts. A full queue drops the remaining training opportunities and never stalls dispatch, execution or commit. Recovery does not depend on the BTQ. An entry is confirmed when its instruction commits (conventional ROBs and Ideal Commit) or when its basic block's group completes. Younger groups can confirm first. An entry becomes safe at irrevocable commitment: instruction commit, or block publication. Training leaves only from the head of each thread's queue, in order, once the head is safe, so a younger confirmed entry never trains while an older instruction can still squash it. Recovery removes all younger entries, including confirmed ones, and keeps the mispredicted branch's own entry. Wrong-path entries are always removed before they become safe, so wrong-path training is impossible. Training uses the original fetch PC, history and saved metadata with the actual outcome. It is limited by `btq.training_width` and the SRAM write ports. With `coalesce`, entries from the same fetch bundle share one masked row write.
+
+### Wrong-path modes
+
+| `wrong_path` | Behavior |
+| --- | --- |
+| `bubble` | Fetch stops when the followed path leaves the trace; only frontend corrections or backend recovery restart it |
+| `frontend` | Wrong-path bundles use the I-cache, completion FIFO, predecode, history, RAS and IQ but wait at the IQ head until recovery flushes them |
+| `full` | Wrong-path instructions also dispatch and use the ROB, blocks, PRFs, RS, execution units, load/store buffers, memory and CDB, then are squashed |
+
+The frontend tracks the correct-path trace position separately from the fetch PC and never identifies a dynamic instruction by PC. Wrong-path encodings come from the ELF (`workload.elf`, set automatically for benchmark runs), or else from PCs seen in the trace; other PCs decode as 4-byte non-control filler. Wrong-path operands come from the encoding. Execution and memory latencies are sampled from the configured distributions. A load or store uses the last correct-path address at that PC, otherwise a private non-aliasing address. Wrong-path loads do not wait for wrong-path stores. Wrong-path control instructions never mispredict, because their real outcomes are unknown. Wrong-path work never updates architectural state or trains predictors.
+
+### Statistics
+
+Every report adds an `occupancy` section. For each structure it gives the capacity, the time-weighted mean over all simulated cycles including idle ones, the mean as a percentage of capacity, the peak, a histogram, empty and full cycles and percentages, allocation failures and stall cycles. Unlimited structures report `capacity: unlimited` with a null percentage and full count. The structures are the ROB, each RS, load and store buffers, outstanding loads, MSHRs, CDB backlog, block slots and both PRFs. Frontend runs add the fetch FIFO, I-cache outstanding requests, both spill-cell stages, the IQ, the BTQ, confirmed BTQ entries, the RAS logical depth, valid RAS entries and the predictor bypass buffers. SMT reports put shared structures in the aggregate and private ones under each thread. All values are in `comparison.csv`/`summary.csv` as `occupancy:<structure>:<field>` and in `occupancy.csv`. Frontend runs add a `frontend` section, exported as `frontend:<metric>`.
+
+| Metric | Definition |
+| --- | --- |
+| `fetch_ipc`, `correct_path_fetch_ipc` | Instructions entering the IQ per cycle; only correct-path ones |
+| `issue_ipc`, `committed_ipc` | Dispatched (all paths) and committed instructions per cycle |
+| `frontend_starvation` | Fraction of cycles whose dispatch stopped on an empty IQ, outside recovery |
+| `backend_starvation` | Fraction of cycles whose dispatch stopped on a backend resource with a non-empty IQ |
+| `mpki`, `conditional_mpki`, `target_mpki`, `return_mpki` | Backend-detected mispredictions per 1000 committed instructions, by type |
+| `l0_accuracy`, `l1_accuracy`, `final_accuracy` | Correct next-PC predictions per stage over correct-path control instructions, counted once at the final stage; `*_direction_accuracy` covers conditional branches and `*_target_accuracy` taken non-conditional transfers |
+| `bp_override_useful/harmful:<stage>` | A stage made a previously wrong prediction correct, or a correct one wrong |
+| `fe_redirects:<source>` | Redirects from `l0` (delayed), `l1`, `final`, `ras_repair` and `backend` |
+| `ras_coverage`, `ras_accuracy`, `return_accuracy` | Correct-path returns with a valid RAS top; correct valid RAS predictions; returns not mispredicted by the backend |
+| `ras_fallback_reason:<reason>`, `ras_fallback_l1/l0(_correct)` | Invalid-top causes and the BTB fallbacks with their accuracy |
+| `ras_override_correct`, `ras_override_harmful` | A valid RAS target that differed from the BTB target and was right, or was wrong while the BTB was right |
+| `btq_*` | Allocations, drops by path, trained, flushed and confirmed-then-flushed entries, head-of-line blocking cycles (head not yet safe while confirmed entries wait) and SRAM conflicts; latency samples for prediction→training, issue→confirmation, confirmation→training and residence |
+| `branch_resolution_to_recovery`, `recovery_to_first_correct_fetch`, `recovery_to_first_correct_issue` | Detection to frontend flush; flush to the first correct-path bundle in the IQ; flush to its dispatch |
+| `tage_*` | Provider and usefulness histograms, allocations per table, allocation failures, replacements, resets, bypass hits, stale metadata, lost updates and valid entries per table |
+| `predictor_storage_bits` | Modeled predictor state, or null when any structure is unlimited |
+
+Accuracy counts only correct-path predictions; wrong-path work appears separately as `fe_wrong_path_fetched`, `wrong_path_dispatched` and `icache_wrong_path_requests`. Stall reasons are mutually exclusive per dispatch cycle: the first applicable reason in the order redirect, recovery, empty IQ, wrong-path hold, then backend resources.
+
+`simulation.warmup_instructions` simulates that many committed instructions first, then restarts every statistic while predictor, cache and pipeline state stay warm. The report's `warmup` section gives the boundary. SMT runs reject a warm-up because they measure until the reference workload completes.
+
+### Figures
+
+When frontend statistics exist, plots go under `plots/frontend`, `branch_prediction`, `ras`, `training`, `queue_occupancy`, `memory`, `recovery` and `ideal_comparison`. Single runs and sweeps draw grouped bars per architecture: throughput, starvation, wrong-path work, accuracy by stage, stacked MPKI, redirect sources, overrides, RAS events and accuracy, return target sources, BTQ events, latencies and conflicts, recovery latencies and the I-cache. They also draw TAGE provider, allocation and usefulness distributions, IPC against predictor storage, annotated heatmaps of mean, percentage, peak, empty, full and failure occupancy, and occupancy histograms. Sweeps add curves of IPC, MPKI, return MPKI and BTQ drops against the swept capacity. Benchmark suites draw annotated benchmark × architecture heatmaps of IPC, fetch IPC, starvation, MPKI, accuracy per stage, RAS coverage and return accuracy, return MPKI, BTQ drop rate, I-cache hit rate and recovery latency. They add occupancy heatmaps and IPC relative to the first variant of the same backend. The existing dashboard and suite figures include every `@variant`; its paired ratios still compare backend architectures only.
+
+### Assumptions and limitations
+
+- Traces cover the correct path only. Wrong-path operands, addresses and outcomes are approximated as described above.
+- One request per fetch block; an instruction that straddles the block end is fetched with its block.
+- The `len5` preset uses this model's RAS and BTQ-based commit-time training. The RTL restores its RAS from a resolution-time confirmed copy and trains the BTB and gshare at branch resolution, so `len5` matches the RTL's prediction structure and early-jump corrections, not its training timing (see [R01](../../tb/frontend/RTL_VERIFICATION_FINDINGS.md)).
+- Write generations are unbounded integers in Python; hardware would use wrapping tags compared against the checkpoint.
+- The bimodal table trains from its current value; only GShare and TAGE model saved-metadata staleness.
+- I-cache hits and misses are sampled per request from one seeded stream per run, not from a tag array, so different wrong paths change later samples.
+- Statistical mode steps every cycle when the frontend is enabled. The unified RS needs finite ALU, MUL and DIV counts.
+- The Python model was not compared cycle by cycle against an RTL simulation, because the FuseSoC flow was unavailable. Its pipeline latencies come from the RTL sources and directed tests pin them.
 
 ## Reports and sweeps
 
@@ -286,4 +408,4 @@ The conventional designs include the architectural RF, value-bearing ROB, regist
 
 The estimates include RS operand and scheduling state, load and store buffer records and ordering bits, and one CDB result latch per execution lane. SMT duplicates private files, ROBs, commit/recovery control, store buffers, and PRF allocation state. It adds a one-bit owner to every shared RS, load-buffer and block entry, and to each buffered CDB result. A shared block pool of 16 entries with 64 physical registers in each bank uses `16 * (378 + 128 + 1) = 8,112` bits (1,014 bytes) for maps, ownership and thread tags. Checkpoint, control, and value storage are accounted separately. The conventional RF and block PRF value subtotals at 64 bits per register are 8,064 and 16,384 bits under SMT.
 
-The figures report modeled state bits and rounded-up bytes. The expanded accounting applies to both modes, so storage totals in older reports can differ. Merge and flush widths affect arbitration and update ports. Their widths alone do not imply more state bits. The estimator excludes execution pipelines, combinational CDB wires, cache and predictor state, shared memory-service queues, and implementation-specific ECC, multiport overhead, routing, and timing costs. The model has no functional address generation, fault or CSR execution, or captured wrong-path trace. In statistical mode, SMT retains the simplified execution-lane model and advances the shared scheduler cycle by cycle. Use event-driven mode when modeling initiation intervals matters.
+The figures report modeled state bits and rounded-up bytes. The expanded accounting applies to both modes, so storage totals in older reports can differ. Merge and flush widths affect arbitration and update ports. Their widths alone do not imply more state bits. The estimator excludes execution pipelines, combinational CDB wires, cache and predictor state, shared memory-service queues, and implementation-specific ECC, multiport overhead, routing, and timing costs. Any `unlimited` backend capacity or bandwidth makes the estimate null, like the ideal baselines; the frontend reports its own `predictor_storage_bits`. The model has no functional address generation, fault or CSR execution, or captured wrong-path trace. In statistical mode, SMT retains the simplified execution-lane model and advances the shared scheduler cycle by cycle. Use event-driven mode when modeling initiation intervals matters.

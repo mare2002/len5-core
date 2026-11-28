@@ -18,13 +18,15 @@ architectures:
 simulation:
   mode: event_driven
   seed: 42
-  dispatch_width: 4
+  dispatch_width: 4           # Default: frontend.fetch_width (RTL LEN5_MULTIPLE_ISSUES)
   cdb_width: null
   commit_width: null
   rob_size: 32
   max_cycles: 1000000
   cdb_policy: oldest_completed
   record_events: false
+  # Committed instructions simulated before statistics restart (single-thread runs; state stays warm).
+  warmup_instructions: 0
   parallel:
     workers: auto
 smt:
@@ -48,7 +50,7 @@ execution:
         value: 1
       initiation_interval: 1
       rs_size: 12
-      rs_issue_width: 2
+      rs_issue_width: 4
     mul:
       count: 1
       latency:
@@ -56,7 +58,7 @@ execution:
         value: 3
       initiation_interval: 1
       rs_size: 6
-      rs_issue_width: 1
+      rs_issue_width: 4
     div:
       count: 1
       latency:
@@ -65,7 +67,7 @@ execution:
         max: 14
       initiation_interval: 8
       rs_size: 4
-      rs_issue_width: 1
+      rs_issue_width: 4
     branch:
       count: 1
       latency:
@@ -73,7 +75,7 @@ execution:
         value: 1
       initiation_interval: 1
       rs_size: 8
-      rs_issue_width: 1
+      rs_issue_width: 4
     lsu:
       count: 2
       latency:
@@ -81,7 +83,7 @@ execution:
         value: 1
       initiation_interval: 1
       rs_size: 12
-      rs_issue_width: 2
+      rs_issue_width: 4
     fp:
       count: 1
       latency:
@@ -89,7 +91,7 @@ execution:
         value: 4
       initiation_interval: 1
       rs_size: 8
-      rs_issue_width: 1
+      rs_issue_width: 4
   shared_rs: null
   # Optional ALU/MUL/DIV issue budget across wrappers for *_unified_rs variants.
   unified_issue_width: null
@@ -119,6 +121,85 @@ branch:
     type: uniform
     min: 5
     max: 12
+# Cycle-level frontend (rtl/frontend). Disabled: the abstract branch model above is used unchanged.
+# Enable it here or per architecture with `<architecture>@<variant>` in architectures.enabled.
+# `unlimited` removes a capacity or bandwidth limit; it never implies perfect prediction.
+frontend:
+  enabled: false
+  predictor: tage            # l0_only | l1_bim | gshare | tage | len5 | ideal
+  variants: {}               # name -> overlay of frontend/simulation/execution/basic_block/memory/branch
+  fetch_width: 4             # RTL LEN5_MULTIPLE_ISSUES (aligned fetch block)
+  instruction_bytes: 4
+  redirect_delay: 2          # Backend detection -> fetch flush and PC redirect (RTL branch_cu/issue_cu)
+  wrong_path: frontend       # bubble | frontend | full
+  unresolved_indirect: fallthrough
+  pipeline:
+    predecode_latency: 1     # Answer spill cell before the early-jump unit
+    output_latency: 1        # Output spill cell before the issue queue
+    stage_capacity: 2        # Bundles held by each spill cell
+  memory_fifo:
+    depth: 8                 # RTL FETCH_MEMIF_FIFO_DEPTH completion FIFO
+    drain_on_flush: true     # RTL FETCH_MEM_DRAIN_ON_FLUSH
+  icache:
+    perfect: false
+    l1: {miss_probability: 0.02, latency: 1}
+    l2: {miss_probability: 0.2, latency: 8}
+    llc: {miss_probability: 0.3, latency: 20}
+    dram_latency: {type: uniform, min: 40, max: 80}
+    queue_delay: {type: fixed, value: 0}
+    max_outstanding: unlimited   # Bounded by the completion FIFO
+    request_width: 1
+    response_width: 1
+  issue_queue:
+    capacity: 16             # RTL IQ_DEPTH; dequeue width is simulation.dispatch_width
+    enqueue_width: unlimited # Whole bundle per cycle, as in the RTL
+  history:
+    update: per_branch       # per_branch | per_bundle
+    stale_policy: relookup   # relookup | use_stale
+  l0_btb: {enabled: true, entries: 16, ways: 16, tag_bits: 12, offset_bits: 13, counter_bits: 2,
+           replacement: lru, latency: 0, organization: per_slot}
+  l1_btb: {sets: 128, ways: 2, tag_bits: 13, offset_bits: 13, extended_entries: 128, replacement: lru,
+           latency: 2, organization: per_slot, read_ports: 1, write_ports: 1, single_port: false}
+  bim: {entries: 2048, counter_bits: 2, read_ports: 1, write_ports: 1, single_port: false}
+  gshare: {entries: 4096, history_length: 16, counter_bits: 2, latency: 1, start: response,
+           organization: per_slot, history_compression: xor_fold, history: speculative, train_index: saved,
+           bypass_entries: 4, read_ports: 1, write_ports: 1, single_port: false}
+  tage:
+    tables:
+    - {entries: 256, tag_bits: 7, history_length: 2}
+    - {entries: 256, tag_bits: 7, history_length: 4}
+    - {entries: 512, tag_bits: 8, history_length: 8}
+    - {entries: 512, tag_bits: 8, history_length: 16}
+    - {entries: 256, tag_bits: 9, history_length: 32}
+    - {entries: 256, tag_bits: 9, history_length: 64}
+    counter_bits: 3
+    useful_bits: 2
+    useful_reset_period: 4096
+    use_alt_on_weak: true
+    latency: 1
+    start: response          # response | pc (parallel with the instruction cache)
+    bypass_entries: 4
+    read_ports: 1
+    write_ports: 1
+    single_port: false
+  ras:
+    enabled: true
+    depth: 16
+    access_stage: predecode  # predecode | pcgen (uses L0/L1 call/return metadata)
+    organization: circular
+    address_format: full_address
+    speculative: true
+    perfect: false           # Oracle return targets (reference only)
+    recovery:
+      mode: pointer_and_saved_top
+      invalidate_corrupted_entries: true
+      full_stack_checkpoint: false
+    target_priority: [ras, l1_btb, l0_btb]
+  btq:
+    capacity: 32
+    training_width: 1
+    coalesce: true
+  smt_predictors: shared     # shared | partitioned
 memory:
   l1:
     miss_probability: 0.12
@@ -153,6 +234,8 @@ workload:
   trace_skip: 0
   trace_start_pc: null
   trace_stop_at_self_jump: false
+  # ELF supplying wrong-path instruction encodings (benchmark runs set it automatically).
+  elf: null
   mix:
     alu: 52
     mul: 8

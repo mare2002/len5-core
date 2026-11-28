@@ -1,13 +1,17 @@
 """Deterministic execution pipeline shared by the commit architectures."""
 
 from collections import Counter, defaultdict
+from dataclasses import replace
 from heapq import heappop, heappush
 from itertools import islice
 
 from .blocks import Blocks, Group
+from math import inf
+
 from .config import (ARCHITECTURES, BLOCK_ARCHITECTURES, BRANCH_FORWARDING_ARCHITECTURES, IDEAL,
-                     IDEAL_OOO, INTEGER_UNITS, UNIFIED_RS, UNIT_FOR, WRAPPER_ARCHITECTURES,
-                     commit_architecture)
+                     IDEAL_OOO, INTEGER_UNITS, UNIFIED_RS, UNIT_FOR, UNLIMITED, WRAPPER_ARCHITECTURES,
+                     commit_architecture, frontend_variant, head, limit, upto, variant_config)
+from .frontend import Frontend, Shared, predictor_storage_bits
 from .instruction import Instruction, Register
 from .memory import Memory
 from .metrics import Metrics
@@ -17,14 +21,20 @@ from .unified import UnifiedRS
 from .workload import Timing
 
 LOCAL_FORWARDING_UNITS = frozenset(("alu", "mul", "div", "fp"))
+# Dispatch stalls that are allocation failures of a finite structure (time-weighted occupancy reports).
+OCCUPANCY_STALLS = {"rob_full": "rob", "load_buffer_full": "load_buffer", "store_buffer_full": "store_buffer",
+                    "block_capacity": "basic_blocks", "integer_prf": "integer_prf", "fp_prf": "fp_prf"}
 
 
 class Simulator:
     def __init__(self, architecture: str, config: dict, program: list[Instruction], timings: list[Timing],
                  *, core: "Simulator | None" = None, stats: Metrics | None = None,
-                 memory: Memory | None = None, block_pool: list[Group | None] | None = None):
+                 memory: Memory | None = None, block_pool: list[Group | None] | None = None,
+                 seed: int | None = None, elf: str | None = None):
         if architecture not in ARCHITECTURES or not program or len(program) != len(timings):
             raise ValueError("simulation requires a known architecture and matching nonempty program and timings")
+        if frontend_variant(architecture) is not None:
+            config = variant_config(config, architecture)
         self.architecture = architecture
         base = commit_architecture(architecture)
         self.ideal_commit = base == IDEAL
@@ -33,8 +43,8 @@ class Simulator:
         self.program = program
         self.timings = timings
         self.options = config["simulation"]
-        self.cdb_width = self.options["cdb_width"] or self.options["dispatch_width"]
-        self.commit_width = self.options["commit_width"] or self.options["dispatch_width"]
+        self.cdb_width = limit(self.options["cdb_width"] or self.options["dispatch_width"])
+        self.commit_width = limit(self.options["commit_width"] or self.options["dispatch_width"])
         self.statistical = self.options["mode"] == "statistical"
         self.core = self if core is None else core
         self.threads = (self,)
@@ -45,7 +55,9 @@ class Simulator:
         self.blocks = (Blocks(config["basic_block"], self.memory, self.stats, block_pool, self.thread_id,
                               unbounded=self.ideal_blocks) if architecture in BLOCK_ARCHITECTURES else None)
         self.enabled = {name: unit for name, unit in config["execution"]["units"].items() if unit["count"]}
-        self.lanes = ({name: [(0, 0, 0)] * unit["count"] for name, unit in self.enabled.items()}
+        # An unlimited unit starts with one lane and adds lanes whenever all are busy.
+        self.lanes = ({name: [(0, 0, 0)] * (1 if unit["count"] == UNLIMITED else unit["count"])
+                       for name, unit in self.enabled.items()}
                       if core is None else core.lanes)
         self.unified = core.unified if core is not None else None
         if core is None and architecture in WRAPPER_ARCHITECTURES:
@@ -54,10 +66,10 @@ class Simulator:
         shared = config["execution"]["shared_rs"]
         self.rs_for = {name: (UNIFIED_RS if self.unified and name in INTEGER_UNITS else
                               "shared" if shared else name) for name in self.enabled}
-        self.rs_limits = {name: (unit["rs_size"], unit["rs_issue_width"])
+        self.rs_limits = {name: (limit(unit["rs_size"]), limit(unit["rs_issue_width"]))
                           for name, unit in self.enabled.items() if self.rs_for[name] == name}
         if shared and (self.unified is None or "shared" in self.rs_for.values()):
-            self.rs_limits["shared"] = (shared["size"], shared["issue_width"])
+            self.rs_limits["shared"] = (limit(shared["size"]), limit(shared["issue_width"]))
         if self.unified and self.unified.wrappers:
             self.rs_limits[UNIFIED_RS] = (self.unified.capacity, self.unified.issue_width)
         self.rs: dict[int, Entry] = {} if core is None else core.rs
@@ -80,6 +92,16 @@ class Simulator:
         self.sequence = 0
         self.iteration: int | None = None
         self.dispatch_stall = ""
+        self.wrong_path_live = 0
+        self.warm: tuple[int, int, Counter] | None = None
+        self.frontend: Frontend | None = None
+        if config["frontend"]["enabled"]:
+            seed = self.options["seed"] if seed is None else seed
+            self.shared = core.shared if core is not None else Shared(config, seed, self.stats)
+            self.frontend = Frontend(config, program, self.thread_id, self.stats, self.shared, seed,
+                                     elf if elf is not None else config["workload"]["elf"])
+            if self.blocks:
+                self.blocks.btq = self.frontend.btq
         for instruction in program:
             if UNIT_FOR[instruction.kind] not in self.enabled:
                 raise ValueError(f"instruction {instruction.kind} has no enabled execution unit")
@@ -110,17 +132,37 @@ class Simulator:
 
     def dispatch(self, backend_flushing: bool = False, width: int | None = None) -> int:
         if width is None:
-            width = self.options["dispatch_width"]
+            width = limit(self.options["dispatch_width"])
         self.dispatch_stall = ""
         count = 0
-        while count < width and self.cursor < len(self.program):
-            instruction = self.program[self.cursor]
-            station = self.rs_for[UNIT_FOR[instruction.kind]]
-            dest = instruction.destination
+        frontend = self.frontend
+        if frontend is not None:
+            frontend.apply_recovery(self.cycle)
+        while count < width:
+            item = None
+            if frontend is None:
+                if self.cursor >= len(self.program):
+                    break
+                instruction = self.program[self.cursor]
+            else:
+                item = frontend.peek()
+                instruction = None
+                if item is not None:
+                    if item.index is None:
+                        instruction = frontend.wrong_path_instruction(item)[0] if frontend.wrong_path == "full" else None
+                    else:
+                        assert item.index == self.cursor, "the frontend must deliver the correct path in order"
+                        instruction = self.program[item.index]
+            dest = instruction.destination if instruction is not None else None
+            station = self.rs_for[UNIT_FOR[instruction.kind]] if instruction is not None else None
             if self.cycle < self.redirect_until:
                 stall = "frontend_redirect"
             elif self.pending_recovery is not None or backend_flushing:
                 stall = "recovery_backend_pending"
+            elif frontend is not None and item is None:
+                stall = "frontend_empty"
+            elif instruction is None:
+                stall = "wrong_path_hold"
             elif self.rob.full:
                 stall = "rob_full"
                 if self.rob.reuse_delayed:
@@ -138,6 +180,8 @@ class Simulator:
             if stall:
                 self.dispatch_stall = stall
                 self.stats.counts["dispatch_stall:" + stall] += 1
+                if stall in OCCUPANCY_STALLS or stall.startswith("rs_full:"):
+                    self.stats.occupancy_failure(OCCUPANCY_STALLS.get(stall, stall.replace("rs_full:", "rs:")), True)
                 if stall == "rs_full:" + UNIFIED_RS:
                     self.stats.counts["unified_rs_full_cycles"] += 1
                 if (self.blocks and self.blocks.reclaim and
@@ -147,12 +191,19 @@ class Simulator:
                         self.stats.counts["dispatch_stall_reclamation"] += 1
                 break
 
+            wrong_path = item is not None and item.index is None
+            if item is None:
+                timing = self.timings[self.cursor]
+            elif wrong_path:
+                timing = frontend.wrong_path_instruction(item)[1]
+            else:
+                timing = replace(self.timings[self.cursor], mispredict=item.mispredict)
             self.core.uid += 1
             sources = {reg: self.latest[reg] for reg in instruction.sources if reg in self.latest}
             waiting = {version.uid: reg for reg, version in sources.items() if not version.ready}
             operands = {reg: self.ready_operand(reg, version) for reg, version in sources.items() if version.ready}
             operands.update((reg, 0) for reg in instruction.sources if reg not in sources)
-            entry = Entry(self.core.uid, self.cursor, -1, instruction, self.timings[self.cursor],
+            entry = Entry(self.core.uid, self.cursor, -1, instruction, timing,
                           self.cycle, waiting, operands, self.cycle + 1, thread_id=self.thread_id)
             if self.stats.thread_id is not None:
                 self.sequence += 1
@@ -168,7 +219,7 @@ class Simulator:
             self.memory.allocate(entry)
             self.rs[entry.uid] = entry
             self.rs_occupancy[station] += 1
-            self.log("dispatch", entry)
+            self.log("dispatch", entry, wrong_path=int(wrong_path)) if wrong_path else self.log("dispatch", entry)
             wrapper_input = station == UNIFIED_RS or (self.branch_forwarding and UNIT_FOR[entry.kind] == "branch")
             for producer_uid in tuple(waiting):
                 if wrapper_input:
@@ -189,7 +240,17 @@ class Simulator:
                 if self.blocks is None:
                     self.stats.samples["recovery_dispatch_extra_delay"].add(self.cycle - self.redirect_until)
                 self.redirect_started = None
-            self.cursor += 1
+            if item is not None:
+                frontend.pop(self.cycle)
+                entry.fetch, entry.wrong_path = item, wrong_path
+                if instruction.control:
+                    frontend.btq.allocate(entry.uid, self.thread_id, item.index, item, self.cycle)
+            if wrong_path:
+                self.wrong_path_live += 1
+                self.stats.counts["wrong_path_dispatched"] += 1
+                self.stats.counts["wrong_path_dispatched:" + instruction.kind] += 1
+            else:
+                self.cursor += 1
             count += 1
         if self.blocks and self.cursor == len(self.program):
             self.blocks.seal()
@@ -227,11 +288,14 @@ class Simulator:
                 stats.counts[f"wrapper_issues:{lane}"] += 1
                 available = True
             elif self.statistical:
-                available = units[name] < len(lanes)
+                available = units[name] < len(lanes) or self.enabled[name]["count"] == UNLIMITED
                 lane = 0
             else:
                 lane = min(range(len(lanes)), key=lambda i: lanes[i][0])
                 available = lanes[lane][0] <= self.cycle
+                if not available and self.enabled[name]["count"] == UNLIMITED:
+                    lanes.append((0, 0, 0))
+                    lane, available = len(lanes) - 1, True
             if not available:
                 stats.counts["issue_blocked:execution_unit:" + name] += 1
                 continue
@@ -248,6 +312,8 @@ class Simulator:
             stats.samples["rs_wait:" + station].add(self.cycle - entry.dispatched)
             stats.samples["dependency_wait"].add(entry.ready_since - entry.dispatched - 1)
             stats.counts["issues:" + name] += 1
+            if entry.wrong_path:
+                stats.counts["wrong_path_issued"] += 1
             if station == UNIFIED_RS:
                 self.log("issue", entry, wrapper=lane)
             else:
@@ -333,10 +399,10 @@ class Simulator:
     def select_broadcasts(self) -> list[tuple[int, Entry]]:
         pending = sorted(self.cdb.values(), key=lambda item: (item[0], item[1].uid))
         if self.options["cdb_policy"] == "oldest_completed":
-            return pending[:self.cdb_width]
+            return head(pending, self.cdb_width)
         priority = ("load", "branch", "alu", "mul", "div", "fp")
         stores = [item for item in pending if item[1].kind == "store"]
-        selected = stores[:self.cdb_width]
+        selected = head(stores, self.cdb_width)
         low = [item for item in pending if item[1].kind != "store"]
         while low and len(selected) < self.cdb_width:
             sources = {"branch" if entry.kind == "jump" else entry.kind for _, entry in low}
@@ -409,10 +475,18 @@ class Simulator:
     def detect_misprediction(self, branch: Entry) -> None:
         redirect = self.pending_recovery is None or branch.uid < self.pending_recovery.uid
         self.stats.counts["mispredictions"] += 1
+        if self.frontend is not None:
+            item = branch.fetch
+            kind = ("conditional" if item.static.cfi == "branch" else
+                    "return" if item.action in ("pop", "pop_push") else "target")
+            self.stats.counts["mispredictions:" + kind] += 1
         if redirect:
-            self.redirect_until = self.cycle + branch.timing.recovery
+            latency = branch.timing.recovery if self.frontend is None else self.frontend.f["redirect_delay"]
+            self.redirect_until = self.cycle + latency
             self.redirect_started = self.cycle
-            self.stats.samples["frontend_recovery_latency"].add(branch.timing.recovery)
+            self.stats.samples["frontend_recovery_latency"].add(latency)
+            if self.frontend is not None:
+                self.frontend.schedule_recovery(branch, self.cycle)
         if self.blocks:
             self.log("mispredict", branch, frontend_ready=self.redirect_until)
         else:
@@ -423,8 +497,13 @@ class Simulator:
     def recover(self, branch: Entry) -> None:
         assert branch.checkpoint is not None
         self.latest = branch.checkpoint.copy()
-        self.stats.counts["squashed_instructions"] += self.cursor - branch.index - 1
+        self.stats.counts["squashed_instructions"] += self.cursor - branch.index - 1 + self.wrong_path_live
+        self.stats.counts["wrong_path_squashed"] += self.wrong_path_live
+        self.wrong_path_live = 0
         self.cursor = branch.index + 1
+        if self.frontend is not None:
+            # Younger training entries, confirmed or not, are discarded; the branch's own entry survives.
+            self.frontend.btq.flush_younger(branch.uid)
         if self.blocks:
             self.detect_misprediction(branch)
         else:
@@ -478,7 +557,7 @@ class Simulator:
 
     def accept_commit(self) -> int:
         self.authorize_head_store()
-        for _ in range(self.commit_width):
+        for _ in upto(self.commit_width):
             entry = self.accept_one()
             if entry is None or entry.timing.mispredict:
                 break
@@ -492,7 +571,7 @@ class Simulator:
     def retire(self) -> int:
         if self.blocks:
             ready = (entry for entry in self.rob.entries.values() if entry.done and not entry.faulted)
-            retire = list(ready if self.ideal_blocks else islice(ready, self.commit_width))
+            retire = list(ready if self.ideal_blocks or self.commit_width == inf else islice(ready, self.commit_width))
             for entry in retire:
                 self.local_retire(entry)
             count = len(retire)
@@ -506,6 +585,8 @@ class Simulator:
         return count
 
     def commit_entry(self, entry: Entry) -> None:
+        if self.frontend is not None and entry.instruction.control:
+            self.frontend.btq.commit(entry.uid, self.cycle)
         if entry.timing.mispredict:
             self.recover(entry)
             entry.checkpoint = None
@@ -579,6 +660,45 @@ class Simulator:
             self.unified.observe(self.stats, cycles)
         self.memory.observe(cycles)
         self.observe_blocks(merged, flushed, cycles)
+        self.observe_occupancy(self.stats, (self,), cycles)
+        if self.frontend is not None:
+            sample["wrong_path_inflight"].add(self.wrong_path_live, cycles)
+
+    def observe_occupancy(self, stats: Metrics, threads: tuple, cycles: int = 1, *, shared: bool = True,
+                          private: bool = True) -> None:
+        """Time-weighted occupancy of every finite backend structure, including idle cycles."""
+        memory, config = self.memory, self.config["memory"]
+        if private:
+            for thread in threads:
+                thread_stats = thread.stats if len(threads) > 1 else stats
+                thread_stats.occupy("rob", len(thread.rob.entries),
+                                    None if thread.rob.unbounded else limit(thread.rob.size), cycles)
+                thread_stats.occupy("store_buffer", len(memory.store_buffers[thread.thread_id]),
+                                    limit(config["store_buffer_capacity"]), cycles)
+                if thread.blocks and len(threads) > 1:
+                    for bank, name in (("x", "integer_prf"), ("f", "fp_prf")):
+                        thread_stats.occupy(name, thread.blocks.prf.occupancy(bank),
+                                            thread.blocks.prf.capacity[bank] if not thread.blocks.prf.unbounded else None,
+                                            cycles)
+                if thread.frontend is not None:
+                    thread.frontend.observe(cycles)
+        if not shared:
+            return
+        for station, (size, _) in self.rs_limits.items():
+            stats.occupy("rs:" + station, self.rs_occupancy[station], limit(size), cycles)
+        stats.occupy("load_buffer", len(memory.loads), limit(config["load_buffer_capacity"]), cycles)
+        stats.occupy("outstanding_loads", len(memory.outstanding), limit(config["max_outstanding_loads"]), cycles)
+        stats.occupy("mshr", memory.misses, limit(config["mshr_capacity"]), cycles)
+        stats.occupy("cdb_backlog", len(self.cdb), None, cycles)
+        if self.blocks:
+            reserved = (sum(group is not None for group in self.blocks.pool) if self.blocks.pool is not None
+                        else self.blocks.reserved)
+            stats.occupy("basic_blocks", reserved,
+                         None if self.blocks.unbounded else limit(self.blocks.config["max_active_blocks"]), cycles)
+            if len(threads) == 1:
+                for bank, name in (("x", "integer_prf"), ("f", "fp_prf")):
+                    stats.occupy(name, self.blocks.prf.occupancy(bank),
+                                 None if self.blocks.prf.unbounded else self.blocks.prf.capacity[bank], cycles)
 
     def observe_recovery(self, cycles: int = 1) -> None:
         if self.pending_recovery is not None:
@@ -632,9 +752,14 @@ class Simulator:
         self.finish_execution()
         self.forward_unified()
         dispatched = self.dispatch(backend_flushing)
+        fetched = 0
+        if self.frontend is not None:
+            fetched = self.frontend.step(self.cycle)
+            self.frontend.train(self.cycle)
+            self.stats.samples["fetch_throughput"].add(fetched)
         self.observe(issued, broadcasts, merged, flushed)
         self.rob.released.clear()
-        return (retired + accepted + merged + flushed + issued + dispatched + broadcasts + published
+        return (retired + accepted + merged + flushed + issued + dispatched + broadcasts + published + fetched
                 + self.stats.counts["stores_serviced"] - old_stores)
 
     def publish_blocks(self) -> int:
@@ -651,6 +776,8 @@ class Simulator:
 
     def skip_idle(self) -> None:
         # A quiescent statistical core can advance directly to the next timed event.
+        if self.frontend is not None:
+            return  # The frontend has its own timers; step every cycle.
         if self.unified and (self.unified.results or any(
                 due > self.cycle for name in INTEGER_UNITS for due, _, _ in self.lanes.get(name, ()))):
             return
@@ -693,8 +820,19 @@ class Simulator:
             progress = self.step()
             if self.statistical and not progress:
                 self.skip_idle()
+            if self.warm is None and self.committed >= self.options["warmup_instructions"] > 0:
+                self.begin_measurement()
         self.verify_done()
         return self.report()
+
+    def begin_measurement(self) -> None:
+        """End of warm-up: keep all microarchitectural state, restart every statistic."""
+        stats = self.stats
+        self.warm = (self.cycle, self.committed, Counter(stats.counts))
+        stats.counts.clear()
+        stats.samples.clear()
+        stats.histograms.clear()
+        stats.occupancy.clear()
 
     def verify_done(self) -> None:
         assert self.cursor == self.committed == len(self.program)
@@ -705,7 +843,8 @@ class Simulator:
             assert all(result.broadcast for result in self.unified.results.values())
             self.unified.discard()
         assert self.pending_recovery is None and not self.commit_stage
-        assert self.stats.counts["dispatched"] == self.committed + self.stats.counts["squashed_instructions"]
+        counts = self.stats.counts + (self.warm[2] if self.warm else Counter())
+        assert counts["dispatched"] == self.committed + counts["squashed_instructions"]
         self.verify_registers()
 
     def verify_registers(self) -> None:
@@ -725,6 +864,8 @@ class Simulator:
         self.redirect_until = 0
         self.redirect_started = None
         self.rob.tail = self.rob.clear_index = 0
+        if self.frontend is not None:
+            self.frontend.restart()
         if self.blocks:
             assert not self.blocks.reserved and not self.blocks.owners and not self.blocks.reclaim
             self.blocks.reset_registers()
@@ -747,6 +888,9 @@ class Simulator:
         stats = self.stats if stats is None else stats
         committed = self.committed if committed is None else committed
         elapsed = self.cycle
+        if self.warm is not None:
+            elapsed -= self.warm[0]
+            committed -= self.warm[1]
         counts = stats.counts
         for name in ("mispredictions", "squashed_instructions", "load_requests", "stores_authorized",
                      "stores_serviced", "store_load_conflicts", "cdb_contention_cycles"):
@@ -765,19 +909,20 @@ class Simulator:
         issue_capacity = sum(min(size, width, lanes_per_station[station])
                              for station, (size, width) in self.rs_limits.items())
         report = stats.report()
-        report.update(architecture=self.architecture, cycles=self.cycle, committed=committed,
+        report.update(architecture=self.architecture, cycles=elapsed, committed=committed,
                       ipc=committed / elapsed, mode=self.options["mode"],
-                      cdb_utilization=counts["broadcasts"] / (elapsed * self.cdb_width),
+                      cdb_utilization=None if self.cdb_width == inf else counts["broadcasts"] / (elapsed * self.cdb_width),
                       issue_utilization=stats.samples["issue_throughput"].total /
                       (elapsed * issue_capacity),
-                      retirement_utilization=None if self.rob.unbounded else
+                      retirement_utilization=None if self.rob.unbounded or self.commit_width == inf else
                       counts["rob_retirements"] / (elapsed * self.commit_width),
                       execution_units={eu: {
                           "issues": counts["issues:" + eu],
-                          "issue_utilization": counts["issues:" + eu] / (elapsed * unit["count"]),
+                          "issue_utilization": None if unit["count"] == UNLIMITED else
+                          counts["issues:" + eu] / (elapsed * unit["count"]),
                           "lane_utilization": (stats.samples["execution_lane_busy:" + eu].total /
-                                           (elapsed * unit["count"]) if not self.statistical or
-                                           self.rs_for[eu] == UNIFIED_RS else None),
+                                           (elapsed * unit["count"]) if unit["count"] != UNLIMITED and
+                                           (not self.statistical or self.rs_for[eu] == UNIFIED_RS) else None),
                       } for eu, unit in self.enabled.items()})
         if self.unified:
             report["wrappers"] = {str(index): {
@@ -787,8 +932,60 @@ class Simulator:
         if self.blocks:
             for name, section, metric in (("merge", "merging", "merges"),
                                           ("flush", "flushing", "flush_operations")):
-                report[name + "_utilization"] = (None if self.ideal_blocks and name == "merge" else
-                                                counts[metric] / (elapsed * self.blocks.config[section]["width"]))
+                width = limit(self.blocks.config[section]["width"])
+                report[name + "_utilization"] = (None if self.ideal_blocks and name == "merge" or width == inf else
+                                                counts[metric] / (elapsed * width))
+        if self.warm is not None:
+            report["warmup"] = {"cycles": self.warm[0], "instructions": self.warm[1]}
+        if self.frontend is not None:
+            report["frontend"] = self.frontend_summary(stats, committed, elapsed)
         if stats.events is not None:
             report["events"] = stats.events
         return report
+
+    def frontend_summary(self, stats: Metrics, committed: int, elapsed: int) -> dict:
+        """Derived frontend, prediction, RAS and training metrics (precise definitions in the README)."""
+        for thread in self.threads:
+            if thread.frontend is not None:
+                thread.frontend.finish()
+        c = stats.counts
+        kilo = committed / 1000 if committed else None
+
+        def ratio(numerator: str, denominator: str | int) -> float | None:
+            total = c.get(denominator, 0) if isinstance(denominator, str) else denominator
+            return c.get(numerator, 0) / total if total else None
+
+        def mpki(name: str) -> float | None:
+            return c.get(name, 0) / kilo if kilo else None
+
+        summary = {
+            "predictor": self.config["frontend"]["predictor"], "wrong_path": self.config["frontend"]["wrong_path"],
+            "fetch_ipc": c.get("fe_instructions_fetched", 0) / elapsed,
+            "correct_path_fetch_ipc": c.get("fe_correct_path_fetched", 0) / elapsed,
+            "issue_ipc": c.get("dispatched", 0) / elapsed,
+            "committed_ipc": committed / elapsed,
+            "frontend_starvation": c.get("dispatch_stall:frontend_empty", 0) / elapsed,
+            "backend_starvation": sum(v for k, v in c.items() if k.startswith("dispatch_stall:") and k not in (
+                "dispatch_stall:frontend_empty", "dispatch_stall:frontend_redirect",
+                "dispatch_stall:recovery_backend_pending", "dispatch_stall:wrong_path_hold")) / elapsed,
+            "mpki": mpki("mispredictions"), "conditional_mpki": mpki("mispredictions:conditional"),
+            "target_mpki": mpki("mispredictions:target"), "return_mpki": mpki("mispredictions:return"),
+            "l0_btb_hit_rate": ratio("bp_l0_hits", c.get("bp_l0_hits", 0) + c.get("bp_l0_misses", 0)),
+            "l1_btb_hit_rate": ratio("bp_l1_hits", c.get("bp_l1_hits", 0) + c.get("bp_l1_misses", 0)),
+            "icache_hit_rate": ratio("icache_hits", "icache_requests"),
+            "ras_coverage": ratio("ras_valid_predictions", "ras_returns_on_path"),
+            "ras_accuracy": ratio("ras_correct_predictions", "ras_valid_predictions"),
+            "return_accuracy": 1 - c.get("mispredictions:return", 0) / c["bp_return_instructions"]
+            if c.get("bp_return_instructions") else None,
+            "ras_l1_fallback_accuracy": ratio("ras_fallback_l1_correct", "ras_fallback_l1"),
+            "ras_l0_fallback_accuracy": ratio("ras_fallback_l0_correct", "ras_fallback_l0"),
+            "btq_drop_rate": ratio("btq_dropped", c.get("btq_allocated", 0) + c.get("btq_dropped", 0)),
+            "wrong_path_fetch_fraction": ratio("fe_wrong_path_fetched", "fe_instructions_fetched"),
+            "tage_bypass_hit_rate": ratio("tage_bypass_hits", "btq_trained"),
+            "predictor_storage_bits": predictor_storage_bits(self.config["frontend"])["total"],
+        }
+        for stage in ("l0", "l1", "final"):
+            summary[f"{stage}_accuracy"] = ratio(f"bp_{stage}_correct", f"bp_{stage}_predictions")
+            summary[f"{stage}_direction_accuracy"] = ratio(f"bp_{stage}_direction_correct", f"bp_{stage}_conditional")
+            summary[f"{stage}_target_accuracy"] = ratio(f"bp_{stage}_target_correct", f"bp_{stage}_target_predictions")
+        return summary

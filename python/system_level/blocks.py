@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from heapq import heappop, heappush
 
+from .config import UNLIMITED, head, limit, upto
 from .instruction import Instruction, Register
 from .memory import Memory, overlaps
 from .metrics import Metrics
@@ -14,9 +15,12 @@ Physical = tuple[str, int]
 
 class Registers:
     def __init__(self, config: dict, *, unbounded: bool = False):
-        self.unbounded = unbounded
-        self.capacity = ({"x": 31, "f": 32} if unbounded else
-                         {"x": config["integer_physical"], "f": config["fp_physical"]})
+        # A bank grows on demand for the ideal baseline or when its capacity is unlimited.
+        self.growable = {"x": unbounded or config["integer_physical"] == UNLIMITED,
+                         "f": unbounded or config["fp_physical"] == UNLIMITED}
+        self.unbounded = all(self.growable.values())
+        self.capacity = {bank: (31 if bank == "x" else 32) if self.growable[bank] else
+                         config["integer_physical" if bank == "x" else "fp_physical"] for bank in "xf"}
         self.free = {"x": list(range(31, self.capacity["x"])),
                      "f": list(range(32, self.capacity["f"]))}
         self.architectural = {**{("x", i): ("x", i - 1) for i in range(1, 32)},
@@ -32,7 +36,7 @@ class Registers:
         if self.free[bank]:
             index = heappop(self.free[bank])
         else:
-            assert self.unbounded
+            assert self.growable[bank]
             index = self.capacity[bank]
             self.capacity[bank] += 1
         physical = bank, index
@@ -71,6 +75,7 @@ class Span:
     ownership: dict[str, int] = field(default_factory=lambda: {"x": 0, "f": 0})
     stores: list[Entry] = field(default_factory=list)
     discarded_destinations: list[Physical] = field(default_factory=list)
+    controls: list[Entry] = field(default_factory=list)   # Training-queue ownership by stable uid
 
     @property
     def complete(self) -> bool:
@@ -127,6 +132,7 @@ class Blocks:
         self.stats = stats
         self.pool = pool
         self.unbounded = unbounded
+        self.slots_unbounded = unbounded or config["max_active_blocks"] == UNLIMITED
         self.thread_id = thread_id
         self.memory = memory
         self.prf = Registers(config["registers"], unbounded=unbounded)
@@ -135,6 +141,7 @@ class Blocks:
         self.owners: dict[int, Span] = {}
         self.reserved = 0
         self.age = 0
+        self.btq = None
 
     @property
     def open_span(self) -> Span | None:
@@ -156,10 +163,10 @@ class Blocks:
         ):
             span.sealed = True
             span = None
-        if span is None and not self.unbounded and (None not in self.pool if self.pool is not None
+        if span is None and not self.slots_unbounded and (None not in self.pool if self.pool is not None
                              else self.reserved >= self.config["max_active_blocks"]):
             return "block_capacity"
-        if (not self.prf.unbounded and dest is not None and (span is None or dest not in span.mapping)
+        if (dest is not None and not self.prf.growable[dest[0]] and (span is None or dest not in span.mapping)
                 and not self.prf.free[dest[0]]):
             # Closing a partially filled block lets its results replace the architectural map.
             if span is not None:
@@ -174,7 +181,7 @@ class Blocks:
             span = Span(entry.index)
             group = Group(self.age, [span], thread_id=self.thread_id)
             if self.pool is not None:
-                if self.unbounded and None not in self.pool:
+                if self.slots_unbounded and None not in self.pool:
                     self.pool.append(None)
                 group.slot = self.pool.index(None)
                 self.pool[group.slot] = group
@@ -199,6 +206,7 @@ class Blocks:
         limit = self.config["max_instructions"]
         if entry.instruction.control:
             span.branch = entry
+            span.controls.append(entry)
         if entry.instruction.control or (limit is not None and span.count == limit):
             span.sealed = True
         group = self.groups[-1]
@@ -273,6 +281,7 @@ class Blocks:
             older.count += younger.count
             older.retired += younger.retired
             older.stores.extend(younger.stores)
+            older.controls.extend(younger.controls)
         group.spans = kept
 
     def publish(self, cycle: int) -> int:
@@ -287,6 +296,10 @@ class Blocks:
                     self.memory.authorize(store, cycle)
                 self.prf.publish(span.mapping)
                 committed += span.count
+                if self.btq is not None:
+                    # Publication is the irrevocable commitment that makes training safe.
+                    for control in span.controls:
+                        self.btq.commit(control.uid, cycle)
             self.groups.pop(0)
             self.release_group(group)
             self.stats.counts["block_groups_published"] += 1
@@ -312,6 +325,11 @@ class Blocks:
         for group in self.groups:
             if group.complete and group.complete_since is None:
                 group.complete_since = cycle
+                if self.btq is not None:
+                    # Speculative confirmation: younger groups may confirm before older ones.
+                    for span in group.spans:
+                        for control in span.controls:
+                            self.btq.confirm(control.uid, cycle)
             if len(group.spans) > 1 and group.spans[0].branch is None:
                 self.compact(group)
         conflicts: set[tuple[int, int]] = set()
@@ -319,8 +337,8 @@ class Blocks:
         self.stats.samples["merge_candidates"].add(len(candidates))
         merged = 0
         if width is None:
-            width = len(self.groups) - 1 if self.unbounded else self.config["merging"]["width"]
-        for _ in range(width):
+            width = len(self.groups) - 1 if self.unbounded else limit(self.config["merging"]["width"])
+        for _ in upto(width):
             if not candidates:
                 break
             index = candidates[0]
@@ -376,8 +394,8 @@ class Blocks:
 
     def flush(self, cycle: int, width: int | None = None) -> int:
         if width is None:
-            width = self.config["flushing"]["width"]
-        reclaimed = sorted(self.reclaim, reverse=True)[:width]
+            width = limit(self.config["flushing"]["width"])
+        reclaimed = head(sorted(self.reclaim, reverse=True), width)
         for age in reclaimed:
             task = self.reclaim.pop(age)
             before = self.prf.freed

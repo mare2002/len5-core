@@ -4,7 +4,7 @@ from collections import defaultdict
 from math import isfinite
 
 from .analysis import BLOCKS, IDEAL, LEN5, NORMAL, PAIRS
-from .config import ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, UNIFIED_RS, UNIFIED_SUFFIX
+from .config import ARCHITECTURES, BRANCH_FORWARDING_SUFFIX, UNIFIED_RS, UNIFIED_SUFFIX, backend_name
 from .results import metric_summary
 
 # Labels include units and describe the denominator for every normalized metric.
@@ -40,12 +40,48 @@ LABELS = {
     "branch_direct_wakeups": "Branch RS wakeups through the wrapper",
     "branch_cdb_wakeups": "Branch RS wakeups through the CDB",
     "branch_direct_wakeup_lead": "Branch wakeup lead over producer CDB broadcast (cycles)",
+    "retirement_utilization": "Commit bandwidth utilization (fraction)",
 }
+# Frontend summary fields (simulator.py), present only when the frontend is modeled.
+FRONTEND_LABELS = {
+    "fetch_ipc": "Fetch IPC, all paths (instructions/cycle)",
+    "correct_path_fetch_ipc": "Correct-path fetch IPC (instructions/cycle)",
+    "issue_ipc": "Dispatch IPC, all paths (instructions/cycle)",
+    "frontend_starvation": "Cycles with dispatch starved by an empty frontend (fraction)",
+    "backend_starvation": "Backend dispatch stalls per cycle",
+    "wrong_path_fetch_fraction": "Wrong-path fetched instructions (fraction)",
+    "mpki": "Mispredictions per 1,000 commits",
+    "conditional_mpki": "Conditional-branch mispredictions per 1,000 commits",
+    "target_mpki": "Target mispredictions per 1,000 commits",
+    "return_mpki": "Return mispredictions per 1,000 commits",
+    "final_accuracy": "Final prediction accuracy (fraction)",
+    "final_direction_accuracy": "Final direction accuracy (fraction)",
+    "final_target_accuracy": "Final target accuracy (fraction)",
+    "l0_accuracy": "L0 prediction accuracy (fraction)",
+    "l0_direction_accuracy": "L0 direction accuracy (fraction)",
+    "l0_target_accuracy": "L0 target accuracy (fraction)",
+    "l1_accuracy": "L1 prediction accuracy (fraction)",
+    "l1_direction_accuracy": "L1 direction accuracy (fraction)",
+    "l1_target_accuracy": "L1 target accuracy (fraction)",
+    "l0_btb_hit_rate": "L0 BTB hit rate (fraction)",
+    "l1_btb_hit_rate": "L1 BTB hit rate (fraction)",
+    "icache_hit_rate": "I-cache hit rate (fraction)",
+    "return_accuracy": "Return target accuracy (fraction)",
+    "ras_coverage": "Returns with a valid RAS entry (fraction)",
+    "ras_accuracy": "RAS prediction accuracy (fraction)",
+    "ras_l1_fallback_accuracy": "L1 BTB fallback accuracy for returns (fraction)",
+    "ras_l0_fallback_accuracy": "L0 BTB fallback accuracy for returns (fraction)",
+    "btq_drop_rate": "Dropped branch-training updates (fraction)",
+    "tage_bypass_hit_rate": "TAGE bypass hits per training update",
+    "predictor_storage_bits": "Modeled predictor storage (bits)",
+}
+LABELS.update(FRONTEND_LABELS)
 
 
 PERCENT_METRICS = {"cdb_utilization", "issue_utilization", "cdb_contention", "retire_blocked",
                    "merge_utilization", "flush_utilization"}
-PERCENT_METRICS.update(("unified_buffer_stalls", "unified_rs_full", "wrapper_port_utilization"))
+PERCENT_METRICS.update(("unified_buffer_stalls", "unified_rs_full", "wrapper_port_utilization", "retirement_utilization"))
+PERCENT_METRICS.update(m for m, label in FRONTEND_LABELS.items() if label.endswith("(fraction)"))
 RATIO_METRICS = {NORMAL: "vs_normal", LEN5: "vs_len5", BLOCKS: "vs_blocks", IDEAL: "vs_ideal",
                  "ideal_commit_ooo": "vs_ideal_block"}
 for architecture, metric in tuple(RATIO_METRICS.items()):
@@ -61,7 +97,7 @@ def heatmap_label(value: float | None, metric: str) -> str:
         return "—"
     if metric in PERCENT_METRICS:
         return f"{value:.1%}"
-    if metric in {"cycles", "storage_bits"}:
+    if metric in {"cycles", "storage_bits", "predictor_storage_bits"}:
         return f"{value / 1000:.1f}k" if value >= 1000 else f"{value:.0f}"
     return f"{value:.2f}"
 
@@ -77,7 +113,8 @@ def color_limits(values, centered: bool = False) -> tuple[float, float]:
 
 def measured(run: dict) -> dict:
     values = {key: run[key] for key in ("ipc", "cycles", "weighted_speedup", "issue_utilization",
-                                          "cdb_utilization", "merge_utilization", "flush_utilization")
+                                          "cdb_utilization", "merge_utilization", "flush_utilization",
+                                          "retirement_utilization")
               if run.get(key) is not None}
     for key, source in (("rob_occupancy", "rob_occupancy"), ("block_occupancy", "block_occupancy"),
                         ("merge_rate", "merge_operations_per_cycle"),
@@ -104,6 +141,9 @@ def measured(run: dict) -> dict:
             values[key] = run["counts"][key]
     if run.get("storage", {}).get("total_bits") is not None:
         values["storage_bits"] = run["storage"]["total_bits"]
+    for key in FRONTEND_LABELS:
+        if type(value := run.get("frontend", {}).get(key)) in (int, float):
+            values[key] = value
     return values
 
 
@@ -208,7 +248,7 @@ def build_matrix(report: dict) -> dict:
                 if "isolated" in views:
                     source = joint if joint else next(iter(alone.values()))
                     keys[arch]["isolated"] = _point_signature(source)
-                if arch == NORMAL and "isolated" in views:
+                if backend_name(arch) == NORMAL and "isolated" in views:
                     for tid, name in enumerate(workloads):
                         ipc = views["isolated"].get(f"thread_{tid}_ipc")
                         if ipc is None and label not in pairs and tid == 0:
@@ -219,9 +259,11 @@ def build_matrix(report: dict) -> dict:
             for arch, views in by_seed.items():
                 for view, values in views.items():
                     for numerator, baseline in PAIRS:
-                        if arch != numerator:
+                        if backend_name(arch) != numerator:
                             continue
                         metric = RATIO_METRICS[baseline]
+                        # A frontend variant compares with the baseline running the same variant.
+                        baseline = arch.replace(numerator, baseline, 1)
                         denominator = by_seed.get(baseline, {}).get(view, {}).get("ipc")
                         key = keys[arch].get(view)
                         if denominator and key is not None and key == keys[baseline].get(view) and "ipc" in values:
@@ -259,6 +301,8 @@ def build_matrix(report: dict) -> dict:
                 for f in report.get("failures", ())]
     return {"suite": report.get("suite", "Benchmark suite"), "names": sorted(names), "pairs": cells,
             "paired": bool(pairs),
-            "architectures": [a for a in ARCHITECTURES if a in arch_names],
+            # Report order first, so `backend@variant` names keep the configured order.
+            "architectures": [a for a in dict.fromkeys([*report.get("architectures", ()), *ARCHITECTURES, *sorted(arch_names)])
+                              if a in arch_names],
             "sort_ipc": rank, "limits": limits, "limit_labels": limit_labels, "labels": LABELS, "confidence": confidence,
             "seeds": report.get("seeds", []), "failures": failures}

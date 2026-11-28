@@ -68,6 +68,8 @@ sim-help:
 		'Spike options: PROJECT, SUITE, BENCHMARK, BENCHMARKS, SPIKE, SPIKE_TIMEOUT, RISCV_EXE_PREFIX.' \
 		'SMT benchmark pairs: PAIR_MODE=same (default), all (unordered), or ordered (full matrix).' \
 		'BENCHMARK_PAIRS overrides the pair list. PLOT_PRESET=essential|detailed|none. VERBOSITY=quiet|normal|verbose.' \
+		'Frontend: CONFIG=python/system_level/config/frontend.yaml, or architectures like basic_block_ooo_commit@tage.' \
+		'Frontend sweeps: PRESET=frontend-predictor|fetch-fifo|issue-queue|btq-capacity|ras-depth.' \
 		'Example: make sim-run-benchmarks BENCHMARKS="crc32 matmult-int" SEEDS=30'
 
 sim-clean-results:

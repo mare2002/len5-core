@@ -3,26 +3,29 @@
 from heapq import heappop, heappush
 from itertools import chain
 
-from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, commit_architecture
+from math import inf
+
+from .config import BLOCK_ARCHITECTURES, IDEAL_ARCHITECTURES, commit_architecture, limit
 from .state import Entry
 
 
 class ROB:
     def __init__(self, size: int, architecture: str):
-        self.size = size
+        self.size = limit(size)
         self.len5 = commit_architecture(architecture) == "len5_ooo_commit"
         self.unbounded = architecture in IDEAL_ARCHITECTURES
+        self.unlimited = self.unbounded or self.size == inf
         self.individual = self.unbounded or architecture in BLOCK_ARCHITECTURES
         self.entries: dict[int, Entry] = {}
         self.slots: dict[int, Entry] = {}
-        self.free = list(range(size)) if self.individual and not self.unbounded else []
+        self.free = list(range(size)) if self.individual and not self.unlimited else []
         self.tail = 0
         self.clear_index = 0
         self.released: dict[int, Entry] = {}
 
     @property
     def full(self) -> bool:
-        if self.unbounded:
+        if self.unlimited:
             return False
         return not self.free if self.individual else self.tail in self.slots or self.reuse_delayed
 
@@ -47,7 +50,7 @@ class ROB:
             entry.slot = heappop(self.free) if self.free else len(self.slots)
         else:
             entry.slot = self.tail
-            self.tail = (self.tail + 1) % self.size
+            self.tail = self.tail + 1 if self.unlimited else (self.tail + 1) % self.size
         self.entries[entry.uid] = self.slots[entry.slot] = entry
 
     def remove(self, entry: Entry) -> None:
@@ -80,7 +83,7 @@ class ROB:
                             for e in chain(self.slots.values(), self.released.values()))
             if not (self.reuse_delayed and uncleared):
                 return "rob_clear_wait_cycles"
-        self.clear_index = (self.clear_index + 1) % self.size
+        self.clear_index = self.clear_index + 1 if self.unlimited else (self.clear_index + 1) % self.size
         return "rob_clear_cdb_bypasses" if critical and entry.completed == cycle else ""
 
     def retirement_candidate(self) -> Entry | None:
